@@ -1,0 +1,16 @@
+node_modules
+.output
+.nitro
+.cache
+dist
+.tanstack
+.vinxi
+*.local
+.env
+.env.*
+!.env.example
+.DS_Store
+coverage
+test-results
+playwright-report
+/drizzle/meta/_journal.json

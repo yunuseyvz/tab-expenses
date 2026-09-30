@@ -1,0 +1,15 @@
+allowBuilds:
+  esbuild: true
+  lightningcss: true
+  unrs-resolver: true
+  '@parcel/watcher': true
+  better-sqlite3: true
+  '@prisma/client': true
+  '@prisma/engines': true
+  prisma: true
+minimumReleaseAgeExclude:
+  - '@vitest/mocker@5.0.3'
+  - '@vitest/spy@5.0.3'
+  - lucide-react@1.49.0
+  - resend@6.31.0
+  - vitest@5.0.3

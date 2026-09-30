@@ -1,0 +1,15 @@
+node_modules
+.output
+.nitro
+.cache
+dist
+.tanstack
+.vinxi
+.git
+.env
+.env.*
+!.env.example
+coverage
+test-results
+playwright-report
+*.log

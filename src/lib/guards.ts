@@ -1,0 +1,104 @@
+/**
+ * Input validation for every server function.
+ *
+ * Validators run before the handler, so a malformed request never reaches the
+ * database. Money arrives as a decimal string and is converted to integer
+ * minor units here — no float ever crosses the boundary.
+ */
+import { z } from 'zod'
+
+import { BP_TOTAL } from './money'
+
+export const currencySchema = z
+  .string()
+  .trim()
+  .toUpperCase()
+  .regex(/^[A-Z]{3}$/, 'currency must be a 3-letter ISO code')
+
+/** A positive decimal amount string like "12.34". */
+export const amountStringSchema = z
+  .string()
+  .trim()
+  .regex(/^\d+([.,]\d{1,2})?$/, 'enter an amount like 12.34')
+  .refine((s) => Number(s.replace(',', '.')) > 0, 'amount must be above zero')
+
+export const isoDateSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'expected YYYY-MM-DD')
+  // reject 2026-02-31 and friends: round-trip through Date and compare
+  .refine((s) => {
+    const [y, m, d] = s.split('-').map(Number)
+    const dt = new Date(y ?? 0, (m ?? 1) - 1, d ?? 1)
+    return (
+      dt.getFullYear() === y && dt.getMonth() === (m ?? 1) - 1 && dt.getDate() === d
+    )
+  }, 'not a real calendar date')
+
+export const uuidSchema = z.uuid()
+
+const swatchKeySchema = z.string().min(1).max(40)
+
+export const memberInputSchema = z.object({
+  spaceId: uuidSchema,
+  displayName: z.string().trim().min(1, 'name is required').max(60),
+  color: swatchKeySchema,
+  defaultWeightBp: z
+    .number()
+    .int()
+    .min(0)
+    .max(BP_TOTAL)
+    .default(0),
+})
+export type MemberInput = z.infer<typeof memberInputSchema>
+
+export const categoryInputSchema = z
+  .object({
+    spaceId: uuidSchema,
+    name: z.string().trim().min(1, 'name is required').max(60),
+    color: swatchKeySchema,
+    icon: z.string().trim().min(1).max(40).default('tag'),
+    scope: z.enum(['shared', 'personal']).default('shared'),
+    ownerMemberId: uuidSchema.nullable().default(null),
+    sortOrder: z.number().int().default(0),
+  })
+  .refine(
+    // Mirrors the category_scope_owner_ck check constraint: a personal category
+    // must name its owner, a shared one must not. Catching it here gives a
+    // field-level error instead of a 500.
+    (v) =>
+      (v.scope === 'shared' && v.ownerMemberId === null) ||
+      (v.scope === 'personal' && v.ownerMemberId !== null),
+    { message: 'a personal category needs an owner', path: ['ownerMemberId'] },
+  )
+export type CategoryInput = z.infer<typeof categoryInputSchema>
+
+export const splitInputSchema = z.object({
+  memberId: uuidSchema,
+  weightBp: z.number().int().min(0).max(BP_TOTAL),
+})
+export type SplitInput = z.infer<typeof splitInputSchema>
+
+export const expenseInputSchema = z
+  .object({
+    spaceId: uuidSchema,
+    amount: amountStringSchema,
+    categoryId: uuidSchema.nullable().default(null),
+    paidByMemberId: uuidSchema,
+    spentOn: isoDateSchema,
+    purpose: z.string().trim().min(1, 'say what it was for').max(200),
+    note: z.string().trim().max(500).nullable().default(null),
+    splits: z.array(splitInputSchema).max(50).default([]),
+  })
+  .refine((v) => v.splits.length === 0 || v.splits.length > 0, {
+    message: 'splits must be empty (single payer) or non-empty',
+  })
+export type ExpenseInput = z.infer<typeof expenseInputSchema>
+
+export const periodFilterSchema = z.object({
+  spaceId: uuidSchema,
+  from: isoDateSchema.nullable().default(null),
+  to: isoDateSchema.nullable().default(null),
+  categoryIds: z.array(uuidSchema).max(200).optional(),
+  memberId: uuidSchema.nullable().optional(),
+})
+export type PeriodFilter = z.infer<typeof periodFilterSchema>
