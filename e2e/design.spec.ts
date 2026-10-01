@@ -274,6 +274,132 @@ test.describe('design system', () => {
     await context.close()
   })
 
+  /**
+   * Only changing household moves anything. Moving between sections does not.
+   *
+   * Both halves matter, and the second is the one that regresses quietly. A blur
+   * is `filter`, the most expensive thing in this app to animate, and paying for
+   * it every time someone taps one of four tabs is paying for it dozens of times
+   * a session. It belongs to the moment the numbers on screen are about a
+   * different household, and nowhere else.
+   *
+   * Getting that right needed a latch which survives the shell being replaced,
+   * because each route renders its own <AppShell>: any per-instance state resets
+   * on arrival, so a section change re-fires the entrance no matter what the
+   * content is keyed on. See paintedSpace in AppShell.tsx.
+   *
+   * The blur itself is asserted in spaces.spec.ts, the only test with two spaces
+   * to switch between.
+   */
+  test('moving between sections and filters animates nothing', async ({
+    page,
+  }) => {
+    await page.goto('/dashboard?period=all')
+
+    /**
+     * Watch the content wrapper across whatever the callback does. Reads the
+     * computed style every frame, because the animation is JS-driven and leaves
+     * no CSS transition for a stylesheet assertion to find.
+     */
+    const watch = async (act: () => Promise<void>) => {
+      await page.evaluate(() => {
+        const out: Array<{
+          blur: number
+          opacity: number
+          willChange: string
+        }> = []
+        const t0 = performance.now()
+        const tick = () => {
+          // Re-queried every frame, and this is not a detail. Each route renders
+          // its own <AppShell>, so navigating *replaces* the content wrapper.
+          // A reference captured before the click is a detached node by the time
+          // the animation runs, and every frame then reports the settled style
+          // of something no longer on the page — which reads as "the animation
+          // does not happen" and is indistinguishable from a real failure.
+          const el = document.querySelector('#main')?.parentElement
+          if (!el) {
+            if (performance.now() - t0 < 700) requestAnimationFrame(tick)
+            else (window as unknown as { __frames: typeof out }).__frames = out
+            return
+          }
+          const cs = getComputedStyle(el)
+          out.push({
+            blur: parseFloat(cs.filter.replace(/[^\d.]/g, '')) || 0,
+            opacity: Number(cs.opacity),
+            willChange: cs.willChange,
+          })
+          if (performance.now() - t0 < 700) requestAnimationFrame(tick)
+          else;
+          ;(window as unknown as { __frames: typeof out }).__frames = out
+        }
+        tick()
+      })
+      await act()
+      await page.waitForTimeout(900)
+      return page.evaluate(
+        () =>
+          (
+            window as unknown as {
+              __frames?: Array<{
+                blur: number
+                opacity: number
+                willChange: string
+              }>
+            }
+          ).__frames ?? [],
+      )
+    }
+
+    const navigation = await watch(async () => {
+      await page.getByRole('link', { name: 'Expenses' }).click()
+    })
+    await expect(page).toHaveURL(/expenses/)
+    expect(
+      Math.max(...navigation.map((f) => f.blur)),
+      'a section change should not blur',
+    ).toBe(0)
+    expect(
+      Math.min(...navigation.map((f) => f.opacity)),
+      'a section change should not fade either',
+    ).toBe(1)
+
+    // And back again, because the guard has to hold in both directions.
+    const back = await watch(async () => {
+      await page.getByRole('link', { name: 'Dashboard' }).click()
+    })
+    await expect(page).toHaveURL(/dashboard/)
+    expect(
+      Math.max(...back.map((f) => f.blur)),
+      'navigating back should not blur',
+    ).toBe(0)
+
+    const filtering = await watch(async () => {
+      await page.getByRole('radio', { name: 'Last month' }).click()
+    })
+    expect(
+      Math.max(...filtering.map((f) => f.blur)),
+      'changing the period must not blur the list being filtered',
+    ).toBe(0)
+    expect(
+      Math.min(...filtering.map((f) => f.opacity)),
+      'and must not fade it either',
+    ).toBe(1)
+
+    // Nothing left will-change behind. This is the assertion that keeps a
+    // compositor hint from outliving the animation it was for: left on, it holds
+    // a full-page rasterised layer for the rest of the session, and nothing about
+    // that is visible in a screenshot.
+    const settled = await page.evaluate(
+      () =>
+        getComputedStyle(document.querySelector('#main')!.parentElement!)
+          .willChange,
+    )
+    expect(
+      settled,
+      'a permanent will-change: filter holds a full-page layer forever',
+    ).toBe('auto')
+  })
+
   test('reduced motion collapses animations to instant state changes', async ({
     browser,
   }) => {

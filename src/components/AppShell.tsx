@@ -34,6 +34,26 @@ import { useCurrentSpace } from '#/hooks/useCurrentSpace'
 import { authClient } from '#/lib/auth-client'
 import { cn } from '#/lib/cn'
 
+/**
+ * The space this document last painted, or null if it has not painted one.
+ *
+ * The blur belongs to changing *household*, not to moving between screens. That
+ * distinction is awkward to express here because each route renders its own
+ * `<AppShell>`, so navigating between sections replaces the component: any
+ * per-instance state resets on arrival, and the entrance re-fires on every
+ * section change whether it is keyed on the space or not. A latch in the
+ * component cannot tell "a new screen mounted" from "a new household mounted".
+ *
+ * Module scope can. Remembering the space across remounts means the question is
+ * answerable: animate only when the space is genuinely not the one already on
+ * screen. Same household, new screen, no animation. Different household,
+ * animation. First paint, none — which also keeps the server markup and the
+ * first client render identical.
+ *
+ * Lives and dies with the page, so a reload starts over.
+ */
+let paintedSpace: string | null = null
+
 const NAV = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutGrid },
   { to: '/expenses', label: 'Expenses', icon: List },
@@ -77,11 +97,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // `initial` is read when the keyed element mounts, so starting from `false`
   // means a plain page load renders straight to full opacity — a fade on every
   // load reads as lag — while a later change of space gets the entrance.
-  const [settled, setSettled] = useState(false)
-  useEffect(() => setSettled(true), [])
+  // Written to directly rather than through state: will-change is a compositor
+  // hint, and re-rendering the whole shell twice per transition to toggle it
+  // would cost more than the hint is worth.
+  const contentRef = useRef<HTMLDivElement>(null)
   const [signingOut, setSigningOut] = useState(false)
   const [accountOpen, setAccountOpen] = useState(false)
   const accountRef = useRef<HTMLDivElement>(null)
+
+  // Whether the content is about to resolve out of a blur. Read during render so
+  // the very first paint gets `initial={false}` and hydration has nothing to
+  // reconcile; the latch is updated after, in an effect, because updating it
+  // during render would make every later render look like a household change.
+  const currentSpace = spaceId ?? 'none'
+  const changingHousehold = paintedSpace !== null && paintedSpace !== currentSpace
+  useEffect(() => {
+    paintedSpace = currentSpace
+  }, [currentSpace])
 
   // The protected layout already resolved the session for the route guard, so
   // the account avatar costs nothing extra — it is read from context rather
@@ -210,16 +242,68 @@ export function AppShell({ children }: { children: React.ReactNode }) {
        * wrapper no longer carries the pt-14 this bar used to occupy.
        */}
 
-      {/* Keyed on the space, so the entrance replays when the household
-          changes and not when you move between screens. A cross-fade out
-          instead would mean holding the new screen's numbers back until the
-          old ones had faded — the swap is instant, only the arrival is
-          animated. */}
+      {/*
+       * Arriving somewhere: the content resolves out of a blur.
+       *
+       * KEYED ON PATHNAME *AND* SPACE, WHICH IS THE WHOLE POINT
+       * It used to be keyed on the space alone, so the entrance replayed when
+       * you changed household and did nothing at all when you moved between
+       * the four sections — the one transition a person actually makes dozens
+       * of times a day was the one with no animation. Both are now in the key,
+       * and neither is in it by accident: the *pathname* rather than the whole
+       * search string, so changing the period or a category filter does not
+       * blur the list you are looking at in order to change what is in it.
+       *
+       * IT IS A BLUR FADE IN, NOT A CROSS-FADE
+       * Blurring the outgoing content first would mean holding the new
+       * screen's numbers on screen until the old ones had finished fading, and
+       * paying for two filters instead of one. The swap is instant; only the
+       * arrival is animated.
+       *
+       * THIS BREAKS THE APP'S OWN RULE, ON PURPOSE
+       * The stylesheet says to animate transform and opacity only, because
+       * filter is not compositor-accelerated and stutters on mid-range Android.
+       * That is true and it is why the radius is small, the duration short, and
+       * `will-change` is attached only for the length of the animation rather
+       * than left on. A permanent will-change: filter holds a full-page
+       * rasterised layer for the life of the session, which on the phone this
+       * app is used on is worse than the transition it buys.
+       *
+       * Reduced motion gets a plain cross-fade with no blur and no travel, and
+       * the first paint gets nothing at all, so the server markup and the first
+       * client render stay identical.
+       */}
       <motion.div
+        ref={contentRef}
+        // Keyed on the space alone, deliberately. See paintedSpace above: the
+        // guard is what keeps a section change still, so widening the key to
+        // include the pathname would put the same screen's arrival back into
+        // the animation.
         key={spaceId ?? 'none'}
-        initial={settled ? { opacity: 0, y: reduceMotion ? 0 : 10 } : false}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+        initial={
+          changingHousehold
+            ? {
+                opacity: 0,
+                filter: reduceMotion ? 'blur(0px)' : 'blur(7px)',
+              }
+            : false
+        }
+        animate={{ opacity: 1, filter: 'blur(0px)' }}
+        transition={{
+          duration: reduceMotion ? 0.14 : 0.45,
+          ease: [0.22, 1, 0.36, 1],
+        }}
+        onAnimationStart={() => {
+          if (!reduceMotion) {
+            contentRef.current?.style.setProperty(
+              'will-change',
+              'filter, opacity',
+            )
+          }
+        }}
+        onAnimationComplete={() => {
+          contentRef.current?.style.removeProperty('will-change')
+        }}
         className="flex-1 min-w-0 pb-24 md:pb-0"
       >
         {children}

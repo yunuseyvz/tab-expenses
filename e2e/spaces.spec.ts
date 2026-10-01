@@ -8,6 +8,7 @@
  * still looks correct right up until you own two.
  */
 import { expect, test } from '@playwright/test'
+import type { Page } from '@playwright/test'
 
 test.use({ storageState: 'test-results/auth.json' })
 
@@ -59,11 +60,31 @@ test.describe('space switching', () => {
     await expect(page.getByText('Total spend')).toBeVisible()
 
     // ── switch back ─────────────────────────────────────────────────────
+    // The one place in the suite with two spaces to switch between, and so the
+    // one place the household transition can be asserted: switching household is
+    // the *only* thing in the app that animates, and a blur is the most
+    // expensive thing in it to animate, so it is worth knowing it is still
+    // attached to one event and not drifting onto tab taps.
     await switcher.click()
+    const blur = watchContent(page)
     await page.getByRole('option', { name: /Hauptstraße/ }).click()
     await expect(
       page.getByRole('heading', { name: 'Hauptstraße' }),
     ).toBeVisible()
+
+    const frames = await blur
+    expect(
+      Math.max(...frames.map((f) => f.blur)),
+      'switching household should resolve the content out of a blur',
+    ).toBeGreaterThan(0)
+    expect(
+      Math.min(...frames.map((f) => f.opacity)),
+      'and it should arrive as a fade as well',
+    ).toBeLessThan(0.9)
+    expect(
+      frames.some((f) => f.willChange !== 'auto'),
+      'will-change should be attached while the filter animates',
+    ).toBe(true)
 
     // Switching pins ?space= so the URL can be shared and reloaded as-is.
     await expect(page).toHaveURL(/space=/)
@@ -92,3 +113,45 @@ test.describe('space switching', () => {
     await expect(page.getByRole('heading', { name: 'Balances' })).toBeVisible()
   })
 })
+
+/**
+ * Watch the content wrapper's filter, opacity and will-change, frame by frame,
+ * until `stop` is called. The animation is JS-driven, so it leaves no CSS
+ * transition for a stylesheet assertion to find.
+ *
+ * The element is re-queried on every frame rather than captured once, and that
+ * is load-bearing: navigating *replaces* the content wrapper, so a reference
+ * taken beforehand is a detached node by the time the animation runs, and every
+ * frame then reports the settled style of something no longer on the page. That
+ * reads as "the animation did not happen" and is indistinguishable from a real
+ * failure — which is exactly how it was mistaken for one.
+ */
+function watchContent(page: Page) {
+  return page.evaluate(
+    () =>
+      new Promise<Array<{ blur: number; opacity: number; willChange: string }>>(
+        (done) => {
+          const out: Array<{
+            blur: number
+            opacity: number
+            willChange: string
+          }> = []
+          const t0 = performance.now()
+          const tick = () => {
+            const el = document.querySelector('#main')?.parentElement
+            if (el) {
+              const cs = getComputedStyle(el)
+              out.push({
+                blur: parseFloat(cs.filter.replace(/[^\d.]/g, '')) || 0,
+                opacity: Number(cs.opacity),
+                willChange: cs.willChange,
+              })
+            }
+            if (performance.now() - t0 < 700) requestAnimationFrame(tick)
+            else done(out)
+          }
+          tick()
+        },
+      ),
+  )
+}
