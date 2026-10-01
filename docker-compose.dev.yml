@@ -1,0 +1,31 @@
+# Local development override.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile dev up -d
+#
+# The base compose file deliberately does NOT publish Postgres, because in
+# production only the app container needs to reach it and an open port is an
+# unnecessary exposure. That leaves `pnpm dev` on the host unable to connect,
+# which is what this override is for: it publishes the port so the hot-reload
+# loop can run outside a container.
+#
+# Use the base file alone for anything resembling a deployment.
+#
+# ⚠ Always pass BOTH files, every time. Compose reconfigures only the services
+#   whose config changed, so running plain `docker compose up -d` afterwards
+#   quietly re-creates the database *without* its published port. The container
+#   still looks healthy; you just get ECONNREFUSED from the host, with nothing
+#   in the logs to explain it.
+
+services:
+  db:
+    # 5433 rather than 5432: a local Postgres is a common thing to already be
+    # running, and this override's whole job is to be usable without editing
+    # anything. DB_PORT in .env must match the port in DATABASE_URL, because
+    # that string is what `pnpm dev` on the host connects with.
+    ports:
+      - '${DB_PORT:-5433}:5432'
+
+  # With Postgres on the host-visible port, run the app outside a container for
+  # fast reload. Uncomment to use this compose purely as the database.
+  # app:
+  #   profiles: ['tooling']

@@ -11,6 +11,10 @@ import postgres from 'postgres'
 
 import { allocate } from '../src/lib/money'
 import { toISODate } from '../src/lib/period'
+import { loadEnv } from './load-env'
+
+// drizzle-kit loads .env on its own; this script has to do it for itself.
+loadEnv()
 
 const DATABASE_URL = process.env.DATABASE_URL
 if (!DATABASE_URL) {

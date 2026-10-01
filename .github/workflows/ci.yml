@@ -65,6 +65,11 @@ jobs:
         run: pnpm guard:auth
 
       - name: Unit and integration tests
+        # REQUIRE_DB turns "no database" into a failure rather than a skip, so a
+        # broken or misconfigured service is a red build instead of a suite
+        # that quietly tested nothing.
+        env:
+          REQUIRE_DB: 'true'
         run: pnpm test
 
       - name: Schema constraints hold against a real database
@@ -77,14 +82,23 @@ jobs:
         run: pnpm build
 
       - name: The build must not inline a secret
-        # Second line of defence: scan the emitted client assets for values that
-        # only exist in the server environment.
+        # Second line of defence: scan the emitted client assets for the actual
+        # secret *values* from this job's environment.
+        #
+        # Matching on values rather than variable names matters: better-auth's
+        # client bundle legitimately contains a `get BETTER_AUTH_SECRET()`
+        # accessor, so grepping for the name would false-positive on a library
+        # that is behaving correctly.
         run: |
-          if grep -rlE "ci-only-secret|postgresql://app:app" .output/public 2>/dev/null; then
-            echo "::error::a server secret was found in the client bundle"
+          if [ ! -d dist/client ]; then
+            echo "::error::expected the client build at dist/client"
             exit 1
           fi
-          echo "client bundle is clean"
+          if grep -rlF -e 'ci-only-secret' -e 'postgresql://app:app' dist/client 2>/dev/null; then
+            echo "::error::a server secret value was found in the client bundle"
+            exit 1
+          fi
+          echo "client bundle contains no server secret values"
 
   e2e:
     runs-on: ubuntu-latest
@@ -167,6 +181,25 @@ jobs:
           POSTGRES_PASSWORD: ci
           BETTER_AUTH_SECRET: ci-only-secret-not-used-in-production-32ch
           BETTER_AUTH_URL: https://example.invalid
+
+      - name: Compose must not point in-container URLs at localhost
+        # Inside a container, "localhost" is that container. A host-side value
+        # leaking into a service definition fails quietly rather than loudly —
+        # the mail send in particular is fire-and-forget, so the UI reports
+        # success while nothing is delivered.
+        run: |
+          cfg=$(docker compose config \
+            -f docker-compose.yml -f docker-compose.dev.yml \
+            -f <(printf 'services:\n  app:\n    environment:\n      X: ""\n') \
+            2>/dev/null || docker compose config)
+          for var in DATABASE_URL MAILPIT_API_URL; do
+            val=$(printf '%s' "$cfg" | grep -E "^\s+${var}:" | head -1 | sed 's/.*: //')
+            if printf '%s' "$val" | grep -q '@localhost\|://localhost'; then
+              echo "::error::$var points at localhost inside a container: $val"
+              exit 1
+            fi
+            echo "ok: $var = $val"
+          done
 
       - name: Smoke test the container
         run: |

@@ -3,9 +3,11 @@ import { useNavigate } from '@tanstack/react-router'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
+import type { MySpace } from '#/lib/space.types'
 import { Button } from '#/components/ui/Button'
 import { Input, Label } from '#/components/ui/Input'
 import { createSpace } from '#/lib/space.functions'
+import { spaceKeys } from '#/lib/session'
 import { SWATCHES, swatchColor } from '#/lib/swatches'
 
 /** A short, common set. Currencies people actually hold a household ledger in. */
@@ -26,8 +28,33 @@ export function SetupForm() {
         data: { name, currency, displayName, color },
       }),
     onSuccess: (result) => {
+      // Write the value we just learned synchronously rather than relying on
+      // an invalidation to land before the next navigation.
+      //
+      // This matters more than it looks: signing in already navigated to
+      // /dashboard, whose loader found no spaces and redirected to /setup —
+      // priming the cache with an empty list. `invalidateQueries` on an
+      // inactive query only marks it stale, so the /_protected loader could
+      // read that same empty list and redirect straight back to /setup. The
+      // user fills in the form, presses the button, and lands on the form
+      // again with no error. Setting the data removes the race entirely.
+      queryClient.setQueryData<Array<MySpace>>(spaceKeys.mySpaces, (prev) => [
+        {
+          id: result.space.id,
+          name: result.space.name,
+          currency: result.space.currency,
+          role: 'owner',
+          memberId: result.member.id,
+        },
+        ...(prev ?? []).filter((s) => s.id !== result.space.id),
+      ])
+
+      // Then refresh in the background so a space created in another tab shows
+      // up. Awaiting this would delay the navigation for no benefit now that
+      // the cache is already correct.
+      void queryClient.invalidateQueries({ queryKey: spaceKeys.mySpaces })
+
       toast.success('Space created')
-      void queryClient.invalidateQueries({ queryKey: ['my-spaces'] })
       void navigate({
         to: '/dashboard',
         search: {

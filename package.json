@@ -21,7 +21,6 @@
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "db:seed": "tsx scripts/seed.ts",
-    "auth:schema": "tsx scripts/generate-auth-schema.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:auth": "sh scripts/smoke-auth.sh",

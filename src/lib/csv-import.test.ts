@@ -11,10 +11,9 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { eq, sql } from 'drizzle-orm'
 
 import { closeDb, getDb } from '#/lib/db'
+import { describeIfDatabase } from '#/lib/test-db'
 import { category, expense, space, spaceMember, user } from '#/lib/db/schema'
 import { CSV_HEADER, toCsv } from '#/lib/csv'
-
-const DB_URL = process.env.DATABASE_URL
 
 /** Mirror of the server function's duplicate check, exercised directly. */
 async function countFor(
@@ -34,7 +33,7 @@ async function countFor(
   return rows.length
 }
 
-describe.skipIf(!DB_URL)('csv import', () => {
+describe.runIf(await describeIfDatabase())('csv import', () => {
   const suffix = randomUUID().slice(0, 8)
   const uid = `import-${suffix}`
   const sid = randomUUID()

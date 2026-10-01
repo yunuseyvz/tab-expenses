@@ -3,15 +3,25 @@
 #
 # Boots Postgres and Mailpit if they are not already up, migrates, seeds, starts
 # the built server on a free port, runs Playwright, then tears the server down.
+#
+# The suite owns its own DATABASE_URL rather than inheriting whatever .env says.
+# .env points at the compose stack's published port, which may not be running,
+# and inheriting it made this fail with a bare ECONNREFUSED. Note that it
+# re-migrates and re-seeds the database it points at, so keep E2E_DB_PORT off
+# your development stack's port.
 set -e
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$ROOT"
 
+E2E_DB_PORT=${E2E_DB_PORT:-55432}
+
 # shellcheck disable=SC1091
 set -a
 . "$ROOT/.env"
 set +a
+DATABASE_URL="postgresql://app:app@localhost:${E2E_DB_PORT}/app"
+export DATABASE_URL
 
 # ── services ─────────────────────────────────────────────────────────────
 ensure_db() {
@@ -22,7 +32,7 @@ ensure_db() {
     docker rm -f swl-db >/dev/null 2>&1 || true
     docker run -d --name swl-db \
       -e POSTGRES_USER=app -e POSTGRES_PASSWORD=app -e POSTGRES_DB=app \
-      -p 55432:5432 postgres:17-alpine >/dev/null
+      -p "${E2E_DB_PORT}:5432" postgres:17-alpine >/dev/null
     i=0
     while [ $i -lt 60 ]; do
       docker exec swl-db pg_isready -U app >/dev/null 2>&1 && break

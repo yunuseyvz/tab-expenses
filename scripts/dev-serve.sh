@@ -29,10 +29,17 @@ echo "PORT=$PORT"
 echo "$PORT" > "$LOG_DIR/port"
 
 # --- load env ------------------------------------------------------------
-set -a
-# shellcheck disable=SC1091
-. "$ROOT/.env"
-set +a
+# An explicitly exported variable always wins over the .env file, which is what
+# lets scripts/e2e.sh point the server at its own throwaway database: sourcing
+# .env here used to silently put the compose stack's URL back and the server
+# then failed with ECONNREFUSED mid-suite.
+if [ -z "${DATABASE_URL:-}" ] && [ -f "$ROOT/.env" ]; then
+  set -a
+  # shellcheck disable=SC1091
+  . "$ROOT/.env"
+  set +a
+fi
+
 # The app must agree with the port we actually bound.
 BETTER_AUTH_URL="http://127.0.0.1:$PORT"
 export BETTER_AUTH_URL

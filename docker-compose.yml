@@ -15,8 +15,11 @@ services:
     image: postgres:17-alpine
     restart: unless-stopped
     environment:
+      # Defaults here so `cp .env.example .env && docker compose up` works with
+      # no editing. The `${VAR:?}` form is right for a deploy, wrong for a
+      # first run — and .env.example already documents replacing them.
       POSTGRES_USER: ${POSTGRES_USER:-app}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-app}
       POSTGRES_DB: ${POSTGRES_DB:-app}
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -48,13 +51,20 @@ services:
       NODE_ENV: production
       PORT: '3000'
       # In-network hostname, not localhost: the app is a separate container.
-      DATABASE_URL: postgresql://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-app}
+      # Overrides whatever DATABASE_URL is in .env, which is the host-side value.
+      DATABASE_URL: postgresql://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-app}@db:5432/${POSTGRES_DB:-app}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET is required}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:?BETTER_AUTH_URL is required}
       # Traefik is in front, so the real client IP is in X-Forwarded-For.
       TRUSTED_PROXY_HEADERS: 'true'
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       EMAIL_FROM: ${EMAIL_FROM:-Splitwise <noreply@example.com>}
+      # Only read when RESEND_API_KEY is blank. Deliberately NOT taken from
+      # .env: that copy is a host-side value pointing at localhost, and inside
+      # this container localhost is the app itself — so the send fails with a
+      # bare "fetch failed" while the login screen reports success, because the
+      # OTP hook is deliberately fire-and-forget. Use the service hostname.
+      MAILPIT_API_URL: http://mailpit:8025
     expose:
       - '3000'
     ports:

@@ -12,7 +12,22 @@ docker compose --profile dev up --build
 ```
 
 The app is on <http://localhost:3000>, Mailpit on <http://localhost:8025>.
-Sign in with any email; the code lands in Mailpit instead of a real inbox.
+Sign in as `demo@splitwise.local`; the code lands in Mailpit instead of a real
+inbox. The seeded space is a German household with rent, groceries, a 5¢ bread,
+and a 60/40 split.
+
+> Use **`localhost`**, not `127.0.0.1`. `BETTER_AUTH_URL` doubles as the
+> allowed-Origin list, and the two are different origins to a browser — so
+> `127.0.0.1` is refused with `Invalid origin: …` even though it reaches the
+> same server.
+
+Prefer running the app outside a container, for hot reload? That needs Postgres
+published on a host port, which the base compose file deliberately does not do:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile dev up -d
+pnpm db:migrate && pnpm db:seed && pnpm dev
+```
 
 ---
 
@@ -112,7 +127,10 @@ pnpm db:verify-constraints   # assert the schema's invariants against real Postg
 
 pnpm typecheck
 pnpm lint
-pnpm test             # 65 unit + integration tests (some need DATABASE_URL)
+pnpm test             # 65 unit + integration tests
+                      # (the integration ones need a database; without one they
+                      #  skip loudly. REQUIRE_DB=true makes that a failure —
+                      #  which is what CI uses.)
 pnpm test:e2e         # 20 Playwright tests: brings up Postgres, Mailpit, builds, serves, runs
 pnpm check            # typecheck + lint + test + auth-guard check
 

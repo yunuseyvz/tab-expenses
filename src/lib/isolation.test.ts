@@ -15,6 +15,7 @@ import postgres from 'postgres'
 
 import { allocate } from '#/lib/money'
 import { closeDb, getDb } from '#/lib/db'
+import { describeIfDatabase } from '#/lib/test-db'
 import {
   category,
   expense,
@@ -23,8 +24,6 @@ import {
   spaceMember,
   user,
 } from '#/lib/db/schema'
-
-const DB_URL = process.env.DATABASE_URL
 
 // The guard under test is deliberately a local copy of the production shape:
 // createServerFn cannot be invoked outside a request context, so what is
@@ -52,7 +51,7 @@ async function requireSpaceMember(userId: string, spaceId: string) {
   return row
 }
 
-describe.skipIf(!DB_URL)('cross-household isolation', () => {
+describe.runIf(await describeIfDatabase())('cross-household isolation', () => {
   const suffix = randomUUID().slice(0, 8)
   const ownerId = `test-owner-${suffix}`
   const strangerId = `test-stranger-${suffix}`
@@ -241,111 +240,114 @@ describe.skipIf(!DB_URL)('cross-household isolation', () => {
   })
 })
 
-describe.skipIf(!DB_URL)('split invariant under a real database', () => {
-  const suffix = randomUUID().slice(0, 8)
-  const uid = `inv-user-${suffix}`
-  const sid = randomUUID()
+describe.runIf(await describeIfDatabase())(
+  'split invariant under a real database',
+  () => {
+    const suffix = randomUUID().slice(0, 8)
+    const uid = `inv-user-${suffix}`
+    const sid = randomUUID()
 
-  beforeAll(async () => {
-    const db = getDb()
-    await db.insert(user).values({
-      id: uid,
-      name: 'Invariant',
-      email: `inv-${suffix}@test.local`,
-      emailVerified: true,
-    })
-    await db.insert(space).values({
-      id: sid,
-      name: 'Invariant space',
-      currency: 'EUR',
-      createdByUserId: uid,
-    })
-  })
-
-  afterAll(async () => {
-    const db = getDb()
-    await db.delete(space).where(eq(space.id, sid))
-    await db.delete(user).where(eq(user.id, uid))
-    await closeDb()
-  })
-
-  it('sum(share_minor) = amount_minor holds across awkward amounts', async () => {
-    const db = getDb()
-    const [m1] = await db
-      .insert(spaceMember)
-      .values({
-        spaceId: sid,
-        userId: uid,
-        displayName: 'A',
-        color: 'terracotta',
-        role: 'owner',
+    beforeAll(async () => {
+      const db = getDb()
+      await db.insert(user).values({
+        id: uid,
+        name: 'Invariant',
+        email: `inv-${suffix}@test.local`,
+        emailVerified: true,
       })
-      .returning()
-    const [m2] = await db
-      .insert(spaceMember)
-      .values({ spaceId: sid, displayName: 'B', color: 'sage' })
-      .returning()
-    const [m3] = await db
-      .insert(spaceMember)
-      .values({ spaceId: sid, displayName: 'C', color: 'indigo' })
-      .returning()
-    const all = [m1!, m2!, m3!]
+      await db.insert(space).values({
+        id: sid,
+        name: 'Invariant space',
+        currency: 'EUR',
+        createdByUserId: uid,
+      })
+    })
 
-    // Every awkward case from the plan, plus a few more.
-    const cases: Array<[number, Array<number>, string]> = [
-      [1000, [6000, 4000], '60/40 of €10'],
-      [5, [5000, 3000, 2000], '5c three ways'],
-      [1, [6000, 4000], '1c two ways'],
-      [12_345, [6000, 4000], '60/40 of €123.45'],
-      [1, [1, 9999], '1c, almost all to B'],
-      [7, [3333, 3333, 3334], '7c three near-equal ways'],
-      [99, [1234, 5678, 3088], 'uneven three-way'],
-    ]
+    afterAll(async () => {
+      const db = getDb()
+      await db.delete(space).where(eq(space.id, sid))
+      await db.delete(user).where(eq(user.id, uid))
+      await closeDb()
+    })
 
-    for (const [amount, weights, label] of cases) {
-      const shares = allocate(amount, weights)
-      expect(
-        shares.reduce((s, x) => s + x, 0),
-        label,
-      ).toBe(amount)
-
-      const [e] = await db
-        .insert(expense)
+    it('sum(share_minor) = amount_minor holds across awkward amounts', async () => {
+      const db = getDb()
+      const [m1] = await db
+        .insert(spaceMember)
         .values({
           spaceId: sid,
-          paidByMemberId: m1!.id,
-          spentOn: '2026-03-01',
-          purpose: label,
-          amountMinor: amount,
-          createdByUserId: uid,
+          userId: uid,
+          displayName: 'A',
+          color: 'terracotta',
+          role: 'owner',
         })
         .returning()
+      const [m2] = await db
+        .insert(spaceMember)
+        .values({ spaceId: sid, displayName: 'B', color: 'sage' })
+        .returning()
+      const [m3] = await db
+        .insert(spaceMember)
+        .values({ spaceId: sid, displayName: 'C', color: 'indigo' })
+        .returning()
+      const all = [m1!, m2!, m3!]
 
-      const members = all
-      await db.insert(expenseSplit).values(
-        weights.map((w, i) => ({
-          expenseId: e!.id,
-          memberId: members[i]!.id,
-          weightBp: w,
-          shareMinor: shares[i]!,
-        })),
-      )
+      // Every awkward case from the plan, plus a few more.
+      const cases: Array<[number, Array<number>, string]> = [
+        [1000, [6000, 4000], '60/40 of €10'],
+        [5, [5000, 3000, 2000], '5c three ways'],
+        [1, [6000, 4000], '1c two ways'],
+        [12_345, [6000, 4000], '60/40 of €123.45'],
+        [1, [1, 9999], '1c, almost all to B'],
+        [7, [3333, 3333, 3334], '7c three near-equal ways'],
+        [99, [1234, 5678, 3088], 'uneven three-way'],
+      ]
 
-      // Read it back the way the balance query does.
-      const [row] = await db
-        .select({
-          total: sql<number>`coalesce(sum(${expenseSplit.shareMinor}), 0)::int`,
-        })
-        .from(expenseSplit)
-        .where(eq(expenseSplit.expenseId, e!.id))
-      expect(Number(row?.total), label).toBe(amount)
-    }
-  })
-})
+      for (const [amount, weights, label] of cases) {
+        const shares = allocate(amount, weights)
+        expect(
+          shares.reduce((s, x) => s + x, 0),
+          label,
+        ).toBe(amount)
 
-describe.skipIf(!DB_URL)('database-level guarantees', () => {
+        const [e] = await db
+          .insert(expense)
+          .values({
+            spaceId: sid,
+            paidByMemberId: m1!.id,
+            spentOn: '2026-03-01',
+            purpose: label,
+            amountMinor: amount,
+            createdByUserId: uid,
+          })
+          .returning()
+
+        const members = all
+        await db.insert(expenseSplit).values(
+          weights.map((w, i) => ({
+            expenseId: e!.id,
+            memberId: members[i]!.id,
+            weightBp: w,
+            shareMinor: shares[i]!,
+          })),
+        )
+
+        // Read it back the way the balance query does.
+        const [row] = await db
+          .select({
+            total: sql<number>`coalesce(sum(${expenseSplit.shareMinor}), 0)::int`,
+          })
+          .from(expenseSplit)
+          .where(eq(expenseSplit.expenseId, e!.id))
+        expect(Number(row?.total), label).toBe(amount)
+      }
+    })
+  },
+)
+
+describe.runIf(await describeIfDatabase())('database-level guarantees', () => {
   it('the database rejects a zero or negative amount', async () => {
-    const client = postgres(DB_URL!, { max: 1 })
+    const client = postgres(process.env.DATABASE_URL!, { max: 1 })
     try {
       const { id: sId, createdByUserId } = await seedTiny(client, 'amount')
       await expect(

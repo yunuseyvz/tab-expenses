@@ -10,26 +10,52 @@ import type { Page } from '@playwright/test'
 
 const MAILPIT = process.env.MAILPIT_URL ?? 'http://127.0.0.1:8025'
 
-export async function requestOtp(email: string): Promise<string> {
-  const base = process.env.SWL_BASE_URL ?? 'http://127.0.0.1:3000'
-  const res = await fetch(`${base}/api/auth/email-otp/send-verification-otp`, {
-    method: 'POST',
-    // Better Auth's CSRF check needs an Origin, exactly as a browser sends.
-    headers: {
-      'Content-Type': 'application/json',
-      Origin: base,
-      Referer: `${base}/login`,
-    },
-    body: JSON.stringify({ email, type: 'sign-in' }),
-  })
-  if (!res.ok) {
-    throw new Error(
-      `send-verification-otp failed: ${res.status} ${await res.text()}`,
-    )
-  }
+/**
+ * Better Auth rate-limits the OTP endpoints to 3 requests per 60 seconds —
+ * both the send *and* the verify. That is right for production and hostile to a
+ * suite that signs in more than once, so rather than switching the protection
+ * off these helpers wait the limit out. Tests therefore stay independent of
+ * each other and of the order they run in.
+ */
+const RATE_LIMIT_WAIT = 20_000
 
+async function sendOtp(base: string, email: string): Promise<void> {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const res = await fetch(
+      `${base}/api/auth/email-otp/send-verification-otp`,
+      {
+        method: 'POST',
+        // Better Auth's CSRF check needs an Origin, exactly as a browser sends.
+        headers: {
+          'Content-Type': 'application/json',
+          Origin: base,
+          Referer: `${base}/login`,
+        },
+        body: JSON.stringify({ email, type: 'sign-in' }),
+      },
+    )
+    if (res.ok) return
+    if (res.status !== 429) {
+      throw new Error(
+        `send-verification-otp failed: ${res.status} ${await res.text()}`,
+      )
+    }
+    await new Promise((r) => setTimeout(r, RATE_LIMIT_WAIT))
+  }
+  throw new Error('send-verification-otp stayed rate limited after 5 attempts')
+}
+
+/**
+ * Read a code that the app has already asked for, by polling Mailpit.
+ *
+ * Use this whenever the UI already clicked "Send code": the click *is* the
+ * request, so asking for a second one here would double the OTP traffic and the
+ * UI's own request could get rate-limited — leaving the test stuck on the email
+ * step with no code to type.
+ */
+export async function waitForOtp(email: string): Promise<string> {
   // Delivery is deliberately not awaited by the auth hook, so poll.
-  for (let i = 0; i < 40; i++) {
+  for (let i = 0; i < 60; i++) {
     const messages = (await (
       await fetch(`${MAILPIT}/api/v1/messages?limit=5`)
     ).json()) as {
@@ -52,18 +78,68 @@ export async function requestOtp(email: string): Promise<string> {
   throw new Error(`no OTP arrived in Mailpit for ${email}`)
 }
 
+/** Ask for a code over the API and read it back. For non-UI callers. */
+export async function requestOtp(email: string): Promise<string> {
+  const base = process.env.SWL_BASE_URL ?? 'http://127.0.0.1:3000'
+  await sendOtp(base, email)
+  return waitForOtp(email)
+}
+
+const rateLimited = (page: Page) =>
+  page
+    .getByRole('alert')
+    .filter({ hasText: /too many requests/i })
+    .first()
+    .isVisible()
+    .catch(() => false)
+
+/**
+ * Sign in through the UI, using the code the UI itself requested, and waiting
+ * out the rate limit on either step if it bites.
+ *
+ * Returns once the app has navigated away from /login.
+ */
 export async function signIn(page: Page, email: string) {
   await page.goto('/login')
   await page.getByLabel('Email').fill(email)
-  await page.getByRole('button', { name: 'Send code' }).click()
 
-  const code = await requestOtp(email)
-  const digits = code.split('')
-  for (const [i, d] of digits.entries()) {
-    await page.getByLabel(`Digit ${i + 1}`).fill(d)
+  const digit1 = page.getByLabel('Digit 1')
+  const submit = page.getByRole('button', { name: 'Sign in' })
+
+  for (let attempt = 0; attempt < 5; attempt++) {
+    if (!(await digit1.isVisible().catch(() => false))) {
+      await page.getByRole('button', { name: 'Send code' }).click()
+      await digit1
+        .waitFor({ state: 'visible', timeout: 20_000 })
+        .catch(() => {})
+    }
+    if (await digit1.isVisible().catch(() => false)) break
+
+    // Send was refused. Wait the window out and ask again.
+    await page.waitForTimeout(RATE_LIMIT_WAIT)
   }
-  await page.getByRole('button', { name: 'Sign in' }).click()
-  await expect(page).not.toHaveURL(/\/login/)
+  await expect(digit1).toBeVisible({ timeout: 30_000 })
+
+  const code = await waitForOtp(email)
+  await digit1.fill(code)
+  // Filling Digit 1 distributes the whole code across the six boxes.
+  await submit.click()
+
+  for (let attempt = 0; attempt < 5; attempt++) {
+    if (!(await page.url().includes('/login'))) return
+    if (attempt === 0) {
+      // A refused verify clears the boxes; refill and try once more.
+      if (await rateLimited(page)) {
+        await page.waitForTimeout(RATE_LIMIT_WAIT)
+        await digit1.fill(code)
+        await submit.click()
+        continue
+      }
+    }
+    break
+  }
+
+  await expect(page).not.toHaveURL(/\/login/, { timeout: 30_000 })
 }
 
 /** Money strings arrive formatted by the server's locale. */

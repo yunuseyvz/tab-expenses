@@ -9,6 +9,7 @@ import type { QueryClient } from '@tanstack/react-query'
 
 import { Toaster } from '#/components/ui/sonner'
 import { THEME_BOOTSTRAP } from '#/lib/theme'
+import { APP_NAME } from '#/lib/app-meta'
 import '#/styles/app.css'
 
 /**
@@ -23,6 +24,7 @@ export const Route = createRootRouteWithContext<{
     meta: [
       { charSet: 'utf-8' },
       { name: 'viewport', content: 'width=device-width, initial-scale=1' },
+      { title: APP_NAME },
       {
         name: 'description',
         content: 'Shared household expense ledger with percentage splits.',
