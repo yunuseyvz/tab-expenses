@@ -90,14 +90,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <Link
               to="/dashboard"
               search={NAV_SEARCH['/dashboard']}
-              className="px-2.5 pt-2 pb-3 font-serif text-lg tracking-tight"
+              className="px-2.5 pt-2 pb-3.5 font-serif text-lg tracking-tight"
             >
-              Splitwise
+              Tally
             </Link>
 
+            {/* A dedicated section for the household, separated from the nav
+                by a rule: which space you are in is not one of the four places
+                you can be, and putting it among them made it read as a tab. */}
             <div className="px-1 pb-3">
-              <SpaceSwitcher />
+              <p
+                className="px-2 pb-1.5 text-[10px] font-semibold uppercase
+                tracking-[0.12em] text-ink-faint"
+              >
+                Spaces
+              </p>
+              <SpaceSwitcher variant="panel" />
             </div>
+
+            <div className="h-px bg-[var(--color-rule)]/70 mb-2" />
 
             <nav aria-label="Main" className="flex flex-col gap-1">
               {NAV.map((item) => (

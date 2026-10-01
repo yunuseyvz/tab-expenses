@@ -22,7 +22,7 @@ export function InlinePeriod({
     <div
       role="radiogroup"
       aria-label="Period"
-      className="mb-4 flex flex-wrap gap-2"
+      className="mb-4 flex flex-wrap gap-1.5"
     >
       {PRESETS.map((p) => {
         const active = current === p.key
@@ -33,7 +33,7 @@ export function InlinePeriod({
             role="radio"
             aria-checked={active}
             onClick={() => onChange(p.key)}
-            className="px-3 py-1.5 text-sm rounded-[var(--radius-sm)]
+            className="px-2.5 py-1.5 text-sm rounded-[var(--radius-sm)]
               transition-[background-color,box-shadow] duration-150"
             style={{
               background: active

@@ -15,7 +15,9 @@
 import { useMemo } from 'react'
 
 import type { SpaceMember } from '#/lib/db/schema'
-import { Label } from '#/components/ui/Input'
+import { Label, Select } from '#/components/ui/Input'
+import { NumberField } from '#/components/ui/NumberField'
+import { Switch } from '#/components/ui/Switch'
 import { allocate, formatMoney } from '#/lib/money'
 import { swatchColor } from '#/lib/swatches'
 
@@ -100,15 +102,11 @@ export function SplitEditor({
     <div className="space-y-4">
       <div>
         <Label htmlFor="paid-by">Paid by</Label>
-        <select
+        <Select
           id="paid-by"
+          aria-label="Paid by"
           value={paidByMemberId ?? ''}
           onChange={(e) => onPaidByChange(e.target.value)}
-          required
-          className="w-full bg-paper-sunk px-3 py-2 text-ink rounded-[var(--radius-sm)]
-            shadow-[var(--shadow-deboss)] border-b-2 border-transparent
-            focus:shadow-[var(--shadow-raise)] focus:border-terracotta
-           "
         >
           <option value="" disabled>
             Choose…
@@ -118,20 +116,17 @@ export function SplitEditor({
               {m.displayName}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
 
       <div className="flex items-center justify-between py-1">
         <Label className="mb-0" htmlFor="split-toggle">
           Split between members
         </Label>
-        <button
+        <Switch
           id="split-toggle"
-          type="button"
-          role="switch"
-          aria-checked={split}
-          onClick={() => {
-            const next = !split
+          checked={split}
+          onChange={(next) => {
             onSplitChange(next)
             if (next && drafts.length === 0 && members.length > 0) {
               // Pre-fill from each member's default weight, falling back to an
@@ -149,25 +144,7 @@ export function SplitEditor({
               }
             }
           }}
-          className="relative h-6 w-11 shrink-0 rounded-full transition-shadow duration-150"
-          style={{
-            background: split
-              ? 'var(--color-terracotta)'
-              : 'var(--color-paper-sunk)',
-            boxShadow: split ? 'var(--shadow-raise)' : 'var(--shadow-deboss)',
-          }}
-        >
-          {/* Physical switch: thumb translates, track shifts deboss → raise. */}
-          <span
-            aria-hidden
-            className="absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white
-              transition-transform duration-150"
-            style={{
-              transform: split ? 'translateX(20px)' : 'translateX(0)',
-              boxShadow: 'var(--shadow-raise)',
-            }}
-          />
-        </button>
+        />
       </div>
 
       {split && (
@@ -211,31 +188,17 @@ export function SplitEditor({
                         ? formatMoney(preview.get(d.memberId)!, currency)
                         : '—'}
                     </span>
-                    <div className="relative">
-                      <input
-                        type="number"
-                        value={d.weightBp / 100}
-                        step={1}
-                        min={0}
-                        max={100}
-                        onChange={(e) =>
-                          setWeight(d.memberId, Number(e.target.value) * 100)
-                        }
-                        aria-label={`${name} percent`}
-                        className="tnum w-16 bg-paper-sunk pl-2 pr-5 py-1 text-right
-                          text-sm rounded-[var(--radius-sm)] shadow-[var(--shadow-deboss)]
-                          border-b-2 border-transparent
-                          focus:shadow-[var(--shadow-raise)]
-                          focus:border-terracotta"
-                      />
-                      <span
-                        aria-hidden
-                        className="absolute right-1.5 top-1/2 -translate-y-1/2
-                          text-xs text-ink-faint pointer-events-none"
-                      >
-                        %
-                      </span>
-                    </div>
+                    <NumberField
+                      value={String(d.weightBp / 100)}
+                      onChange={(next) =>
+                        setWeight(d.memberId, Number(next) * 100)
+                      }
+                      label={`${name} percent`}
+                      suffix="%"
+                      min={0}
+                      max={100}
+                      step={1}
+                    />
                   </span>
                 </div>
                 {/* Tactile thumb on a debossed groove. */}
@@ -250,11 +213,10 @@ export function SplitEditor({
                   }
                   aria-label={`${name} split slider`}
                   className="range-tactile"
-                  style={{
-                    background: `linear-gradient(to right,
-                      var(--color-terracotta) ${pct}%,
-                      var(--color-paper-sunk) ${pct}%)`,
-                  }}
+                  // --fill drives the whole track, so the filled and unfilled
+                  // lengths cannot drift apart the way two separate values in a
+                  // background gradient could.
+                  style={{ '--fill': `${pct}%` } as React.CSSProperties}
                 />
               </div>
             )

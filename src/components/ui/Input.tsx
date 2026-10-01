@@ -2,6 +2,8 @@ import type { ComponentProps } from 'react'
 
 import { cn } from '#/lib/cn'
 
+export { Select } from './Listbox'
+
 /**
  * The input.
  *
@@ -51,27 +53,4 @@ export function Label({ className, ...props }: ComponentProps<'label'>) {
 /** Multi-line field, same language as Input. */
 export function Textarea({ className, ...props }: ComponentProps<'textarea'>) {
   return <textarea className={cn(field, 'resize-y', className)} {...props} />
-}
-
-/**
- * Native <select>. Styled to match Input, because a stock select is the one
- * control that immediately gives away that a form was hand-built.
- */
-export function Select({ className, ...props }: ComponentProps<'select'>) {
-  return (
-    <select
-      className={cn(field, 'appearance-none pr-9 cursor-pointer', className)}
-      {...props}
-      style={{
-        // Inline SVG chevron rather than a background image: it inherits the
-        // current text colour, so it stays correct in both themes.
-        backgroundImage:
-          "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E\")",
-        backgroundRepeat: 'no-repeat',
-        backgroundPosition: 'right 0.65rem center',
-        backgroundSize: '1rem',
-        ...props.style,
-      }}
-    />
-  )
 }

@@ -1,6 +1,5 @@
-import { useNavigate } from '@tanstack/react-router'
-
 import type { PeriodPreset } from '#/lib/period'
+import { DateField } from '#/components/ui/DateField'
 import { cn } from '#/lib/cn'
 
 const PRESETS: Array<{ key: PeriodPreset; label: string }> = [
@@ -11,52 +10,43 @@ const PRESETS: Array<{ key: PeriodPreset; label: string }> = [
 ]
 
 /**
- * Period selector. State lives in the URL so a period is shareable and
- * survives a refresh, and the query keys downstream pick it up automatically.
+ * The period control on the dashboard.
  *
- * `from`/`to` are the custom range; `period` is the preset. They are separate
- * search params rather than one overloaded field so switching back to a preset
- * does not lose the custom dates.
+ * Now visually identical to InlinePeriod, which the expenses and balances
+ * screens use. They were different for no reason that survived: this one was a
+ * joined segmented control sitting in a well, the other a row of separate
+ * raised pills, and the second read better in both — it has more air between the
+ * options and each one is clearly its own target. Sharing the look also means
+ * "Custom" behaves the same on both screens.
+ *
+ * The custom range sits inline, to the right of the presets, at the same
+ * height. It used to drop onto its own row underneath, which pushed the
+ * category chips and everything below it down the page the moment you picked
+ * "Custom" — a layout jump for a control the user had just chosen.
  */
 export function PeriodSelector({
   current,
   from,
   to,
+  onChange,
 }: {
   current: PeriodPreset
   from?: string
   to?: string
+  onChange: (patch: {
+    period?: PeriodPreset
+    from?: string
+    to?: string
+  }) => void
 }) {
-  const navigate = useNavigate()
-
-  const go = (
-    patch: Partial<{
-      space: string | undefined
-      period: PeriodPreset
-      cats: string | undefined
-      from: string | undefined
-      to: string | undefined
-    }>,
-  ) => {
-    void navigate({
-      to: '/dashboard',
-      search: {
-        space: undefined,
-        period: current,
-        cats: undefined,
-        from,
-        to,
-        ...patch,
-      },
-    })
-  }
+  const custom = current === 'custom'
 
   return (
-    <div className="mb-4">
+    <div className="mb-4 flex flex-wrap items-center gap-1.5">
       <div
         role="radiogroup"
         aria-label="Period"
-        className="inline-flex p-1 gap-1 well rounded-[var(--radius-sm)]"
+        className="flex flex-wrap gap-2"
       >
         {PRESETS.map((p) => {
           const active = current === p.key
@@ -66,13 +56,13 @@ export function PeriodSelector({
               type="button"
               role="radio"
               aria-checked={active}
-              onClick={() => go({ period: p.key })}
+              onClick={() => onChange({ period: p.key })}
               className={cn(
-                'px-3 py-1.5 text-sm rounded-[2px]',
-                'transition-[background-color,box-shadow,color] duration-150',
+                'px-2.5 py-1.5 text-sm rounded-[var(--radius-sm)]',
+                'transition-[background-color,box-shadow] duration-150',
                 active
-                  ? 'bg-paper-raised text-ink shadow-[var(--shadow-raise)]'
-                  : 'text-ink-muted hover:text-ink',
+                  ? 'bg-paper-raised shadow-[var(--shadow-raise)]'
+                  : 'bg-paper-sunk shadow-[var(--shadow-deboss)]',
               )}
             >
               {p.label}
@@ -81,46 +71,29 @@ export function PeriodSelector({
         })}
       </div>
 
-      {current === 'custom' && (
-        <div className="flex items-end gap-3 mt-3">
-          <div>
-            <label
-              htmlFor="period-from"
-              className="block text-xs uppercase tracking-wide text-ink-muted mb-1"
-            >
-              From
-            </label>
-            <input
-              id="period-from"
-              type="date"
-              value={from ?? ''}
-              onChange={(e) =>
-                go({ period: 'custom', from: e.target.value || undefined })
-              }
-              className="bg-paper-sunk px-2 py-1.5 text-sm rounded-[var(--radius-sm)]
-                shadow-[var(--shadow-deboss)]
-                focus:shadow-[var(--shadow-raise)]"
-            />
-          </div>
-          <div>
-            <label
-              htmlFor="period-to"
-              className="block text-xs uppercase tracking-wide text-ink-muted mb-1"
-            >
-              To
-            </label>
-            <input
-              id="period-to"
-              type="date"
-              value={to ?? ''}
-              onChange={(e) =>
-                go({ period: 'custom', to: e.target.value || undefined })
-              }
-              className="bg-paper-sunk px-2 py-1.5 text-sm rounded-[var(--radius-sm)]
-                shadow-[var(--shadow-deboss)]
-                focus:shadow-[var(--shadow-raise)]"
-            />
-          </div>
+      {custom && (
+        <div className="flex flex-wrap items-center gap-2">
+          <DateField
+            id="period-from"
+            label="From date"
+            placeholder="From"
+            value={from ?? ''}
+            onChange={(next) => onChange({ from: next || undefined })}
+            className="w-[9.5rem]"
+            compact
+          />
+          <span aria-hidden className="text-ink-faint text-sm">
+            –
+          </span>
+          <DateField
+            id="period-to"
+            label="To date"
+            placeholder="To"
+            value={to ?? ''}
+            onChange={(next) => onChange({ to: next || undefined })}
+            className="w-[9.5rem]"
+            compact
+          />
         </div>
       )}
     </div>

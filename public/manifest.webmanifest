@@ -1,19 +1,25 @@
 {
-  "name": "Splitwise — shared household expense ledger",
-  "short_name": "Splitwise",
+  "name": "Tally — shared household expense ledger",
+  "short_name": "Tally",
   "description": "Shared household expenses with percentage splits and a settlement view.",
   "start_url": "/dashboard",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#f6f1e6",
-  "theme_color": "#f6f1e6",
+  "theme_color": "#c2603a",
   "icons": [
     {
       "src": "/favicon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
     }
   ]
 }

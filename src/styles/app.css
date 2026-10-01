@@ -125,7 +125,7 @@
   /* Static feTurbulence: procedural paper fibre, zero image files, zero extra
    * requests, zero animation cost. Page background ONLY — grain behind text
    * destroys legibility. */
-  --paper-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='5' stitchTiles='stitch'/%3E%3CfeDiffuseLighting lighting-color='%23fff' surfaceScale='1'%3E%3CfeDistantLight azimuth='45' elevation='60'/%3E%3CfeDiffuseLighting%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.4'/%3E%3C/svg%3E");
+  --paper-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.55' numOctaves='3' stitchTiles='stitch'/%3E%3CfeDiffuseLighting lighting-color='%23fff' surfaceScale='1.4'%3E%3CfeDistantLight azimuth='45' elevation='62'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
 
   /* Apple's "material": a translucent surface that lets the grain and the
    * colour behind it show through, softened by a backdrop blur, with a hairline
@@ -164,7 +164,7 @@
    * Ratios asserted in e2e/design.spec.ts; measured in-browser, not by hand.
    */
   --color-paper: oklch(0.185 0.006 70);
-  --color-paper-raised: oklch(0.245 0.007 70);
+  --color-paper-raised: oklch(0.262 0.007 70);
   --color-paper-sunk: oklch(0.145 0.005 70);
 
   --color-ink: oklch(0.95 0.004 85);
@@ -185,7 +185,7 @@
   /* Hairlines are non-text and need 3:1 against the surface they sit on
    * (WCAG 1.4.11), which on a dark surface means a much lighter line than
    * intuition suggests. */
-  --color-rule: oklch(0.535 0.008 75);
+  --color-rule: oklch(0.55 0.008 75);
 
   --shadow-deboss:
     inset 0 1px 2px rgb(0 0 0 / 0.55), inset 0 -1px 0 rgb(255 255 255 / 0.045);
@@ -196,13 +196,13 @@
 
   /* Quieter than light mode. Grain that reads as fibre on cream reads as noise
    * on charcoal, and it sits under text. */
-  --paper-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='5' stitchTiles='stitch'/%3E%3CfeDiffuseLighting lighting-color='%23fff' surfaceScale='1'%3E%3CfeDistantLight azimuth='45' elevation='60'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.09'/%3E%3C/svg%3E");
+  --paper-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.55' numOctaves='3' stitchTiles='stitch'/%3E%3CfeDiffuseLighting lighting-color='%23fff' surfaceScale='1.4'%3E%3CfeDistantLight azimuth='45' elevation='62'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.14'/%3E%3C/svg%3E");
 
   /* Apple's material: a translucent surface that lets the grain and colour
    * behind it show through, softened by a backdrop blur, with a hairline of
    * light along the top edge. Only works on surfaces that actually have
    * something behind them, so it is for chrome — bars, nav, sheets — not cards. */
-  --surface-material: oklch(0.245 0.007 70 / 0.72);
+  --surface-material: oklch(0.262 0.007 70 / 0.72);
   --material-blur: 20px;
   --material-edge: inset 0 1px 0 rgb(255 255 255 / 0.06);
 
@@ -346,48 +346,75 @@
   /*
    * The split slider.
    *
-   * "Bouncy" here means two specific, cheap things rather than a wobbly
-   * physics simulation:
+   * Built on ::-webkit-slider-runnable-track / ::-moz-range-track rather than a
+   * fat input with a background painted on it. The previous version tried to get
+   * a thumb-sized hit area by adding padding and setting background-clip:
+   * content-box — which worked right up until a caller set an inline gradient,
+   * at which point the gradient painted over the padding and the focus ring
+   * wrapped a 1.5rem-tall empty box around a 0.5rem track. Styling the runnable
+   * track is the supported way: the input can be tall for touch while the
+   * visible track stays 0.5rem.
    *
-   *   • the thumb *overshoots* on release, using a spring-ish cubic-bezier with
-   *     a back end. A thumb that grows while held and springs past its resting
-   *     size when let go feels like it has mass;
-   *   • the filled portion is a gradient that brightens toward the thumb, so
-   *     dragging reads as light travelling along the track.
+   * "Bouncy" is two specific cheap things, not a physics simulation:
+   *   • the thumb overshoots on release, using a back-ended cubic-bezier, so it
+   *     reads as having mass;
+   *   • it grows and lifts a halo while held.
+   * Both are transform and box-shadow only.
    *
-   * Both are transform and background-image only. A native <input type=range>
-   * cannot take a CSS transition on its value — only its thumb is styleable —
-   * so the overshoot is a transition on `transform` and there is no per-frame
-   * layout or paint of the input itself. Nothing here animates width, and that
-   * is deliberate: it would relayout on every frame.
+   * --fill is written by the caller as a percentage; every part of the track
+   * derives from it, so the filled and unfilled lengths cannot disagree.
    */
   .range-tactile {
-    appearance: none;
     -webkit-appearance: none;
+    appearance: none;
+    display: block;
     width: 100%;
-    height: 0.5rem;
-    border-radius: 9999px;
-    background: var(--color-paper-sunk);
-    box-shadow: var(--shadow-deboss);
+    /* Tall for touch; the visible track is drawn by the pseudo-element below. */
+    height: 1.75rem;
+    background: transparent;
     cursor: grab;
-    /* A touch target has to be reachable with a thumb, and 0.5rem of track is
-     * not. The track stays thin; only the hit area grows. */
-    padding-block: 0.5rem;
-    background-clip: content-box;
+    --fill: 0%;
+    --track: var(--color-paper-sunk);
+    --accent: var(--color-terracotta);
   }
 
   .range-tactile:active {
     cursor: grabbing;
   }
 
+  .range-tactile::-webkit-slider-runnable-track {
+    height: 0.5rem;
+    border-radius: 9999px;
+    background: linear-gradient(
+      to right,
+      var(--accent) var(--fill),
+      var(--track) var(--fill)
+    );
+    box-shadow: var(--shadow-deboss);
+  }
+
+  .range-tactile::-moz-range-track {
+    height: 0.5rem;
+    border-radius: 9999px;
+    background: var(--track);
+    box-shadow: var(--shadow-deboss);
+  }
+
+  .range-tactile::-moz-range-progress {
+    height: 0.5rem;
+    border-radius: 9999px;
+    background: var(--accent);
+  }
+
   .range-tactile::-webkit-slider-thumb {
     -webkit-appearance: none;
     appearance: none;
+    /* Centres the 1.4rem thumb on the 0.5rem track: (track - thumb) / 2. */
+    margin-top: -0.45rem;
     width: 1.4rem;
     height: 1.4rem;
-    margin-top: -0.45rem;
     border-radius: 9999px;
-    background: var(--color-terracotta);
+    background: var(--accent);
     border: 2.5px solid var(--color-paper-raised);
     box-shadow: var(--shadow-raise);
     transition:
@@ -398,46 +425,58 @@
   .range-tactile::-moz-range-thumb {
     width: 1.4rem;
     height: 1.4rem;
-    border-radius: 9999px;
-    background: var(--color-terracotta);
     border: 2.5px solid var(--color-paper-raised);
+    border-radius: 9999px;
+    background: var(--accent);
     box-shadow: var(--shadow-raise);
     transition:
       transform 420ms cubic-bezier(0.34, 1.56, 0.64, 1),
       box-shadow 200ms var(--ease-out-soft);
   }
 
-  /* Lifted and glowing while held, then it springs back past its resting size —
-   * that overshoot is the whole effect. */
+  /* Lifted and haloed while held, then it springs back past its resting size.
+   * That overshoot is the whole effect. */
   .range-tactile:active::-webkit-slider-thumb,
   .range-tactile:active::-moz-range-thumb {
-    transform: scale(1.22);
+    transform: scale(1.2);
     box-shadow:
-      var(--shadow-float),
-      0 0 0 6px color-mix(in oklab, var(--color-terracotta) 22%, transparent);
+      var(--shadow-raise),
+      0 0 0 7px color-mix(in oklab, var(--accent) 20%, transparent);
   }
 
-  /* Keyboard focus gets the same ring the fields do, so the control is not
-   * mouse-only in the way it looks. */
-  .range-tactile:focus-visible {
+  /* The ring goes on the THUMB. Putting it on the input drew a rectangle around
+   * the whole 1.75rem control, which framed empty space either side of a 0.5rem
+   * track and looked like a bug. */
+  .range-tactile:focus {
     outline: none;
   }
 
   .range-tactile:focus-visible::-webkit-slider-thumb {
     box-shadow:
       var(--shadow-raise),
-      0 0 0 3px color-mix(in oklab, var(--color-terracotta) 45%, transparent);
+      0 0 0 4px color-mix(in oklab, var(--accent) 45%, transparent);
   }
 
   .range-tactile:focus-visible::-moz-range-thumb {
     box-shadow:
       var(--shadow-raise),
-      0 0 0 3px color-mix(in oklab, var(--color-terracotta) 45%, transparent);
+      0 0 0 4px color-mix(in oklab, var(--accent) 45%, transparent);
+  }
+
+  /* A zero-weight member still needs a visible thumb, and a 0% fill must not
+   * read as "no data". */
+  .range-tactile::-webkit-slider-thumb:active {
+    cursor: grabbing;
   }
 
   /* Cards, list rows, sheets. */
   .card {
     background-color: var(--color-paper-raised);
+    /* Same grain as the page, on the card's own surface. `overlay` rather than
+       `multiply` because the card is lighter than the page: multiply would push
+       it darker than the paper it sits on and break the elevation read. */
+    background-image: var(--paper-grain);
+    background-blend-mode: overlay;
     box-shadow: var(--shadow-raise);
     border-radius: var(--radius-lg);
   }

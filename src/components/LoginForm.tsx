@@ -74,7 +74,7 @@ export function LoginForm({ redirectTo }: { redirectTo?: string }) {
     <div className="w-full max-w-sm">
       <header className="mb-6">
         <p className="text-xs uppercase tracking-[0.16em] text-ink-faint">
-          Splitwise
+          Tally
         </p>
         <h1 className="font-serif text-3xl mt-1">
           {step === 'email' ? 'Sign in' : 'Enter your code'}

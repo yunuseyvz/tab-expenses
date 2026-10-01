@@ -9,6 +9,7 @@ import { iconFor } from '#/lib/category-icons'
 import { listMySpaces } from '#/lib/auth.functions'
 import { AppShell } from '#/components/AppShell'
 import { IconPicker } from '#/components/IconPicker'
+import { Switch } from '#/components/ui/Switch'
 import { InvitePanel } from '#/components/InvitePanel'
 import { Button } from '#/components/ui/Button'
 import {
@@ -18,7 +19,7 @@ import {
   Row,
   SectionTitle,
 } from '#/components/ui/Card'
-import { Input, Label, Textarea } from '#/components/ui/Input'
+import { Input, Label, Select, Textarea } from '#/components/ui/Input'
 import { SWATCHES, swatchColor } from '#/lib/swatches'
 import { useCurrentSpace } from '#/hooks/useCurrentSpace'
 import { resolveSpaceId } from '#/lib/space-preference'
@@ -445,25 +446,20 @@ function SettingsRoute() {
               </div>
             </div>
 
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={personal}
-                onChange={(e) => setPersonal(e.target.checked)}
-              />
-              Personal category (only in this member’s totals)
-            </label>
+            <Switch
+              checked={personal}
+              onChange={setPersonal}
+              label="Personal category (only in this member’s totals)"
+            />
 
             {personal && (
               <div>
                 <Label htmlFor="personal-owner">Owner</Label>
-                <select
+                <Select
                   id="personal-owner"
+                  aria-label="Owner"
                   value={personalOwner}
                   onChange={(e) => setPersonalOwner(e.target.value)}
-                  required
-                  className="w-full bg-paper-sunk px-3 py-2 text-ink rounded-[var(--radius-sm)]
-                    shadow-[var(--shadow-deboss)]"
                 >
                   <option value="">Choose…</option>
                   {(members.data ?? []).map((m) => (
@@ -471,7 +467,7 @@ function SettingsRoute() {
                       {m.displayName}
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
             )}
 

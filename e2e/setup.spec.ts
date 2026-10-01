@@ -12,7 +12,7 @@
  */
 import { expect, test } from '@playwright/test'
 
-import { waitForOtp } from './helpers'
+import { chooseOption, waitForOtp } from './helpers'
 
 test.use({ storageState: { cookies: [], origins: [] } })
 
@@ -95,7 +95,7 @@ test('a wrong code is refused, the right one works, and onboarding follows', asy
 
   await page.getByLabel('Space name').fill('E2E Household')
   await page.getByLabel('Your name in this space').fill('Tester')
-  await page.getByLabel('Currency').selectOption('EUR')
+  await chooseOption(page, page.getByLabel('Currency'), 'EUR')
   await page.getByRole('button', { name: 'Create space' }).click()
 
   // Landed in the new space, with the name from the form. This is the

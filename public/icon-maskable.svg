@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Tally">
+  <!--
+    Maskable variant. Android crops a maskable icon to whatever shape its
+    launcher uses — a circle, a squircle, a rounded square — and anything
+    outside the safe zone (the middle 80%, per spec) can be cut off. So this
+    variant bleeds the background to the full 64px square and pulls the mark in
+    to about 60% of it, where nothing can reach it.
+
+    The gradient goes the same way as the plain icon so the two do not read as
+    different marks when a launcher shows one and not the other.
+  -->
+  <defs>
+    <linearGradient id="bleed" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#d9793f" />
+      <stop offset="1" stop-color="#c2603a" />
+    </linearGradient>
+  </defs>
+
+  <rect width="64" height="64" fill="url(#bleed)" />
+
+  <g stroke="#fdf6ec" stroke-width="4" stroke-linecap="round" fill="none">
+    <path d="M22 23 L22.5 43" />
+    <path d="M29 21.5 L29.7 44.5" />
+    <path d="M36 22.5 L36.3 43.5" />
+    <path d="M43 22 L43.6 44" />
+    <path d="M19.5 46.5 L45 19" />
+  </g>
+</svg>

@@ -14,4 +14,4 @@ const fromEnv = import.meta.env.VITE_APP_NAME
 export const APP_NAME =
   typeof fromEnv === 'string' && fromEnv.trim().length > 0
     ? fromEnv.trim()
-    : 'Splitwise'
+    : 'Tally'

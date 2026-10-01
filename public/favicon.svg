@@ -1,13 +1,37 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Splitwise">
-  <!-- A ledger page with a ruled split down the middle: the app's whole idea
-       compressed into one mark. -->
-  <rect width="64" height="64" rx="8" fill="#f6f1e6" />
-  <path d="M14 10h22a8 8 0 0 1 8 8v34a6 6 0 0 0-6-6H14z" fill="#fdfbf5" stroke="#d8cbb4" stroke-width="2" />
-  <path d="M14 10h22a8 8 0 0 1 8 8v6H14z" fill="#c96a45" />
-  <path d="M36 18v34" stroke="#d8cbb4" stroke-width="2" />
-  <g stroke="#b9a98c" stroke-width="2" stroke-linecap="round">
-    <path d="M20 34h8" />
-    <path d="M20 41h10" />
-    <path d="M42 34h6" />
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Tally">
+  <!--
+    A tally mark: four strokes and the diagonal that crosses them out. It is the
+    oldest bookkeeping notation there is — you count in groups of five by
+    striking through — so it says "what have we counted up" without a single word,
+    and unlike a coin, a pie or a receipt it is not somebody else's product.
+
+    Chosen partly for how it survives being small. Four near-vertical strokes
+    stay four strokes at 16px, where a detailed ledger or a pie chart collapses
+    into a smudge. The strokes are also unevenly spaced on purpose: a perfectly
+    regular grid reads as a barcode.
+
+    The background is a rounded square rather than a circle, because Android
+    already masks the icon to its own shape and a circle would be masked twice.
+  -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#d9793f" />
+      <stop offset="1" stop-color="#c2603a" />
+    </linearGradient>
+  </defs>
+
+  <rect width="64" height="64" rx="15" fill="url(#tile)" />
+
+  <g
+    stroke="#fdf6ec"
+    stroke-width="4.5"
+    stroke-linecap="round"
+    fill="none"
+  >
+    <path d="M18 17.5 L18.6 46.5" />
+    <path d="M27.5 16 L28.4 47.5" />
+    <path d="M37 17 L37.4 46" />
+    <path d="M46 16.5 L46.8 47" />
+    <path d="M15 50.5 L49 13.5" />
   </g>
 </svg>

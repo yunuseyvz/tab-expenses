@@ -7,8 +7,9 @@ import type { ExpenseRow } from '#/lib/expense.functions'
 import type { PeriodPreset } from '#/lib/period'
 import type { ListFilter } from '#/lib/session'
 import { AppShell } from '#/components/AppShell'
+import { NewExpenseButton } from '#/components/NewExpenseButton'
+import { Select } from '#/components/ui/Input'
 import { Card } from '#/components/ui/Card'
-import { Button } from '#/components/ui/Button'
 import { ExpenseSheet } from '#/components/expense/ExpenseSheet'
 import { listMySpaces } from '#/lib/auth.functions'
 import {
@@ -146,13 +147,7 @@ function ExpensesRoute() {
               {formatMoney(totalShown, currency)}
             </p>
           </div>
-          <Button
-            onClick={openNew}
-            disabled={!spaceId}
-            className="w-full sm:w-auto"
-          >
-            New expense
-          </Button>
+          <NewExpenseButton onClick={openNew} disabled={!spaceId} />
         </div>
 
         <InlinePeriod
@@ -161,20 +156,20 @@ function ExpensesRoute() {
         />
 
         <div className="mb-4 flex flex-wrap items-center gap-2">
-          <select
-            value={search.member ?? ''}
-            onChange={(e) => go({ member: e.target.value || undefined })}
-            aria-label="Filter by member"
-            className="bg-paper-sunk px-2 py-1.5 text-sm rounded-[var(--radius-sm)]
-              shadow-[var(--shadow-deboss)]"
-          >
-            <option value="">Everyone</option>
-            {(members.data ?? []).map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.displayName}
-              </option>
-            ))}
-          </select>
+          <div className="w-48">
+            <Select
+              value={search.member ?? ''}
+              aria-label="Filter by member"
+              onChange={(e) => go({ member: e.target.value || undefined })}
+            >
+              <option value="">Everyone</option>
+              {(members.data ?? []).map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.displayName}
+                </option>
+              ))}
+            </Select>
+          </div>
         </div>
 
         {expenses.isPending ? (

@@ -6,9 +6,14 @@
  * reload, and the remembered-space cookie, so the nav links — which carry no
  * space — land on whichever space you last actually looked at.
  *
- * Hand-rolled rather than pulled from a primitives library: a menu, a
- * disclosure, and a list. The app does the same for its sheet and its theme
- * picker.
+ * Two shapes. `panel` is the sidebar's dedicated section: a card with the
+ * household's initial, its currency and how many spaces the account holds, so
+ * "which household am I in" is answered by the chrome rather than by reading the
+ * page heading. `compact` is the mobile top bar, where there is only room for a
+ * name and a chevron.
+ *
+ * Hand-rolled rather than pulled from a primitives library: a disclosure, a
+ * list, and a click-outside handler.
  */
 import { useEffect, useId, useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
@@ -20,14 +25,21 @@ import { useCurrentSpace } from '#/hooks/useCurrentSpace'
 import { cn } from '#/lib/cn'
 import { spaceKeys } from '#/lib/session'
 
-export function SpaceSwitcher({ compact }: { compact?: boolean }) {
+type Space = ReturnType<typeof useCurrentSpace>['spaces'][number]
+
+export function SpaceSwitcher({
+  compact,
+  variant = 'compact',
+}: {
+  compact?: boolean
+  variant?: 'compact' | 'panel'
+}) {
   const { spaces, space, spaceId } = useCurrentSpace()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
 
   const [open, setOpen] = useState(false)
   const root = useRef<HTMLDivElement>(null)
-  const listId = useId()
 
   // Dismiss on an outside click or Escape. A menu that traps you open is worse
   // than no menu, and this one is reachable with the keyboard alone.
@@ -64,102 +76,234 @@ export function SpaceSwitcher({ compact }: { compact?: boolean }) {
     },
   })
 
-  // A single space still gets a control: it is the only way to reach "new
-  // space", and hiding it would make adding a second household undiscoverable.
+  const newSpace = () => {
+    setOpen(false)
+    void navigate({ to: '/spaces/new' })
+  }
+
+  // A single space still gets a control: it is the only way to reach
+  // "new space", and hiding it would make adding a second household
+  // undiscoverable.
+  if (variant === 'panel') {
+    return (
+      <div ref={root} className="relative">
+        <PanelTrigger
+          space={space}
+          count={spaces.length}
+          open={open}
+          onToggle={() => setOpen((o) => !o)}
+        />
+        {open && (
+          <SpaceMenu
+            spaces={spaces}
+            currentId={spaceId}
+            onPick={(id) => pick.mutate(id)}
+            onNew={newSpace}
+          />
+        )}
+      </div>
+    )
+  }
+
   return (
     <div ref={root} className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open}
-        aria-controls={listId}
-        aria-haspopup="listbox"
-        className={cn(
-          'flex items-center gap-1.5 rounded-[var(--radius)] px-2.5 py-1.5',
-          'transition-[background-color] duration-150 hover:bg-[var(--color-paper-sunk)]',
-          compact ? 'text-sm' : 'text-[15px]',
-        )}
+      <CompactTrigger
+        name={space?.name ?? 'No space'}
+        compact={compact}
+        open={open}
+        onToggle={() => setOpen((o) => !o)}
+      />
+      {open && (
+        <SpaceMenu
+          spaces={spaces}
+          currentId={spaceId}
+          onPick={(id) => pick.mutate(id)}
+          onNew={newSpace}
+        />
+      )}
+    </div>
+  )
+}
+
+function PanelTrigger({
+  space,
+  count,
+  open,
+  onToggle,
+}: {
+  space: Space | null
+  count: number
+  open: boolean
+  onToggle: () => void
+}) {
+  const menuId = useId()
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={open}
+      aria-controls={menuId}
+      aria-haspopup="listbox"
+      className={cn(
+        'w-full flex items-center gap-2.5 text-left p-2',
+        'rounded-[var(--radius-md)] bg-[var(--color-paper-sunk)]',
+        'shadow-[var(--shadow-deboss)]',
+        'transition-[background-color,box-shadow] duration-150',
+        'hover:bg-[var(--color-paper-raised)] active:scale-[0.99]',
+        'motion-reduce:active:scale-100',
+      )}
+    >
+      {/* The household's initial as an avatar, so this section reads as a thing
+          rather than a row of text. */}
+      <span
+        aria-hidden
+        className="grid place-items-center size-8 shrink-0 rounded-full
+          text-sm font-semibold text-[var(--color-ink)]"
+        style={{
+          background: `color-mix(in oklab, var(--color-terracotta) 26%, transparent)`,
+        }}
       >
-        <span className="font-serif tracking-tight truncate max-w-[9rem]">
+        {(space?.name ?? '?').slice(0, 1).toUpperCase()}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-medium leading-tight">
           {space?.name ?? 'No space'}
         </span>
-        <ChevronDown
-          size={15}
-          aria-hidden
-          className={cn(
-            'text-ink-muted transition-transform duration-200',
-            open && 'rotate-180',
-          )}
-        />
-      </button>
+        <span className="block truncate text-[11px] text-ink-faint leading-tight">
+          {space?.currency ?? '—'}
+          {count > 1 && ` · ${count} spaces`}
+        </span>
+      </span>
+      <ChevronDown
+        size={16}
+        aria-hidden
+        className={cn(
+          'shrink-0 text-ink-muted transition-transform duration-200',
+          open && 'rotate-180',
+        )}
+      />
+    </button>
+  )
+}
 
-      {open && (
-        <div
-          id={listId}
-          role="listbox"
-          aria-label="Switch space"
-          className="absolute z-50 mt-1.5 min-w-[15rem] left-0
-            rounded-[var(--radius-lg)] border border-rule
-            bg-[var(--color-paper-raised)] shadow-[var(--shadow-float)]"
-        >
-          <ul className="p-1.5">
-            {spaces.map((s) => {
-              const current = s.id === spaceId
-              return (
-                <li key={s.id}>
-                  <button
-                    type="button"
-                    role="option"
-                    aria-selected={current}
-                    onClick={() => pick.mutate(s.id)}
-                    className={cn(
-                      'w-full flex items-center gap-2 rounded-[var(--radius)] px-2.5 py-2 text-left',
-                      'transition-colors duration-150',
-                      current
-                        ? 'bg-[var(--color-paper-sunk)]'
-                        : 'hover:bg-[var(--color-paper-sunk)]',
-                    )}
-                  >
-                    {/* A shape marker as well as a colour one. */}
-                    <Check
-                      size={15}
-                      aria-hidden
-                      className={cn(
-                        'shrink-0',
-                        current
-                          ? 'text-[var(--color-terracotta)]'
-                          : 'opacity-0',
-                      )}
-                    />
-                    <span className="min-w-0">
-                      <span className="block truncate text-sm">{s.name}</span>
-                      <span className="block text-[11px] text-ink-faint">
-                        {s.currency} · {s.role === 'owner' ? 'owner' : 'member'}
-                      </span>
-                    </span>
-                  </button>
-                </li>
-              )
-            })}
-          </ul>
-
-          <div className="border-t border-rule p-1.5">
-            <button
-              type="button"
-              onClick={() => {
-                setOpen(false)
-                void navigate({ to: '/spaces/new' })
-              }}
-              className="w-full flex items-center gap-2 rounded-[var(--radius)] px-2.5 py-2
-                text-sm text-ink-muted transition-colors duration-150
-                hover:bg-[var(--color-paper-sunk)] hover:text-ink"
-            >
-              <Plus size={15} aria-hidden />
-              New space
-            </button>
-          </div>
-        </div>
+function CompactTrigger({
+  name,
+  compact,
+  open,
+  onToggle,
+}: {
+  name: string
+  compact?: boolean
+  open: boolean
+  onToggle: () => void
+}) {
+  const menuId = useId()
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={open}
+      aria-controls={menuId}
+      aria-haspopup="listbox"
+      className={cn(
+        'flex items-center gap-1.5 rounded-[var(--radius-md)] px-2.5 py-1.5',
+        'transition-[background-color] duration-150 hover:bg-[var(--color-paper-sunk)]',
+        compact ? 'text-sm' : 'text-[15px]',
       )}
+    >
+      <span className="font-serif tracking-tight truncate max-w-[9rem]">
+        {name}
+      </span>
+      <ChevronDown
+        size={15}
+        aria-hidden
+        className={cn(
+          'text-ink-muted transition-transform duration-200',
+          open && 'rotate-180',
+        )}
+      />
+    </button>
+  )
+}
+
+function SpaceMenu({
+  spaces,
+  currentId,
+  onPick,
+  onNew,
+}: {
+  spaces: Array<Space>
+  currentId: string | null
+  onPick: (id: string) => void
+  onNew: () => void
+}) {
+  const menuId = useId()
+  return (
+    <div
+      id={menuId}
+      role="listbox"
+      aria-label="Switch space"
+      className={cn(
+        'absolute z-50 mt-1.5 min-w-[15rem]',
+        // In the sidebar the trigger is full-width, so the menu hangs off its
+        // left edge; in the top bar it should stay inside the viewport instead.
+        'left-0',
+        'rounded-[var(--radius-md)] border border-rule',
+        'bg-[var(--color-paper-raised)] p-1 shadow-[var(--shadow-float)]',
+      )}
+    >
+      <ul>
+        {spaces.map((s) => {
+          const current = s.id === currentId
+          return (
+            <li key={s.id}>
+              <button
+                type="button"
+                role="option"
+                aria-selected={current}
+                onClick={() => onPick(s.id)}
+                className={cn(
+                  'w-full flex items-center gap-2 rounded-[var(--radius-sm)]',
+                  'px-2.5 py-2 text-left transition-colors duration-150',
+                  current
+                    ? 'bg-[var(--color-paper-sunk)]'
+                    : 'hover:bg-[var(--color-paper-sunk)]',
+                )}
+              >
+                {/* A shape marker as well as a colour one. */}
+                <Check
+                  size={15}
+                  aria-hidden
+                  className={cn(
+                    'shrink-0',
+                    current ? 'text-[var(--color-terracotta)]' : 'opacity-0',
+                  )}
+                />
+                <span className="min-w-0">
+                  <span className="block truncate text-sm">{s.name}</span>
+                  <span className="block text-[11px] text-ink-faint">
+                    {s.currency} · {s.role === 'owner' ? 'owner' : 'member'}
+                  </span>
+                </span>
+              </button>
+            </li>
+          )
+        })}
+      </ul>
+
+      <div className="border-t border-rule mt-1 pt-1">
+        <button
+          type="button"
+          onClick={onNew}
+          className="w-full flex items-center gap-2 rounded-[var(--radius-sm)]
+            px-2.5 py-2 text-sm text-ink-muted
+            transition-colors duration-150
+            hover:bg-[var(--color-paper-sunk)] hover:text-ink"
+        >
+          <Plus size={15} aria-hidden />
+          New space
+        </button>
+      </div>
     </div>
   )
 }

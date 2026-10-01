@@ -7,6 +7,7 @@ import type { SplitDraft } from '#/components/expense/SplitEditor'
 import type { ExpenseRow } from '#/lib/expense.functions'
 import { Sheet } from '#/components/AppShell'
 import { Button } from '#/components/ui/Button'
+import { DateField } from '#/components/ui/DateField'
 import { Input, Label, Select, Textarea } from '#/components/ui/Input'
 import { SplitEditor } from '#/components/expense/SplitEditor'
 import { createExpense, updateExpense } from '#/lib/expense.functions'
@@ -210,12 +211,11 @@ export function ExpenseSheet({
         <div className="grid grid-cols-2 gap-3">
           <div>
             <Label htmlFor="spent-on">Date</Label>
-            <Input
+            <DateField
               id="spent-on"
-              type="date"
-              required
+              label="Date of the expense"
               value={spentOn}
-              onChange={(e) => setSpentOn(e.target.value)}
+              onChange={setSpentOn}
             />
           </div>
           <div>

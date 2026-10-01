@@ -1,16 +1,15 @@
 import { useMemo, useState } from 'react'
-import { createFileRoute, useSearch } from '@tanstack/react-router'
+import { createFileRoute, useNavigate, useSearch } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
-import { Plus } from 'lucide-react'
 
 import type { ExpenseRow } from '#/lib/expense.functions'
 import type { ListFilter } from '#/lib/session'
 import type { PeriodPreset } from '#/lib/period'
 import { AppShell } from '#/components/AppShell'
+import { NewExpenseButton } from '#/components/NewExpenseButton'
 import { Dashboard } from '#/components/dashboard/Dashboard'
 import { ExpenseSheet } from '#/components/expense/ExpenseSheet'
 import { PeriodSelector } from '#/components/dashboard/PeriodSelector'
-import { Button } from '#/components/ui/Button'
 import { listMySpaces } from '#/lib/auth.functions'
 import {
   balancesQuery,
@@ -84,6 +83,7 @@ export const Route = createFileRoute('/_protected/dashboard')({
 
 function DashboardRoute() {
   const search = useSearch({ from: '/_protected/dashboard' })
+  const navigate = useNavigate()
   const { space, spaceId } = useCurrentSpace(search.space)
   // One sheet for new and edit, exactly as on the expenses list.
   const [sheetOpen, setSheetOpen] = useState(false)
@@ -144,20 +144,16 @@ function DashboardRoute() {
               {space?.currency} · {periodLabel(period)}
             </p>
           </div>
-          <Button
-            onClick={openNew}
-            disabled={!spaceId}
-            className="w-full sm:w-auto"
-          >
-            <Plus size={16} aria-hidden />
-            New expense
-          </Button>
+          <NewExpenseButton onClick={openNew} disabled={!spaceId} />
         </div>
 
         <PeriodSelector
           current={search.period}
           from={search.from}
           to={search.to}
+          onChange={(patch) =>
+            navigate({ to: '/dashboard', search: { ...search, ...patch } })
+          }
         />
 
         <Dashboard

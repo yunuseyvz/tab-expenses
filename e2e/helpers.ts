@@ -6,7 +6,7 @@
  * path a user does.
  */
 import { expect } from '@playwright/test'
-import type { Page } from '@playwright/test'
+import type { Locator, Page } from '@playwright/test'
 
 const MAILPIT = process.env.MAILPIT_URL ?? 'http://127.0.0.1:8025'
 
@@ -213,4 +213,29 @@ export async function signIn(page: Page, email: string) {
 /** Money strings arrive formatted by the server's locale. */
 export function parseMoney(text: string): number {
   return Number(text.replace(/[^\d,.-]/g, '').replace(',', '.'))
+}
+
+/**
+ * Pick an option from a Listbox.
+ *
+ * The app's dropdowns are custom components, not <select> — the native popup is
+ * drawn by the OS and cannot be styled, so it would break the design the moment
+ * it opened. That means `selectOption` no longer applies and the interaction is
+ * the real one: open the trigger, click the option.
+ */
+export async function chooseOption(
+  page: Page,
+  trigger: Locator,
+  option: string,
+) {
+  await trigger.click()
+  const item = page.getByRole('option', { name: option, exact: false })
+  await item.waitFor({ state: 'visible', timeout: 15_000 })
+  await item.click()
+  // The panel closes on commit; waiting for that keeps the next assertion from
+  // racing the close animation.
+  await page.getByRole('option', { name: option, exact: false }).waitFor({
+    state: 'hidden',
+    timeout: 10_000,
+  })
 }

@@ -1,4 +1,4 @@
-# Splitwise
+# Tally
 
 A shared household expense ledger. Replaces a spreadsheet of
 `date / purpose / amount` with categories, percentage splits, and a settlement

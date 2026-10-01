@@ -4,6 +4,8 @@
  */
 import { expect, test } from '@playwright/test'
 
+import { chooseOption } from './helpers'
+
 test.describe('ledger', () => {
   // These run against the session established in global-setup.
   test('shows the seeded dashboard totals', async ({ page }) => {
@@ -88,7 +90,7 @@ test.describe('ledger', () => {
     const purpose = `E2E save ${Date.now()}`
     await page.getByLabel('Amount').fill('100.00')
     await page.getByLabel('What was it for').fill(purpose)
-    await page.getByLabel('Paid by').selectOption({ label: 'Vale' })
+    await chooseOption(page, page.getByLabel('Paid by'), 'Vale')
 
     // No split: the payer takes 100% and the save button is immediately live.
     await expect(page.getByRole('status')).toHaveCount(0)

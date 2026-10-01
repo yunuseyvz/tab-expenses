@@ -26,7 +26,7 @@ const serverSchema = z.object({
    */
   BETTER_AUTH_TRUSTED_ORIGINS: z.string().optional().default(''),
   RESEND_API_KEY: z.string().optional().default(''),
-  EMAIL_FROM: z.string().min(1).default('Splitwise <noreply@example.com>'),
+  EMAIL_FROM: z.string().min(1).default('Tally <noreply@example.com>'),
   // Mailpit's HTTP API (port 8025), not its SMTP port. We deliver through the
   // REST send endpoint rather than speaking SMTP, so this is the only mail
   // address we need in dev.
