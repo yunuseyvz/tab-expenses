@@ -1,0 +1,206 @@
+@import 'tailwindcss';
+
+/*
+ * ── Design system: warm tactile ──────────────────────────────────────────
+ *
+ * The target is the depth and tactility of a paper ledger, with restraint
+ * wherever texture would cost clarity. Rules that are load-bearing, not
+ * stylistic:
+ *
+ *  · Light source is top-left, everywhere. Every shadow pairs a warm-dark
+ *    (70 45 25 — never neutral black, which reads as digital) with a
+ *    warm-light (255 250 240).
+ *  · Shadows are two-part: a tight contact shadow plus a soft diffuse one.
+ *  · Grain is page-background only, static, and never behind body text.
+ *  · Animate transform/opacity only. box-shadow and filter are not
+ *    compositor-accelerated and stutter on mid-range Android.
+ */
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  /* ── paper ─────────────────────────────────────────────────────────── */
+  --color-paper: oklch(0.965 0.012 85);
+  --color-paper-raised: oklch(0.978 0.010 85);
+  --color-paper-sunk: oklch(0.93 0.014 85);
+
+  /* ── ink ───────────────────────────────────────────────────────────── */
+  --color-ink: oklch(0.28 0.02 60);
+  --color-ink-muted: oklch(0.52 0.018 60);
+  --color-ink-faint: oklch(0.68 0.014 60);
+
+  /* ── accents ───────────────────────────────────────────────────────── */
+  --color-terracotta: oklch(0.62 0.13 45);
+  --color-terracotta-strong: oklch(0.54 0.13 45);
+  --color-ochre: oklch(0.74 0.12 80);
+  --color-sage: oklch(0.6 0.075 150);
+  --color-oxblood: oklch(0.48 0.14 20);
+  --color-rule: oklch(0.86 0.016 80);
+
+  /* ── elevation: the heart of the effect ────────────────────────────── */
+  /* pressed into the paper — inputs, wells, pressed toggles */
+  --shadow-deboss:
+    inset 0 1px 2px rgb(70 45 25 / 0.18), inset 0 -1px 0 rgb(255 250 240 / 0.7);
+  /* sitting on top of the paper — cards, list rows */
+  --shadow-raise:
+    0 1px 1px rgb(70 45 25 / 0.1), 0 4px 10px -2px rgb(70 45 25 / 0.12);
+  /* above everything — sheets, dialogs, popovers */
+  --shadow-float:
+    0 2px 4px rgb(70 45 25 / 0.08), 0 12px 28px -6px rgb(70 45 25 / 0.2);
+  /* the active state of a button: 1px lower and flatter */
+  --shadow-press: inset 0 2px 4px rgb(70 45 25 / 0.22);
+
+  /* ── type ──────────────────────────────────────────────────────────── */
+  --font-sans:
+    'Inter var', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-serif: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
+  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, monospace;
+
+  /* ── motion: springs over durations ────────────────────────────────── */
+  /* the house feel: stiffness 300 / damping 30, via --animate-* tokens */
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* ── category swatches: curated, not a free colour picker ──────────── */
+  --color-cat-1: oklch(0.62 0.13 45);
+  --color-cat-2: oklch(0.6 0.075 150);
+  --color-cat-3: oklch(0.55 0.11 240);
+  --color-cat-4: oklch(0.74 0.12 80);
+  --color-cat-5: oklch(0.55 0.13 300);
+  --color-cat-6: oklch(0.58 0.1 190);
+  --color-cat-7: oklch(0.6 0.14 20);
+  --color-cat-8: oklch(0.52 0.06 130);
+}
+
+:root {
+  /* Static feTurbulence: procedural paper fibre, zero image files, zero extra
+   * requests, zero animation cost. Page background ONLY — grain behind text
+   * destroys legibility. */
+  --paper-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='5' stitchTiles='stitch'/%3E%3CfeDiffuseLighting lighting-color='%23fff' surfaceScale='1'%3E%3CfeDistantLight azimuth='45' elevation='60'/%3E%3CfeDiffuseLighting%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.4'/%3E%3C/svg%3E");
+
+  color-scheme: light;
+}
+
+.dark {
+  /* Dark mode is a separate art pass, not an inversion: paper under lamplight
+   * is warm charcoal, not black, and accents desaturate and lift or they
+   * vibrate against it. Grain is dialled down. */
+  --color-paper: oklch(0.22 0.014 70);
+  --color-paper-raised: oklch(0.26 0.016 70);
+  --color-paper-sunk: oklch(0.19 0.012 70);
+
+  --color-ink: oklch(0.92 0.012 85);
+  --color-ink-muted: oklch(0.72 0.014 80);
+  --color-ink-faint: oklch(0.58 0.012 80);
+
+  --color-terracotta: oklch(0.7 0.11 45);
+  --color-terracotta-strong: oklch(0.78 0.11 45);
+  --color-ochre: oklch(0.8 0.1 80);
+  --color-sage: oklch(0.72 0.07 150);
+  --color-oxblood: oklch(0.65 0.13 20);
+  --color-rule: oklch(0.36 0.014 75);
+
+  --shadow-deboss:
+    inset 0 1px 2px rgb(0 0 0 / 0.4), inset 0 -1px 0 rgb(255 240 220 / 0.06);
+  --shadow-raise: 0 1px 1px rgb(0 0 0 / 0.3), 0 4px 10px -2px rgb(0 0 0 / 0.35);
+  --shadow-float: 0 2px 4px rgb(0 0 0 / 0.3), 0 12px 28px -6px rgb(0 0 0 / 0.5);
+  --shadow-press: inset 0 2px 4px rgb(0 0 0 / 0.45);
+
+  --paper-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='5' stitchTiles='stitch'/%3E%3CfeDiffuseLighting lighting-color='%23fff' surfaceScale='1'%3E%3CfeDistantLight azimuth='45' elevation='60'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.22'/%3E%3C/svg%3E");
+
+  color-scheme: dark;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-rule);
+  }
+
+  html,
+  body,
+  #app {
+    min-height: 100%;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--color-paper);
+    /* grain darkens, never lightens */
+    background-image: var(--paper-grain);
+    background-blend-mode: multiply;
+    background-attachment: fixed;
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /*
+   * Focus rings stay fully visible against the texture. Never outline: none
+   * without a replacement.
+   */
+  :focus-visible {
+    outline: 2px solid var(--color-terracotta);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  ::selection {
+    background: color-mix(in oklch, var(--color-ochre) 45%, transparent);
+  }
+
+  /* Ledger columns line up like a real ledger. */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum' 1;
+  }
+}
+
+@layer components {
+  .skip-link {
+    position: absolute;
+    left: -9999px;
+    z-index: 100;
+  }
+
+  .skip-link:focus {
+    left: 0.5rem;
+    top: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    background: var(--color-paper-raised);
+    box-shadow: var(--shadow-float);
+    border-radius: 2px;
+  }
+
+  /* Cards, list rows, sheets. */
+  .card {
+    background-color: var(--color-paper-raised);
+    box-shadow: var(--shadow-raise);
+    border-radius: 3px;
+  }
+
+  .well {
+    background-color: var(--color-paper-sunk);
+    box-shadow: var(--shadow-deboss);
+    border-radius: 3px;
+  }
+}
+
+/*
+ * prefers-reduced-motion: collapse every animation to an instant state change.
+ * Not optional — motion triggers vestibular issues, and this is where
+ * skeuomorphic UIs usually fail.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
