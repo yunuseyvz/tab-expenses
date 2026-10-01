@@ -55,6 +55,11 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-app}@db:5432/${POSTGRES_DB:-app}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET is required}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:?BETTER_AUTH_URL is required}
+      # Extra hostnames allowed to make authenticated requests, comma
+      # separated. Needed to reach the app by more than one name — a Tailscale
+      # hostname, a LAN IP — since BETTER_AUTH_URL is itself the allowed-Origin
+      # list. A mismatched origin is refused with "Invalid origin".
+      BETTER_AUTH_TRUSTED_ORIGINS: ${BETTER_AUTH_TRUSTED_ORIGINS:-}
       # Traefik is in front, so the real client IP is in X-Forwarded-For.
       TRUSTED_PROXY_HEADERS: 'true'
       RESEND_API_KEY: ${RESEND_API_KEY:-}

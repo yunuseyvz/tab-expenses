@@ -17,6 +17,7 @@ import { tanstackStartCookies } from 'better-auth/tanstack-start'
 import { getDb } from './db'
 import * as schema from './db/schema'
 import { env } from './db/env'
+import { parseOrigins } from './auth-origins'
 import { sendOtpEmail } from './email'
 
 const buildAuth = createServerOnlyFn(() => {
@@ -26,6 +27,14 @@ const buildAuth = createServerOnlyFn(() => {
     appName: 'Splitwise',
     secret: e.BETTER_AUTH_SECRET,
     baseURL: e.BETTER_AUTH_URL,
+
+    // baseURL is also the allowed-Origin list, so it only covers one hostname.
+    // Listing the others here is what lets the same app be reached over a
+    // Tailscale name, a LAN IP, or localhost without editing code.
+    //
+    // Note the consequence: session cookies are host-only, so each hostname
+    // keeps its own login. Signing in on one does not sign you in on another.
+    trustedOrigins: parseOrigins(e),
 
     // Traefik in front of us: read the real client IP from X-Forwarded-For so
     // the rate limiter counts actual callers, not the proxy hop.
@@ -59,6 +68,17 @@ const buildAuth = createServerOnlyFn(() => {
         // ⚠ DEFAULT IS 'plain' TEXT. Override it, or a DB dump hands over live
         // login codes. Hashing costs nothing.
         storeOTP: 'hashed',
+        // Sign-in OTP must NOT create an account. Left at the default it would
+        // happily provision a nameless user for any address someone typed into
+        // the login form — a typo would silently become a real account with a
+        // blank name, and that user would then own a space.
+        //
+        // Registration therefore creates the unverified user first (see
+        // startRegistration in ./auth.functions) and then asks for the OTP.
+        // That also changes what send-verification-otp does with an unknown
+        // address: it sends nothing and returns success, so the login form
+        // cannot be used to discover which addresses have accounts.
+        disableSignUp: true,
         // eslint-disable-next-line @typescript-eslint/require-await -- intentionally not awaited: see below
         async sendVerificationOTP({ email: to, otp, type }) {
           // Not awaited: awaiting inside this hook is a timing side channel.

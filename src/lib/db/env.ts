@@ -16,6 +16,15 @@ const serverSchema = z.object({
     .string()
     .min(16, 'BETTER_AUTH_SECRET must be >= 16 chars'),
   BETTER_AUTH_URL: z.url(),
+  /**
+   * Extra origins allowed to make authenticated requests, comma separated.
+   *
+   * BETTER_AUTH_URL is both the canonical base URL *and* the allowed-Origin
+   * list, so on its own it permits exactly one hostname. Reaching the same app
+   * through a second name — a Tailscale hostname, a LAN IP, a tunnel — is
+   * refused with "Invalid origin" until that name is listed here.
+   */
+  BETTER_AUTH_TRUSTED_ORIGINS: z.string().optional().default(''),
   RESEND_API_KEY: z.string().optional().default(''),
   EMAIL_FROM: z.string().min(1).default('Splitwise <noreply@example.com>'),
   // Mailpit's HTTP API (port 8025), not its SMTP port. We deliver through the
@@ -49,6 +58,8 @@ export function env(): ServerEnv {
     DATABASE_URL: process.env.DATABASE_URL,
     BETTER_AUTH_SECRET: process.env.BETTER_AUTH_SECRET,
     BETTER_AUTH_URL: process.env.BETTER_AUTH_URL,
+    BETTER_AUTH_TRUSTED_ORIGINS:
+      process.env.BETTER_AUTH_TRUSTED_ORIGINS ?? undefined,
     RESEND_API_KEY: process.env.RESEND_API_KEY ?? '',
     EMAIL_FROM: process.env.EMAIL_FROM ?? undefined,
     MAILPIT_API_URL: process.env.MAILPIT_API_URL ?? undefined,

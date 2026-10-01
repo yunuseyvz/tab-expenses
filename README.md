@@ -146,16 +146,17 @@ at build time, so `VITE_` names are for public values only. `pnpm guard:vite-env
 enforces the allowlist, and CI additionally greps the built client assets for
 server-only values.
 
-| Variable                | Notes                                       |
-| ----------------------- | ------------------------------------------- |
-| `DATABASE_URL`          | Postgres connection string                  |
-| `BETTER_AUTH_SECRET`    | `openssl rand -base64 32`                   |
-| `BETTER_AUTH_URL`       | Public origin                               |
-| `TRUSTED_PROXY_HEADERS` | `true` behind Traefik/Coolify               |
-| `RESEND_API_KEY`        | Blank in dev → Mailpit                      |
-| `EMAIL_FROM`            | RFC 5322 address                            |
-| `MAILPIT_API_URL`       | Dev only; Mailpit's **HTTP** port, not SMTP |
-| `VITE_APP_NAME`         | The only build-time value                   |
+| Variable                      | Notes                                                                                                                                        |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`                | Postgres connection string                                                                                                                   |
+| `BETTER_AUTH_SECRET`          | `openssl rand -base64 32`                                                                                                                    |
+| `BETTER_AUTH_URL`             | Public origin — **and the allowed-Origin list**                                                                                              |
+| `BETTER_AUTH_TRUSTED_ORIGINS` | Extra hostnames, comma separated. Needed to reach the app by more than one name (Tailscale hostname, LAN IP), otherwise: `Invalid origin: …` |
+| `TRUSTED_PROXY_HEADERS`       | `true` behind Traefik/Coolify                                                                                                                |
+| `RESEND_API_KEY`              | Blank in dev → Mailpit                                                                                                                       |
+| `EMAIL_FROM`                  | RFC 5322 address                                                                                                                             |
+| `MAILPIT_API_URL`             | Dev only; Mailpit's **HTTP** port, not SMTP                                                                                                  |
+| `VITE_APP_NAME`               | The only build-time value                                                                                                                    |
 
 ## Deployment
 

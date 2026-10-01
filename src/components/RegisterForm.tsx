@@ -1,29 +1,30 @@
 /**
- * Sign-in: email → 6-box code.
+ * Registration: name + email → 6-box code.
  *
- * Registration lives at /register. This form deliberately does not ask for a
- * name: an account is only ever created by registering, so a login attempt for
- * an address with no account cannot conjure one.
+ * The account is created server-side before the code is sent (see
+ * startRegistration), so a user who abandons this midway leaves behind an
+ * unverified row that cannot sign in anywhere.
  */
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
+import { useMutation } from '@tanstack/react-query'
 import { AnimatePresence, motion } from 'motion/react'
 
 import { OtpCode, codeIsComplete, emptyCode } from '#/components/OtpCode'
 import { Button } from '#/components/ui/Button'
 import { Input, Label } from '#/components/ui/Input'
 import { authClient } from '#/lib/auth-client'
+import { startRegistration } from '#/lib/auth.functions'
 
 const RESEND_COOLDOWN = 30
 
-export function LoginForm({ redirectTo }: { redirectTo?: string }) {
+export function RegisterForm({ initialEmail }: { initialEmail?: string }) {
   const navigate = useNavigate()
 
-  const [email, setEmail] = useState('')
-  const [step, setStep] = useState<'email' | 'code'>('email')
+  const [name, setName] = useState('')
+  const [email, setEmail] = useState(initialEmail ?? '')
+  const [step, setStep] = useState<'details' | 'code'>('details')
   const [code, setCode] = useState<Array<string>>(emptyCode)
-  const [sending, setSending] = useState(false)
-  const [verifying, setVerifying] = useState(false)
   const [cooldown, setCooldown] = useState(0)
   const [error, setError] = useState<string | null>(null)
 
@@ -33,41 +34,53 @@ export function LoginForm({ redirectTo }: { redirectTo?: string }) {
     return () => clearTimeout(t)
   }, [cooldown])
 
-  async function sendCode(target = email) {
-    setSending(true)
-    setError(null)
-    const { error: err } = await authClient.emailOtp.sendVerificationOtp({
-      email: target,
-      type: 'sign-in',
-    })
-    setSending(false)
-    if (err) {
-      setError(err.message ?? 'Could not send the code. Try again.')
-      return
-    }
-    setStep('code')
-    setCode(emptyCode())
-    setCooldown(RESEND_COOLDOWN)
-    // No "code sent" confirmation here. Better Auth deliberately sends nothing
-    // for an address with no account, and saying so would turn the login form
-    // into an account-existence oracle.
+  function sendCode() {
+    start.mutate({ name, email })
   }
 
-  async function verify() {
-    const otp = code.join('')
-    if (!codeIsComplete(code)) return
-    setVerifying(true)
-    setError(null)
-    const { error: err } = await authClient.signIn.emailOtp({ email, otp })
-    setVerifying(false)
-    if (err) {
-      setError(
-        'That code did not work, or there is no account for this email yet.',
-      )
+  const start = useMutation({
+    mutationFn: (input: { name: string; email: string }) =>
+      startRegistration({ data: input }),
+    onSuccess: (result) => {
+      if (result.status === 'exists') {
+        // Not a failure — just the wrong form. Say where to go instead.
+        setError('That email already has an account. Sign in instead.')
+        return
+      }
+      setStep('code')
       setCode(emptyCode())
-      return
-    }
-    navigate({ to: redirectTo ?? '/dashboard' })
+      setCooldown(RESEND_COOLDOWN)
+    },
+    onError: (err) => {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Could not start registration. Try again.',
+      )
+    },
+  })
+
+  const verify = useMutation({
+    mutationFn: (otp: string) =>
+      authClient.signIn.emailOtp({ email, otp }).then((r) => r.error),
+    onSuccess: (err) => {
+      if (!err) {
+        navigate({ to: '/setup' })
+        return
+      }
+      setError('That code did not work. Request a new one.')
+      setCode(emptyCode())
+    },
+    onError: () => {
+      setError('Could not reach the server. Check your connection.')
+      setCode(emptyCode())
+    },
+  })
+
+  function submitCode() {
+    if (!codeIsComplete(code)) return
+    setError(null)
+    verify.mutate(code.join(''))
   }
 
   return (
@@ -77,19 +90,19 @@ export function LoginForm({ redirectTo }: { redirectTo?: string }) {
           Splitwise
         </p>
         <h1 className="font-serif text-3xl mt-1">
-          {step === 'email' ? 'Sign in' : 'Enter your code'}
+          {step === 'details' ? 'Create your account' : 'Enter your code'}
         </h1>
         <p className="text-sm text-ink-muted mt-1.5">
-          {step === 'email'
-            ? 'No password. We email you a 6-digit code.'
+          {step === 'details'
+            ? 'No password. Your name, your email, one code.'
             : `Sent to ${email}`}
         </p>
       </header>
 
       <AnimatePresence mode="wait" initial={false}>
-        {step === 'email' ? (
+        {step === 'details' ? (
           <motion.form
-            key="email"
+            key="details"
             onSubmit={(e) => {
               e.preventDefault()
               void sendCode()
@@ -101,9 +114,21 @@ export function LoginForm({ redirectTo }: { redirectTo?: string }) {
             className="space-y-4"
           >
             <div>
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="reg-name">Your name</Label>
               <Input
-                id="email"
+                id="reg-name"
+                autoComplete="name"
+                required
+                maxLength={80}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Max"
+              />
+            </div>
+            <div>
+              <Label htmlFor="reg-email">Email</Label>
+              <Input
+                id="reg-email"
                 type="email"
                 autoComplete="email"
                 required
@@ -116,9 +141,9 @@ export function LoginForm({ redirectTo }: { redirectTo?: string }) {
               type="submit"
               size="lg"
               className="w-full"
-              disabled={sending}
+              disabled={start.isPending || !name.trim() || !email}
             >
-              {sending ? 'Sending…' : 'Send code'}
+              {start.isPending ? 'Sending…' : 'Send code'}
             </Button>
           </motion.form>
         ) : (
@@ -134,21 +159,19 @@ export function LoginForm({ redirectTo }: { redirectTo?: string }) {
             <Button
               size="lg"
               className="w-full"
-              disabled={!codeIsComplete(code) || verifying}
-              onClick={() => void verify()}
+              disabled={!codeIsComplete(code) || verify.isPending}
+              onClick={submitCode}
             >
-              {verifying ? 'Checking…' : 'Sign in'}
+              {verify.isPending ? 'Checking…' : 'Create account'}
             </Button>
 
             <button
               type="button"
               onClick={() => {
-                // Re-sending rotates the code, so anything already typed is
-                // guaranteed wrong. Clearing it beats leaving a stale value.
                 setCode(emptyCode())
-                void sendCode()
+                sendCode()
               }}
-              disabled={cooldown > 0 || sending}
+              disabled={cooldown > 0 || start.isPending}
               className="mt-4 text-sm text-terracotta-ink underline underline-offset-4
                 disabled:text-ink-faint disabled:no-underline w-full text-center"
             >
@@ -158,13 +181,13 @@ export function LoginForm({ redirectTo }: { redirectTo?: string }) {
             <button
               type="button"
               onClick={() => {
-                setStep('email')
+                setStep('details')
                 setCode(emptyCode())
                 setError(null)
               }}
               className="mt-2 text-sm text-ink-muted w-full text-center"
             >
-              Use a different email
+              Change name or email
             </button>
           </motion.div>
         )}
@@ -173,25 +196,27 @@ export function LoginForm({ redirectTo }: { redirectTo?: string }) {
       {error && (
         <p role="alert" className="mt-4 text-sm text-oxblood-ink">
           {error}{' '}
-          <Link
-            to="/register"
-            search={{ email }}
-            className="underline underline-offset-4"
-          >
-            Create an account
-          </Link>
+          {error.includes('already has an account') && (
+            <Link
+              to="/login"
+              search={{ redirect: undefined }}
+              className="underline underline-offset-4"
+            >
+              Sign in
+            </Link>
+          )}
         </p>
       )}
 
-      {step === 'email' && (
+      {step === 'details' && (
         <p className="mt-6 text-sm text-ink-muted text-center">
-          No account yet?{' '}
+          Already registered?{' '}
           <Link
-            to="/register"
-            search={{ email }}
+            to="/login"
+            search={{ redirect: undefined }}
             className="text-terracotta-ink underline underline-offset-4"
           >
-            Create one
+            Sign in
           </Link>
         </p>
       )}

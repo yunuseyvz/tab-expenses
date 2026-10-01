@@ -37,18 +37,29 @@ async function main() {
     const { space, spaceMember, category, expense, expenseSplit } = schema
 
     // ── user ────────────────────────────────────────────────────────────
-    await sql`
+    // Upsert on EMAIL, not on a fixed id. Signing in through the app creates
+    // this user with a Better Auth-generated id, so a seed that assumed its own
+    // id collides on user_email_unique the moment anyone has used the app once
+    // — and the seed is documented as re-runnable. Everything below therefore
+    // references whatever id is actually in the database.
+    const [demoUser] = await sql<Array<{ id: string }>>`
       insert into "user" (id, name, email, email_verified, created_at, updated_at)
       values (${DEMO_USER_ID}, 'Vale', ${DEMO_EMAIL}, true, now(), now())
-      on conflict (id) do update set name = excluded.name
+      on conflict (email) do update
+        set name = excluded.name,
+            email_verified = true,
+            updated_at = now()
+      returning id
     `
+    const demoUserId = demoUser?.id
+    if (!demoUserId) throw new Error('failed to upsert the demo user')
 
     // ── space + members ─────────────────────────────────────────────────
     // Tear down first so the script is re-runnable.
     const existing = await db
       .select({ id: space.id })
       .from(space)
-      .where(eq(space.createdByUserId, DEMO_USER_ID))
+      .where(eq(space.createdByUserId, demoUserId))
 
     for (const s of existing) {
       await db.delete(space).where(eq(space.id, s.id))
@@ -59,7 +70,7 @@ async function main() {
       .values({
         name: 'Hauptstraße',
         currency: 'EUR',
-        createdByUserId: DEMO_USER_ID,
+        createdByUserId: demoUserId,
       })
       .returning()
     if (!wg) throw new Error('failed to insert space')
@@ -68,7 +79,7 @@ async function main() {
       .insert(spaceMember)
       .values({
         spaceId: wg.id,
-        userId: DEMO_USER_ID,
+        userId: demoUserId,
         displayName: 'Vale',
         color: 'terracotta',
         defaultWeightBp: 6000,
@@ -268,7 +279,7 @@ async function main() {
           spentOn: iso(e.daysAgo),
           purpose: e.purpose,
           amountMinor: e.minor,
-          createdByUserId: DEMO_USER_ID,
+          createdByUserId: demoUserId,
         })
         .returning()
       if (!row) throw new Error(`failed to insert ${e.purpose}`)

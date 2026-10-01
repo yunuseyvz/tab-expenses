@@ -1,5 +1,5 @@
 /**
- * Login and onboarding, as a user actually experiences them.
+ * Registration, sign-in and onboarding, as a user actually experiences them.
  *
  * Deliberately one test. Better Auth rate-limits both OTP endpoints to 3
  * requests per 60 seconds, so every extra sign-in spends shared budget and
@@ -31,7 +31,15 @@ test('a wrong code is refused, the right one works, and onboarding follows', asy
   // The server-rendered page must be usable before any JS runs.
   await expect(page.getByRole('button', { name: 'Send code' })).toBeVisible()
 
+  // A login cannot create an account, so a new address has to register first.
+  // This is the guard for that: the form offers registration, and the code
+  // below is only ever sent to an address that already has a user row.
+  await expect(page.getByRole('link', { name: 'Create one' })).toBeVisible()
+  await page.getByRole('link', { name: 'Create one' }).click()
+  await expect(page).toHaveURL(/\/register/)
+
   const email = `e2e-${Date.now()}@splitwise.local`
+  await page.getByLabel('Your name').fill('E2E Tester')
   await page.getByLabel('Email').fill(email)
   await page.getByRole('button', { name: 'Send code' }).click()
 
@@ -49,9 +57,9 @@ test('a wrong code is refused, the right one works, and onboarding follows', asy
   // ── a wrong code must be refused ──────────────────────────────────────
   const wrong = code === '000000' ? '111111' : '000000'
   await digit1.fill(wrong)
-  await page.getByRole('button', { name: 'Sign in' }).click()
+  await page.getByRole('button', { name: 'Create account' }).click()
 
-  await expect(page).toHaveURL(/\/login/)
+  await expect(page).toHaveURL(/\/register/)
   await expect(page.getByRole('alert')).toBeVisible()
   // And the boxes are reset, ready for another attempt.
   await expect(digit1).toHaveValue('')
@@ -64,8 +72,8 @@ test('a wrong code is refused, the right one works, and onboarding follows', asy
     await expect(page.getByLabel(`Digit ${i + 1}`)).toHaveValue(d)
   }
 
-  await page.getByRole('button', { name: 'Sign in' }).click()
-  await expect(page).not.toHaveURL(/\/login/, { timeout: 60_000 })
+  await page.getByRole('button', { name: 'Create account' }).click()
+  await expect(page).not.toHaveURL(/\/register/, { timeout: 60_000 })
 
   // ── onboarding ────────────────────────────────────────────────────────
   // A brand-new account has no spaces, so the protected layout redirects to
@@ -105,4 +113,9 @@ test('a wrong code is refused, the right one works, and onboarding follows', asy
   await expect(
     page.getByRole('heading', { name: 'E2E Household' }),
   ).toBeVisible()
+
+  // Signing that account back in later is not re-tested here on purpose: it
+  // would need two more OTP calls, pushing the run past Better Auth's 3-per-60s
+  // limit on the verify endpoint. global-setup.ts covers it instead by signing
+  // in as the seeded account, which was created long before the run started.
 })

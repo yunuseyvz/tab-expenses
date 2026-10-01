@@ -14,6 +14,7 @@ import { Route as ProtectedRouteImport } from './routes/_protected'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as LogoutRouteImport } from './routes/logout'
 import { Route as PingRouteImport } from './routes/ping'
+import { Route as RegisterRouteImport } from './routes/register'
 import { Route as SetupRouteImport } from './routes/setup'
 import { Route as ProtectedBalancesRouteImport } from './routes/_protected/balances'
 import { Route as ProtectedDashboardRouteImport } from './routes/_protected/dashboard'
@@ -43,6 +44,11 @@ const LogoutRoute = LogoutRouteImport.update({
 const PingRoute = PingRouteImport.update({
   id: '/ping',
   path: '/ping',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RegisterRoute = RegisterRouteImport.update({
+  id: '/register',
+  path: '/register',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SetupRoute = SetupRouteImport.update({
@@ -81,6 +87,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/logout': typeof LogoutRoute
   '/ping': typeof PingRoute
+  '/register': typeof RegisterRoute
   '/setup': typeof SetupRoute
   '/balances': typeof ProtectedBalancesRoute
   '/dashboard': typeof ProtectedDashboardRoute
@@ -93,6 +100,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/logout': typeof LogoutRoute
   '/ping': typeof PingRoute
+  '/register': typeof RegisterRoute
   '/setup': typeof SetupRoute
   '/balances': typeof ProtectedBalancesRoute
   '/dashboard': typeof ProtectedDashboardRoute
@@ -107,6 +115,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/logout': typeof LogoutRoute
   '/ping': typeof PingRoute
+  '/register': typeof RegisterRoute
   '/setup': typeof SetupRoute
   '/_protected/balances': typeof ProtectedBalancesRoute
   '/_protected/dashboard': typeof ProtectedDashboardRoute
@@ -121,6 +130,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/logout'
     | '/ping'
+    | '/register'
     | '/setup'
     | '/balances'
     | '/dashboard'
@@ -133,6 +143,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/logout'
     | '/ping'
+    | '/register'
     | '/setup'
     | '/balances'
     | '/dashboard'
@@ -146,6 +157,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/logout'
     | '/ping'
+    | '/register'
     | '/setup'
     | '/_protected/balances'
     | '/_protected/dashboard'
@@ -160,6 +172,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   LogoutRoute: typeof LogoutRoute
   PingRoute: typeof PingRoute
+  RegisterRoute: typeof RegisterRoute
   SetupRoute: typeof SetupRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
 }
@@ -199,6 +212,13 @@ declare module '@tanstack/react-router' {
       path: '/ping'
       fullPath: '/ping'
       preLoaderRoute: typeof PingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/register': {
+      id: '/register'
+      path: '/register'
+      fullPath: '/register'
+      preLoaderRoute: typeof RegisterRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/setup': {
@@ -270,6 +290,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   LogoutRoute: LogoutRoute,
   PingRoute: PingRoute,
+  RegisterRoute: RegisterRoute,
   SetupRoute: SetupRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
 }
