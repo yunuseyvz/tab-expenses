@@ -54,6 +54,20 @@ const buildAuth = createServerOnlyFn(() => {
       enabled: false,
     },
 
+    // Declared here so Better Auth round-trips it. Without this the column
+    // exists but never appears in the session payload, and every "who is this"
+    // read would need a second query to fetch an avatar the user already chose.
+    user: {
+      additionalFields: {
+        avatar: {
+          type: 'string',
+          required: false,
+          nullable: true,
+          input: false,
+        },
+      },
+    },
+
     session: {
       expiresIn: 60 * 60 * 24 * 30,
       updateAge: 60 * 60 * 24,

@@ -10,19 +10,18 @@ const PRESETS: Array<{ key: PeriodPreset; label: string }> = [
 ]
 
 /**
- * The period control on the dashboard.
+ * The period control, with a custom range.
  *
- * Now visually identical to InlinePeriod, which the expenses and balances
- * screens use. They were different for no reason that survived: this one was a
- * joined segmented control sitting in a well, the other a row of separate
- * raised pills, and the second read better in both — it has more air between the
- * options and each one is clearly its own target. Sharing the look also means
- * "Custom" behaves the same on both screens.
+ * Used on the expenses screen only. The dashboard deliberately does NOT get
+ * this: it shows a headline total and a category breakdown, and a custom range
+ * there invites narrowing a summary until it says nothing. If someone needs a
+ * window over the list, they go to the list.
  *
- * The custom range sits inline, to the right of the presets, at the same
- * height. It used to drop onto its own row underneath, which pushed the
- * category chips and everything below it down the page the moment you picked
- * "Custom" — a layout jump for a control the user had just chosen.
+ * The two date fields are always rendered rather than appearing on "Custom".
+ * Conditionally adding a control is what caused the earlier layout jump — the
+ * page below moved the moment you touched the preset — and it also hid the only
+ * clue that "Custom" does something. Greyed out and inert until it is chosen
+ * costs nothing and reads as one control rather than two states of it.
  */
 export function PeriodSelector({
   current,
@@ -43,10 +42,14 @@ export function PeriodSelector({
 
   return (
     <div className="mb-4 flex flex-wrap items-center gap-1.5">
+      {/* gap-1.5 and px-2.5 rather than gap-2/px-3: the four pills come to
+          roughly 315px, which fits the 358px of content width on a 390px phone
+          once they are tightened. At the looser spacing the fourth wrapped onto
+          its own row. */}
       <div
         role="radiogroup"
         aria-label="Period"
-        className="flex flex-wrap gap-2"
+        className="flex flex-wrap gap-1.5"
       >
         {PRESETS.map((p) => {
           const active = current === p.key
@@ -71,31 +74,35 @@ export function PeriodSelector({
         })}
       </div>
 
-      {custom && (
-        <div className="flex flex-wrap items-center gap-2">
-          <DateField
-            id="period-from"
-            label="From date"
-            placeholder="From"
-            value={from ?? ''}
-            onChange={(next) => onChange({ from: next || undefined })}
-            className="w-[9.5rem]"
-            compact
-          />
-          <span aria-hidden className="text-ink-faint text-sm">
-            –
-          </span>
-          <DateField
-            id="period-to"
-            label="To date"
-            placeholder="To"
-            value={to ?? ''}
-            onChange={(next) => onChange({ to: next || undefined })}
-            className="w-[9.5rem]"
-            compact
-          />
-        </div>
-      )}
+      <span aria-hidden className="text-ink-faint text-sm">
+        –
+      </span>
+
+      <DateField
+        id="period-from"
+        label="From date"
+        placeholder="From"
+        value={from ?? ''}
+        // Disabled rather than hidden: an inert control that is still there
+        // tells you the range exists and why it is empty.
+        disabled={!custom}
+        onChange={(next) => onChange({ from: next || undefined })}
+        className="w-[9.5rem]"
+        compact
+      />
+      <span aria-hidden className="text-ink-faint text-sm">
+        –
+      </span>
+      <DateField
+        id="period-to"
+        label="To date"
+        placeholder="To"
+        value={to ?? ''}
+        disabled={!custom}
+        onChange={(next) => onChange({ to: next || undefined })}
+        className="w-[9.5rem]"
+        compact
+      />
     </div>
   )
 }

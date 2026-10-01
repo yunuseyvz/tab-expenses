@@ -17,6 +17,20 @@ export const user = pgTable(
     email: text('email').notNull().unique(),
     emailVerified: boolean('email_verified').default(false).notNull(),
     image: text('image'),
+    /**
+     * Which avatar this person shows: a key from src/lib/avatars.ts, or null
+     * to let a deterministic identicon be derived from their id.
+     *
+     * Declared through Better Auth's `user.additionalFields` so the library
+     * knows about it — editing it as an unknown column would leave the session
+     * payload without it, and every read of "who is this" would need a second
+     * query.
+     *
+     * Deliberately a KEY and not a URL. There is no upload, so there is nothing
+     * to host, and nothing in this app should fetch a third party to draw a
+     * person's face.
+     */
+    avatar: text('avatar'),
     createdAt: timestamp('created_at', { withTimezone: true })
       .defaultNow()
       .notNull(),

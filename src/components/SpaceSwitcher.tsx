@@ -18,10 +18,13 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { Check, ChevronDown, Plus } from 'lucide-react'
+import { Check, ChevronDown, Pencil, Plus } from 'lucide-react'
 
+import type { EditableSpace } from '#/components/SpaceEditor'
 import { rememberSpace } from '#/lib/auth.functions'
+import { SpaceEditor } from '#/components/SpaceEditor'
 import { useCurrentSpace } from '#/hooks/useCurrentSpace'
+import { Avatar } from '#/components/Avatar'
 import { cn } from '#/lib/cn'
 import { spaceKeys } from '#/lib/session'
 
@@ -39,6 +42,7 @@ export function SpaceSwitcher({
   const queryClient = useQueryClient()
 
   const [open, setOpen] = useState(false)
+  const [editing, setEditing] = useState<EditableSpace | null>(null)
   const root = useRef<HTMLDivElement>(null)
 
   // Dismiss on an outside click or Escape. A menu that traps you open is worse
@@ -99,11 +103,19 @@ export function SpaceSwitcher({
             currentId={spaceId}
             onPick={(id) => pick.mutate(id)}
             onNew={newSpace}
+            onEdit={(s) => {
+              setOpen(false)
+              setEditing(s)
+            }}
           />
         )}
       </div>
     )
   }
+
+  const editor = (
+    <SpaceEditor space={editing} onClose={() => setEditing(null)} />
+  )
 
   return (
     <div ref={root} className="relative">
@@ -119,8 +131,13 @@ export function SpaceSwitcher({
           currentId={spaceId}
           onPick={(id) => pick.mutate(id)}
           onNew={newSpace}
+          onEdit={(s) => {
+            setOpen(false)
+            setEditing(s)
+          }}
         />
       )}
+      {editor}
     </div>
   )
 }
@@ -153,18 +170,13 @@ function PanelTrigger({
         'motion-reduce:active:scale-100',
       )}
     >
-      {/* The household's initial as an avatar, so this section reads as a thing
-          rather than a row of text. */}
-      <span
-        aria-hidden
-        className="grid place-items-center size-8 shrink-0 rounded-full
-          text-sm font-semibold text-[var(--color-ink)]"
-        style={{
-          background: `color-mix(in oklab, var(--color-terracotta) 26%, transparent)`,
-        }}
-      >
-        {(space?.name ?? '?').slice(0, 1).toUpperCase()}
-      </span>
+      {/* The household's own avatar: a chosen icon, or a generated mark. */}
+      <Avatar
+        avatarKey={space?.icon}
+        seed={space?.id ?? 'none'}
+        name={space?.name}
+        size={32}
+      />
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-medium leading-tight">
           {space?.name ?? 'No space'}
@@ -231,11 +243,13 @@ function SpaceMenu({
   currentId,
   onPick,
   onNew,
+  onEdit,
 }: {
   spaces: Array<Space>
   currentId: string | null
   onPick: (id: string) => void
   onNew: () => void
+  onEdit: (space: EditableSpace) => void
 }) {
   const menuId = useId()
   return (
@@ -256,14 +270,17 @@ function SpaceMenu({
         {spaces.map((s) => {
           const current = s.id === currentId
           return (
-            <li key={s.id}>
+            // Flex, so the row button and its pencil sit side by side. As a
+            // plain block the pencil wrapped onto its own line, which read as a
+            // stray icon rather than as a control belonging to that household.
+            <li key={s.id} className="flex items-center gap-1">
               <button
                 type="button"
                 role="option"
                 aria-selected={current}
                 onClick={() => onPick(s.id)}
                 className={cn(
-                  'w-full flex items-center gap-2 rounded-[var(--radius-sm)]',
+                  'min-w-0 flex-1 flex items-center gap-2 rounded-[var(--radius-sm)]',
                   'px-2.5 py-2 text-left transition-colors duration-150',
                   current
                     ? 'bg-[var(--color-paper-sunk)]'
@@ -279,13 +296,37 @@ function SpaceMenu({
                     current ? 'text-[var(--color-terracotta)]' : 'opacity-0',
                   )}
                 />
-                <span className="min-w-0">
+                <Avatar
+                  avatarKey={s.icon}
+                  seed={s.id}
+                  name={s.name}
+                  size={28}
+                />
+                <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm">{s.name}</span>
                   <span className="block text-[11px] text-ink-faint">
                     {s.currency} · {s.role === 'owner' ? 'owner' : 'member'}
                   </span>
                 </span>
               </button>
+
+              {/* Separate control, not part of the row button: nesting a button
+                  inside a button is invalid HTML and makes the row's hit area
+                  ambiguous. Only owners can rename a space, so it is not shown
+                  to members. */}
+              {s.role === 'owner' && (
+                <button
+                  type="button"
+                  onClick={() => onEdit(s)}
+                  aria-label={`Edit ${s.name}`}
+                  title={`Edit ${s.name}`}
+                  className="shrink-0 grid place-items-center size-7 rounded-full
+                    text-ink-faint transition-[color,background-color] duration-150
+                    hover:text-ink hover:bg-[var(--color-paper-raised)]"
+                >
+                  <Pencil size={14} aria-hidden />
+                </button>
+              )}
             </li>
           )
         })}

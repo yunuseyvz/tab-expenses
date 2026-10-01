@@ -9,7 +9,7 @@ import { AppShell } from '#/components/AppShell'
 import { NewExpenseButton } from '#/components/NewExpenseButton'
 import { Dashboard } from '#/components/dashboard/Dashboard'
 import { ExpenseSheet } from '#/components/expense/ExpenseSheet'
-import { PeriodSelector } from '#/components/dashboard/PeriodSelector'
+import { InlinePeriod } from '#/components/InlinePeriod'
 import { listMySpaces } from '#/lib/auth.functions'
 import {
   balancesQuery,
@@ -147,12 +147,13 @@ function DashboardRoute() {
           <NewExpenseButton onClick={openNew} disabled={!spaceId} />
         </div>
 
-        <PeriodSelector
+        <InlinePeriod
           current={search.period}
-          from={search.from}
-          to={search.to}
-          onChange={(patch) =>
-            navigate({ to: '/dashboard', search: { ...search, ...patch } })
+          onChange={(nextPeriod) =>
+            navigate({
+              to: '/dashboard',
+              search: { ...search, period: nextPeriod },
+            })
           }
         />
 

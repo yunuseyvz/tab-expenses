@@ -38,6 +38,12 @@ export const space = pgTable('space', {
   name: text('name').notNull(),
   // One currency per space: sums are always meaningful, no FX maintenance.
   currency: text('currency').$type<string>().default('EUR').notNull(),
+  /**
+   * Avatar key for this household, from src/lib/avatars.ts. NULL means "derive
+   * an identicon from the id", so a space created before avatars existed still
+   * has a distinct mark rather than a blank one.
+   */
+  icon: text('icon'),
   createdByUserId: text('created_by_user_id')
     .notNull()
     .references(() => user.id, { onDelete: 'restrict' }),

@@ -13,8 +13,10 @@
  * navigation somewhere the eye already goes, and leaves the content area to the
  * content.
  */
-import { useState } from 'react'
-import { Link, useRouterState } from '@tanstack/react-router'
+import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+
+import { Link, useRouteContext, useRouterState } from '@tanstack/react-router'
 import { AnimatePresence, motion } from 'motion/react'
 import {
   LayoutGrid,
@@ -24,6 +26,7 @@ import {
   Settings as SettingsIcon,
 } from 'lucide-react'
 
+import { Avatar } from '#/components/Avatar'
 import { SpaceSwitcher } from '#/components/SpaceSwitcher'
 import { authClient } from '#/lib/auth-client'
 import { cn } from '#/lib/cn'
@@ -65,6 +68,29 @@ const NAV_SEARCH = {
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname })
   const [signingOut, setSigningOut] = useState(false)
+  const [accountOpen, setAccountOpen] = useState(false)
+  const accountRef = useRef<HTMLDivElement>(null)
+
+  // The protected layout already resolved the session for the route guard, so
+  // the account avatar costs nothing extra — it is read from context rather
+  // than from a second round trip.
+  const { user } = useRouteContext({ from: '/_protected' })
+
+  useEffect(() => {
+    if (!accountOpen) return
+    const onPointerDown = (e: PointerEvent) => {
+      if (!accountRef.current?.contains(e.target as Node)) setAccountOpen(false)
+    }
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setAccountOpen(false)
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [accountOpen])
 
   async function signOut() {
     setSigningOut(true)
@@ -120,9 +146,26 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               ))}
             </nav>
 
-            {/* Pushed to the bottom rather than sitting under the nav: signing
-                out is not a peer of going to Balances. */}
+            {/* The account, with its avatar, at the bottom. Signing out is not a
+                peer of going to Balances, so it lives down here rather than in
+                the nav. */}
             <div className="mt-auto pt-3 border-t border-rule/70">
+              <div className="flex items-center gap-2.5 px-2.5 pb-2">
+                <Avatar
+                  avatarKey={user.avatar}
+                  seed={user.id}
+                  name={user.name}
+                  size={30}
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium">
+                    {user.name}
+                  </span>
+                  <span className="block truncate text-[11px] text-ink-faint">
+                    {user.email}
+                  </span>
+                </span>
+              </div>
               <button
                 type="button"
                 onClick={() => void signOut()}
@@ -154,17 +197,53 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         shadow-[var(--material-edge)]"
       >
         <SpaceSwitcher compact />
-        <button
-          type="button"
-          onClick={() => void signOut()}
-          disabled={signingOut}
-          aria-label={signingOut ? 'Signing out' : 'Sign out'}
-          className="text-ink-muted p-1.5 -mr-1.5 rounded-full
-            transition-colors duration-150 hover:text-ink
-            active:scale-95 motion-reduce:active:scale-100"
-        >
-          <LogOut size={18} aria-hidden />
-        </button>
+        <div ref={accountRef} className="relative">
+          <button
+            type="button"
+            onClick={() => setAccountOpen((o) => !o)}
+            aria-expanded={accountOpen}
+            aria-haspopup="menu"
+            aria-label="Account"
+            className="rounded-full transition-transform duration-150
+              active:scale-95 motion-reduce:active:scale-100"
+          >
+            <Avatar
+              avatarKey={user.avatar}
+              seed={user.id}
+              name={user.name}
+              size={30}
+            />
+          </button>
+
+          {accountOpen && (
+            <div
+              role="menu"
+              className="absolute z-50 right-0 mt-1.5 w-[13rem] p-1.5
+                rounded-[var(--radius-md)] border border-rule
+                bg-[var(--color-paper-raised)] shadow-[var(--shadow-float)]"
+            >
+              <div className="px-2.5 py-2">
+                <p className="truncate text-sm font-medium">{user.name}</p>
+                <p className="truncate text-xs text-ink-faint">{user.email}</p>
+              </div>
+              <div className="border-t border-rule pt-1 mt-1">
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => void signOut()}
+                  disabled={signingOut}
+                  className="w-full flex items-center gap-2.5 rounded-[var(--radius-sm)]
+                    px-2.5 py-2 text-sm text-ink-muted
+                    transition-colors duration-150
+                    hover:bg-[var(--color-paper-sunk)] hover:text-ink"
+                >
+                  <LogOut size={16} aria-hidden />
+                  {signingOut ? 'Signing out…' : 'Sign out'}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="flex-1 min-w-0 pb-20 md:pb-0">{children}</div>
@@ -293,6 +372,21 @@ function BottomLink({
  * The panel is a flex column and the *body* scrolls, not the panel. That is
  * what keeps a long form's Save button on screen instead of scrolled away.
  */
+/**
+ * A bottom sheet on mobile, a centred dialog on desktop.
+ *
+ * Rendered into `document.body` through a portal, and that is not incidental.
+ * Every piece of chrome in this app has a `backdrop-filter` on it — the top
+ * bar, both navs, the sidebar — and a filtered, blurred or transformed ancestor
+ * becomes the containing block for `position: fixed` descendants. So a sheet
+ * rendered inside the top bar positioned itself against that 48px strip instead
+ * of the viewport, and opened out of bounds above the screen. Portalling is the
+ * only reliable fix; escaping it with a higher z-index does nothing, because the
+ * problem is where the box is measured, not what is painted over it.
+ *
+ * The panel is a flex column and the *body* scrolls, not the panel. That is what
+ * keeps a long form's Save button on screen instead of scrolled away.
+ */
 export function Sheet({
   open,
   onClose,
@@ -304,7 +398,13 @@ export function Sheet({
   title: string
   children: React.ReactNode
 }) {
-  return (
+  // document does not exist during SSR. `open` is false on the server, so this
+  // is belt-and-braces, but a portal that throws on first paint is a nasty way
+  // to find out.
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => setMounted(true), [])
+
+  const panel = (
     <AnimatePresence>
       {open && (
         <>
@@ -365,4 +465,7 @@ export function Sheet({
       )}
     </AnimatePresence>
   )
+
+  if (!mounted) return null
+  return createPortal(panel, document.body)
 }

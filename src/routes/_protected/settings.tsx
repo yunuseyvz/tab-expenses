@@ -6,8 +6,9 @@ import { toast } from 'sonner'
 import type { PeriodPreset } from '#/lib/period'
 import type { CategoryIconName } from '#/lib/category-icons'
 import { iconFor } from '#/lib/category-icons'
-import { listMySpaces } from '#/lib/auth.functions'
+import { getSession, listMySpaces, updateProfile } from '#/lib/auth.functions'
 import { AppShell } from '#/components/AppShell'
+import { AvatarPicker } from '#/components/AvatarPicker'
 import { IconPicker } from '#/components/IconPicker'
 import { Switch } from '#/components/ui/Switch'
 import { InvitePanel } from '#/components/InvitePanel'
@@ -218,6 +219,8 @@ function SettingsRoute() {
     enabled: Boolean(spaceId),
   })
 
+  const me = useQuery({ queryKey: ['session'], queryFn: () => getSession() })
+
   const categories = useQuery({
     ...categoriesQuery(spaceId ?? ''),
     enabled: Boolean(spaceId),
@@ -225,6 +228,18 @@ function SettingsRoute() {
 
   const invalidate = () =>
     queryClient.invalidateQueries({ queryKey: ['spaces', spaceId] })
+
+  const saveAvatar = useMutation({
+    mutationFn: (avatar: string | null) => updateProfile({ data: { avatar } }),
+    onSuccess: () => {
+      // The session payload is what every avatar in the chrome reads, so it has
+      // to be refetched — this is not one of the space-scoped keys.
+      void queryClient.invalidateQueries({ queryKey: ['session'] })
+      toast.success('Avatar updated')
+    },
+    onError: (err) =>
+      toast.error(err instanceof Error ? err.message : 'Could not save'),
+  })
 
   const addMember = useMutation({
     mutationFn: () =>
@@ -480,6 +495,24 @@ function SettingsRoute() {
               Add category
             </Button>
           </form>
+        </Card>
+
+        <Card className="mb-4">
+          <CardHeader>
+            <CardTitle>Your profile</CardTitle>
+          </CardHeader>
+          <p className="text-xs text-ink-faint mb-3">
+            How you appear in this app. There is no upload — pick a mark, or
+            keep the one generated from your account.
+          </p>
+          <AvatarPicker
+            value={me.data?.user.avatar ?? null}
+            // The id, not the name: renaming yourself should not change your face.
+            seed={me.data?.user.id ?? 'anonymous'}
+            name={me.data?.user.name}
+            onChange={(next) => saveAvatar.mutate(next)}
+            label="Your avatar"
+          />
         </Card>
 
         <Card className="mb-4">

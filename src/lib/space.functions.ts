@@ -19,8 +19,9 @@ import {
   requireSpaceOwner,
 } from './auth.functions'
 import { getDb } from './db'
-import { category, space, spaceMember } from './db/schema'
+import { category, expense, space, spaceMember } from './db/schema'
 import {
+  avatarKeySchema,
   categoryInputSchema,
   categoryUpdateSchema,
   currencySchema,
@@ -73,6 +74,79 @@ export const createSpace = createServerFn({ method: 'POST' })
 
       return { space: created, member: member! }
     })
+  })
+
+/**
+ * Edit a space. Owners only.
+ *
+ * Name and icon are freely editable. Currency is not, once the space has any
+ * expenses: every `amount_minor` was entered in the old unit, and relabelling
+ * the column would silently restate a household's whole history — €1,200 of
+ * rent would become $1,200 without anyone touching it. So an empty space may
+ * change currency, and a non-empty one must keep it. That is a deliberate
+ * restriction rather than a missing feature; there is no FX conversion anywhere
+ * in this app and inventing one here would be the worst possible place to start.
+ */
+export const updateSpace = createServerFn({ method: 'POST' })
+  .inputValidator(
+    z.object({
+      spaceId: uuidSchema,
+      name: z.string().trim().min(1, 'name is required').max(80),
+      currency: currencySchema.optional(),
+      icon: avatarKeySchema.nullable().optional(),
+    }),
+  )
+  .handler(async ({ data }) => {
+    const session = await ensureSession()
+    await requireSpaceOwner(session.user.id, data.spaceId)
+    const db = getDb()
+
+    if (data.currency !== undefined) {
+      const [count] = await db
+        .select({ n: sql<number>`count(*)::int` })
+        .from(expense)
+        .where(eq(expense.spaceId, data.spaceId))
+      if (Number(count?.n ?? 0) > 0) {
+        throw new Error(
+          'The currency cannot change once a space has expenses — every amount was entered in the old one.',
+        )
+      }
+    }
+
+    const [row] = await db
+      .update(space)
+      .set({
+        name: data.name,
+        ...(data.currency !== undefined ? { currency: data.currency } : {}),
+        ...(data.icon !== undefined ? { icon: data.icon } : {}),
+      })
+      // Scoped by id only because requireSpaceOwner has already established
+      // that this caller owns exactly this space.
+      .where(eq(space.id, data.spaceId))
+      .returning()
+
+    if (!row) throw new Error('Not found')
+    return row
+  })
+
+/**
+ * Does this space have any expenses?
+ *
+ * Only needed to decide whether the currency can still be changed, and only once
+ * the editor is open — so it is a separate call rather than a count column on
+ * every row of the space list, which is loaded on every screen.
+ */
+export const spaceHasExpenses = createServerFn({ method: 'GET' })
+  .inputValidator(z.object({ spaceId: uuidSchema }))
+  .handler(async ({ data }) => {
+    const session = await ensureSession()
+    await requireSpaceMember(session.user.id, data.spaceId)
+    const db = getDb()
+    const [row] = await db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(expense)
+      .where(eq(expense.spaceId, data.spaceId))
+    return Number(row?.n ?? 0) > 0
   })
 
 export const getSpace = createServerFn({ method: 'GET' })

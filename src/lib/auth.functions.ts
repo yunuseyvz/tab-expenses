@@ -21,7 +21,7 @@ import { z } from 'zod'
 import { auth } from './auth'
 import { getDb } from './db'
 import { env } from './db/env'
-import { space, spaceMember } from './db/schema'
+import { space, spaceMember, user } from './db/schema'
 
 /**
  * Registration input. The name is the account name shown in the app; each
@@ -113,6 +113,9 @@ export const listMySpaces = createServerFn({ method: 'GET' }).handler(
         id: space.id,
         name: space.name,
         currency: space.currency,
+        // Carried so the switcher and the editor can show a household's mark
+        // without a second round trip for data they already hold.
+        icon: space.icon,
         role: spaceMember.role,
         memberId: spaceMember.id,
       })
@@ -230,3 +233,26 @@ export const getRememberedSpaceId = createServerFn({ method: 'GET' }).handler(
     return getCookie(SPACE_COOKIE) ?? null
   },
 )
+
+/**
+ * Change your own avatar.
+ *
+ * Self-scoped on purpose: there is no spaceId to check membership against,
+ * because this edits the caller's own account rather than anything a household
+ * shares. The only reachable row is the one the session came from.
+ */
+export const updateProfile = createServerFn({ method: 'POST' })
+  .inputValidator(z.object({ avatar: z.string().trim().max(60).nullable() }))
+  .handler(async ({ data }) => {
+    const session = await ensureSession()
+    const db = getDb()
+
+    const [row] = await db
+      .update(user)
+      .set({ avatar: data.avatar })
+      .where(eq(user.id, session.user.id))
+      .returning({ id: user.id, avatar: user.avatar })
+
+    if (!row) throw new Error('Not found')
+    return row
+  })

@@ -24,7 +24,7 @@ import { fromISODate, groupByDay, presetToPeriod } from '#/lib/period'
 import { swatchColor } from '#/lib/swatches'
 import { useCurrentSpace } from '#/hooks/useCurrentSpace'
 import { resolveSpaceId } from '#/lib/space-preference'
-import { InlinePeriod } from '#/components/InlinePeriod'
+import { PeriodSelector } from '#/components/dashboard/PeriodSelector'
 
 export const Route = createFileRoute('/_protected/expenses')({
   validateSearch: (s: Record<string, unknown>) => ({
@@ -32,6 +32,8 @@ export const Route = createFileRoute('/_protected/expenses')({
     period: (typeof s.period === 'string' ? s.period : 'all') as PeriodPreset,
     member: typeof s.member === 'string' ? s.member : undefined,
     cats: typeof s.cats === 'string' ? s.cats : undefined,
+    from: typeof s.from === 'string' ? s.from : undefined,
+    to: typeof s.to === 'string' ? s.to : undefined,
   }),
   // Warm the cache so the first paint is the full ledger, not a shell.
   loaderDeps: ({ search }) => search,
@@ -126,6 +128,8 @@ function ExpensesRoute() {
       period: PeriodPreset
       member: string | undefined
       cats: string | undefined
+      from: string | undefined
+      to: string | undefined
     }>,
   ) => {
     void navigate({ to: '/expenses', search: { ...search, ...patch } })
@@ -150,9 +154,11 @@ function ExpensesRoute() {
           <NewExpenseButton onClick={openNew} disabled={!spaceId} />
         </div>
 
-        <InlinePeriod
+        <PeriodSelector
           current={search.period}
-          onChange={(nextPeriod) => go({ period: nextPeriod })}
+          from={search.from}
+          to={search.to}
+          onChange={(patch) => go(patch)}
         />
 
         <div className="mb-4 flex flex-wrap items-center gap-2">

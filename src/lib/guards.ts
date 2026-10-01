@@ -9,6 +9,7 @@ import { z } from 'zod'
 
 import { BP_TOTAL } from './money'
 import { CATEGORY_ICON_NAMES } from './category-icons'
+import { AVATAR_KEYS } from './avatars'
 
 export const currencySchema = z
   .string()
@@ -48,6 +49,23 @@ export const memberInputSchema = z.object({
   defaultWeightBp: z.number().int().min(0).max(BP_TOTAL).default(0),
 })
 export type MemberInput = z.infer<typeof memberInputSchema>
+
+/**
+ * An avatar key, or null for "derive an identicon from the id".
+ *
+ * `null` is meaningful and stored as SQL NULL rather than as a sentinel string:
+ * a space created before avatars existed should render a generated mark, not
+ * look like it failed to load one.
+ */
+export const avatarKeySchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(60)
+  // Refuses anything not in the curated set. The value is rendered as a
+  // component, so an unrecognised key would be a blank circle.
+  .refine((k) => AVATAR_KEYS.includes(k), 'Unknown avatar')
+  .nullable()
 
 export const categoryInputSchema = z
   .object({

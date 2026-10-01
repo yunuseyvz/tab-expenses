@@ -57,10 +57,33 @@ export function IconPicker({
         aria-controls={panelId}
         aria-haspopup="listbox"
         title="Choose an icon"
-        className="grid place-items-center size-10 rounded-[var(--radius)]
-          border border-rule bg-paper-sunk text-ink-muted
-          transition-[background-color,color] duration-150
-          hover:text-ink hover:bg-[var(--color-paper-raised)]"
+        // Deliberately the same padding, border, radius and shadow as Input
+        // rather than a fixed size. `size-10` pinned this to 40px while the
+        // field beside it is 42px, and the two sat visibly out of line. Sharing
+        // the field's own values makes them match by construction — if Input's
+        // padding ever changes, this follows.
+        // h-full, because the flex item in this row is the picker's own wrapper
+        // div rather than the button. Without it the button takes its own
+        // content height — the 18px icon plus padding — and sits 6px shorter
+        // than the field it is paired with.
+        //
+        // No horizontal padding. It was px-3.5 to match Input, but that left a
+        // 12px content box inside a 40px button, and a grid column sizes to
+        // max-content and overflows rather than shrinking — so the icon centred
+        // in a column starting at the padding edge and sat 4px right of the
+        // button's centre. The padding bought nothing on a square control with
+        // no text in it.
+        className="grid place-items-center shrink-0 w-10 h-full
+          rounded-[var(--radius-md)]
+          py-2.5
+          bg-paper-sunk text-ink-muted
+          border border-rule/70
+          shadow-[var(--shadow-deboss)]
+          transition-[background-color,border-color,color,box-shadow] duration-150
+          hover:text-ink hover:bg-[var(--color-paper-raised)]
+          hover:border-terracotta/50
+          focus-visible:outline-none focus-visible:border-terracotta
+          focus-visible:bg-[var(--color-paper-raised)]"
       >
         <Current size={18} aria-hidden />
       </button>

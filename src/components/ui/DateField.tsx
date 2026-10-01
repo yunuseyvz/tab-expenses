@@ -43,6 +43,7 @@ export function DateField({
   max,
   locale = 'en',
   compact = false,
+  disabled = false,
 }: {
   id?: string
   value: string
@@ -54,6 +55,8 @@ export function DateField({
   max?: string
   /** Matches the height of a period pill, for inline use. */
   compact?: boolean
+  /** Inert but still visible, so the control's existence stays legible. */
+  disabled?: boolean
   locale?: string
 }) {
   const [open, setOpen] = useState(false)
@@ -89,7 +92,9 @@ export function DateField({
     el?.scrollIntoView({ block: 'nearest' })
   }, [open, cursor])
 
-  function disabled(iso: string) {
+  // Named for what it checks, not `disabled`: that is now a prop, and a local
+  // function of the same name would shadow it.
+  function outOfRange(iso: string) {
     return (min !== undefined && iso < min) || (max !== undefined && iso > max)
   }
 
@@ -137,7 +142,7 @@ export function DateField({
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault()
       const iso = isoOf(cursor)
-      if (!disabled(iso)) {
+      if (!outOfRange(iso)) {
         onChange(iso)
         setOpen(false)
       }
@@ -162,6 +167,7 @@ export function DateField({
       <button
         id={id}
         type="button"
+        disabled={disabled}
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-controls={panelId}
@@ -185,6 +191,9 @@ export function DateField({
           'focus:bg-[var(--color-paper-raised)]',
           'focus:shadow-[var(--shadow-deboss),0_0_0_3px_color-mix(in_oklab,var(--color-terracotta)_28%,transparent)]',
           'aria-invalid:border-oxblood',
+          // Dimmed rather than hidden: an inert control that is still there
+          // explains why it is empty.
+          disabled && 'opacity-45 cursor-not-allowed hover:bg-paper-sunk',
         )}
       >
         <CalendarDays
@@ -257,7 +266,7 @@ export function DateField({
             {cells.map((cell) => {
               const isSelected = cell.iso === value
               const isCursor = cell.iso === activeIso
-              const isBlocked = disabled(cell.iso)
+              const isBlocked = outOfRange(cell.iso)
 
               return (
                 <button
