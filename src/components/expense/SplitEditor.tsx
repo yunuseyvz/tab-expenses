@@ -108,7 +108,7 @@ export function SplitEditor({
           className="w-full bg-paper-sunk px-3 py-2 text-ink rounded-[3px]
             shadow-[var(--shadow-deboss)] border-b-2 border-transparent
             focus:shadow-[var(--shadow-raise)] focus:border-terracotta
-            focus:outline-none"
+           "
         >
           <option value="" disabled>
             Choose…
@@ -178,14 +178,14 @@ export function SplitEditor({
             <button
               type="button"
               onClick={presetEvenPairs}
-              className="text-xs text-terracotta underline underline-offset-2"
+              className="text-xs text-terracotta-ink underline underline-offset-2"
             >
               50 / 50
             </button>
             <button
               type="button"
               onClick={presetEqual}
-              className="text-xs text-terracotta underline underline-offset-2"
+              className="text-xs text-terracotta-ink underline underline-offset-2"
             >
               Equal
             </button>
@@ -226,7 +226,7 @@ export function SplitEditor({
                         aria-label={`${name} percent`}
                         className="tnum w-16 bg-paper-sunk pl-2 pr-5 py-1 text-right
                           text-sm rounded-[3px] shadow-[var(--shadow-deboss)]
-                          border-b-2 border-transparent focus:outline-none
+                          border-b-2 border-transparent
                           focus:shadow-[var(--shadow-raise)]
                           focus:border-terracotta"
                       />
@@ -251,8 +251,7 @@ export function SplitEditor({
                     setWeight(d.memberId, Number(e.target.value) * 100)
                   }
                   aria-label={`${name} split slider`}
-                  className="w-full h-1.5 rounded-full cursor-pointer appearance-none
-                    shadow-[var(--shadow-deboss)]"
+                  className="range-tactile"
                   style={{
                     background: `linear-gradient(to right,
                       var(--color-terracotta) ${pct}%,

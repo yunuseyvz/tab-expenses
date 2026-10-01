@@ -6,13 +6,13 @@
  * requests. This is UX, not security.
  *
  * LAYER 2 is `requireSpaceMember` inside every server function, and that is the
- * actual boundary: server functions are directly callable HTTP endpoints, and
- * a router guard is irrelevant to someone POSTing to them directly.
+ * actual boundary: server functions are directly callable HTTP endpoints, and a
+ * router guard is irrelevant to someone POSTing to them directly.
  */
 import { Outlet, createFileRoute, redirect } from '@tanstack/react-router'
-import { useQuery } from '@tanstack/react-query'
 
 import { getSession, listMySpaces } from '#/lib/auth.functions'
+import { spaceKeys } from '#/lib/session'
 
 export const Route = createFileRoute('/_protected')({
   beforeLoad: async ({ location }) => {
@@ -25,20 +25,25 @@ export const Route = createFileRoute('/_protected')({
     }
     return { user: session.user }
   },
-  loader: () => listMySpaces(),
+  // Warm the space list for every protected screen. Without this the first paint
+  // is an empty shell, because every screen needs to know which space it is
+  // showing before it can render anything.
+  loader: async ({ context }) => {
+    const spaces = await context.queryClient.ensureQueryData({
+      queryKey: spaceKeys.mySpaces,
+      queryFn: () => listMySpaces(),
+    })
+
+    // No space yet: onboard rather than into an empty dashboard.
+    if (spaces.length === 0) {
+      throw redirect({ to: '/setup' })
+    }
+
+    return { spaces }
+  },
   component: ProtectedLayout,
 })
 
 function ProtectedLayout() {
-  const spaces = useQuery({
-    queryKey: ['my-spaces'],
-    queryFn: () => listMySpaces(),
-  })
-
-  // No space yet: send them to onboarding rather than into an empty dashboard.
-  if (spaces.isSuccess && spaces.data.length === 0) {
-    throw redirect({ to: '/setup' })
-  }
-
   return <Outlet />
 }

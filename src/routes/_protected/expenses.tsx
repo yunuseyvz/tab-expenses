@@ -3,14 +3,21 @@ import { createFileRoute, useNavigate, useSearch } from '@tanstack/react-router'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 
 import type {PeriodPreset} from '#/lib/period';
+import type {ListFilter} from '#/lib/session';
 import { AppShell } from '#/components/AppShell'
 import { Card } from '#/components/ui/Card'
 import { Button } from '#/components/ui/Button'
 import { ExpenseSheet } from '#/components/expense/ExpenseSheet'
-import { listCategories, listMembers } from '#/lib/space.functions'
-import { expensesQuery } from '#/lib/session'
+import { listMySpaces } from '#/lib/auth.functions'
+import {
+  
+  categoriesQuery,
+  expensesQuery,
+  membersQuery,
+  spaceKeys
+} from '#/lib/session'
 import { formatMoney } from '#/lib/money'
-import {  fromISODate, groupByDay, presetToPeriod } from '#/lib/period'
+import { fromISODate, groupByDay, presetToPeriod } from '#/lib/period'
 import { swatchColor } from '#/lib/swatches'
 import { useCurrentSpace } from '#/hooks/useCurrentSpace'
 import { InlinePeriod } from '#/components/InlinePeriod'
@@ -22,6 +29,37 @@ export const Route = createFileRoute('/_protected/expenses')({
     member: typeof s.member === 'string' ? s.member : undefined,
     cats: typeof s.cats === 'string' ? s.cats : undefined,
   }),
+  // Warm the cache so the first paint is the full ledger, not a shell.
+  loaderDeps: ({ search }) => search,
+  loader: async ({ context, deps }) => {
+    const qc = context.queryClient
+
+    const spaces = await qc.ensureQueryData({
+      queryKey: spaceKeys.mySpaces,
+      queryFn: () => listMySpaces(),
+    })
+    const spaceId =
+      (deps.space ? spaces.find((s) => s.id === deps.space) : spaces[0])
+        ?.id ?? null
+    if (!spaceId) return
+
+    const period = presetToPeriod(deps.period)
+    const categories = await qc.ensureQueryData(categoriesQuery(spaceId))
+    const allIds = categories.map((c: { id: string }) => c.id)
+
+    const filter: ListFilter = {
+      ...period,
+      memberId: deps.member ?? null,
+      categoryIds: deps.cats
+        ? deps.cats.split(',').filter((id: string) => allIds.includes(id))
+        : undefined,
+    }
+
+    await Promise.all([
+      qc.ensureQueryData(membersQuery(spaceId)),
+      qc.ensureQueryData(expensesQuery(spaceId, filter)),
+    ])
+  },
   component: ExpensesRoute,
 })
 
@@ -34,14 +72,12 @@ function ExpensesRoute() {
   const period = useMemo(() => presetToPeriod(search.period), [search.period])
 
   const categories = useQuery({
-    queryKey: ['spaces', spaceId, 'categories'],
-    queryFn: () => listCategories({ data: { spaceId: spaceId! } }),
+    ...categoriesQuery(spaceId ?? ''),
     enabled: Boolean(spaceId),
   })
 
   const members = useQuery({
-    queryKey: ['spaces', spaceId, 'members'],
-    queryFn: () => listMembers({ data: { spaceId: spaceId! } }),
+    ...membersQuery(spaceId ?? ''),
     enabled: Boolean(spaceId),
   })
 
@@ -105,7 +141,7 @@ function ExpensesRoute() {
             onChange={(e) => go({ member: e.target.value || undefined })}
             aria-label="Filter by member"
             className="bg-paper-sunk px-2 py-1.5 text-sm rounded-[3px]
-              shadow-[var(--shadow-deboss)] focus:outline-none"
+              shadow-[var(--shadow-deboss)]"
           >
             <option value="">Everyone</option>
             {(members.data ?? []).map((m) => (

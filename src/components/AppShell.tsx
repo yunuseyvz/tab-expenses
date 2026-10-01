@@ -138,7 +138,7 @@ function BottomLink({
       className={cn(
         'flex flex-col items-center justify-center gap-0.5 h-16',
         'text-[11px] transition-colors duration-150',
-        active ? 'text-terracotta' : 'text-ink-muted',
+        active ? 'text-terracotta-ink' : 'text-ink-muted',
       )}
     >
       {/* The active indicator is a shape change, not only a colour change. */}

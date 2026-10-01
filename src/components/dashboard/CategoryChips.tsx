@@ -44,7 +44,7 @@ export function CategoryChips({
             type="button"
             onClick={() => onChange(undefined)}
             disabled={isAll}
-            className="text-terracotta underline underline-offset-2 disabled:text-ink-faint disabled:no-underline"
+            className="text-terracotta-ink underline underline-offset-2 disabled:text-ink-faint disabled:no-underline"
           >
             All
           </button>
@@ -52,7 +52,7 @@ export function CategoryChips({
             type="button"
             onClick={() => onChange([])}
             disabled={isNone}
-            className="text-terracotta underline underline-offset-2 disabled:text-ink-faint disabled:no-underline"
+            className="text-terracotta-ink underline underline-offset-2 disabled:text-ink-faint disabled:no-underline"
           >
             None
           </button>

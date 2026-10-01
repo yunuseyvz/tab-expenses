@@ -8,6 +8,7 @@ export default [
   {
     ignores: [
       '.output/**',
+      '.nitro/**',
       'dist/**',
       'node_modules/**',
       'drizzle/**',

@@ -22,8 +22,8 @@ export function Input({
         'border-b-2 border-transparent',
         'transition-[background-color,border-color] duration-150',
         'placeholder:text-ink-faint',
-        'focus:shadow-[var(--shadow-raise)] focus:border-terracotta focus:outline-none',
-        'focus-visible:outline-none',
+        'focus:shadow-[var(--shadow-raise)] focus:border-terracotta',
+        '',
         'aria-invalid:border-oxblood',
         'disabled:opacity-60 disabled:cursor-not-allowed',
         className,
@@ -62,7 +62,7 @@ export function Textarea({
         'border-b-2 border-transparent',
         'transition-[background-color,border-color] duration-150',
         'placeholder:text-ink-faint',
-        'focus:shadow-[var(--shadow-raise)] focus:border-terracotta focus:outline-none',
+        'focus:shadow-[var(--shadow-raise)] focus:border-terracotta',
         className,
       )}
       {...props}

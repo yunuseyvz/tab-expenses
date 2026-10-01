@@ -8,7 +8,18 @@
  * commit, so a bug in `allocate` cannot silently corrupt the ledger.
  */
 import { createServerFn } from '@tanstack/react-start'
-import { and, asc, desc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm'
+import {
+  
+  and,
+  asc,
+  desc,
+  eq,
+  gte,
+  inArray,
+  isNull,
+  lte,
+  sql
+} from 'drizzle-orm'
 import { z } from 'zod'
 
 import { ensureSession, requireSpaceMember } from './auth.functions'
@@ -17,7 +28,28 @@ import { category, expense, expenseSplit, spaceMember } from './db/schema'
 import { expenseInputSchema, periodFilterSchema, uuidSchema } from './guards'
 import { BP_TOTAL, allocate, parseAmountToMinor } from './money'
 import { settle } from './settle'
+import type {SQL} from 'drizzle-orm';
 import type { Settlement } from './settle'
+
+/**
+ * Category filter with three distinct states.
+ *
+ *   undefined → no filter, every category
+ *   []        → an explicit empty selection: match nothing
+ *   [ids]     → match these
+ *
+ * Collapsing `[]` into "no filter" is a real bug, not a nitpick: the dashboard
+ * has a "None" button, and a user who deselects everything should see a zero
+ * total, not the whole ledger. `inArray(col, [])` is not usable for the middle
+ * case, hence the explicit `false`.
+ */
+function categoryFilter(
+  categoryIds: Array<string> | undefined,
+): SQL | undefined {
+  if (categoryIds === undefined) return undefined
+  if (categoryIds.length === 0) return sql`false`
+  return inArray(expense.categoryId, categoryIds)
+}
 
 export interface SplitRow {
   memberId: string
@@ -358,12 +390,14 @@ export const listExpenses = createServerFn({ method: 'GET' })
     await requireSpaceMember(session.user.id, data.spaceId)
     const db = getDb()
 
-    const conditions = [eq(expense.spaceId, data.spaceId)]
+    // Typed to allow undefined: drizzle's and() drops undefined entries, which
+    // is how an absent bound is expressed.
+    const conditions: Array<SQL | undefined> = [
+      eq(expense.spaceId, data.spaceId),
+    ]
     if (data.from) conditions.push(gte(expense.spentOn, data.from))
     if (data.to) conditions.push(lte(expense.spentOn, data.to))
-    if (data.categoryIds && data.categoryIds.length > 0) {
-      conditions.push(inArray(expense.categoryId, data.categoryIds))
-    }
+    conditions.push(categoryFilter(data.categoryIds))
     if (data.memberId) {
       // "paid by" or "shared with" — a member filter should not hide an expense
       // they are part of the split for.
@@ -429,12 +463,14 @@ export const getTotals = createServerFn({ method: 'GET' })
     const member = await requireSpaceMember(session.user.id, data.spaceId)
     const db = getDb()
 
-    const conditions = [eq(expense.spaceId, data.spaceId)]
+    // Typed to allow undefined: drizzle's and() drops undefined entries, which
+    // is how an absent bound is expressed.
+    const conditions: Array<SQL | undefined> = [
+      eq(expense.spaceId, data.spaceId),
+    ]
     if (data.from) conditions.push(gte(expense.spentOn, data.from))
     if (data.to) conditions.push(lte(expense.spentOn, data.to))
-    if (data.categoryIds && data.categoryIds.length > 0) {
-      conditions.push(inArray(expense.categoryId, data.categoryIds))
-    }
+    conditions.push(categoryFilter(data.categoryIds))
 
     const byCategory = await db
       .select({
@@ -452,9 +488,7 @@ export const getTotals = createServerFn({ method: 'GET' })
           eq(expense.categoryId, category.id),
           data.from ? gte(expense.spentOn, data.from) : undefined,
           data.to ? lte(expense.spentOn, data.to) : undefined,
-          data.categoryIds && data.categoryIds.length > 0
-            ? inArray(expense.categoryId, data.categoryIds)
-            : undefined,
+          categoryFilter(data.categoryIds),
         ),
       )
       .where(and(eq(category.spaceId, data.spaceId), isNull(category.archivedAt)))
@@ -520,11 +554,24 @@ export const getBalances = createServerFn({ method: 'GET' })
     const me = await requireSpaceMember(session.user.id, data.spaceId)
     const db = getDb()
 
-    const conditions = [eq(expense.spaceId, data.spaceId)]
+    // Typed to allow undefined: drizzle's and() drops undefined entries, which
+    // is how an absent bound is expressed.
+    const conditions: Array<SQL | undefined> = [
+      eq(expense.spaceId, data.spaceId),
+    ]
     if (data.from) conditions.push(gte(expense.spentOn, data.from))
     if (data.to) conditions.push(lte(expense.spentOn, data.to))
-    if (data.categoryIds && data.categoryIds.length > 0) {
-      conditions.push(inArray(expense.categoryId, data.categoryIds))
+    conditions.push(categoryFilter(data.categoryIds))
+
+    // Join conditions for the expense, built as a list. An empty `sql`
+    // fragment inside `and()` renders as nothing and leaves a dangling "and",
+    // which is a syntax error — and "All time" (no bounds at all) is the
+    // default period, so this path must work with zero conditions.
+    const expenseJoin = [eq(expense.id, expenseSplit.expenseId)]
+    if (data.from) expenseJoin.push(sql`${expense.spentOn} >= ${data.from}`)
+    if (data.to) expenseJoin.push(sql`${expense.spentOn} <= ${data.to}`)
+    if (data.categoryIds !== undefined) {
+      expenseJoin.push(categoryFilter(data.categoryIds)!)
     }
 
     const rows = await db
@@ -533,27 +580,31 @@ export const getBalances = createServerFn({ method: 'GET' })
         displayName: spaceMember.displayName,
         color: spaceMember.color,
         userId: spaceMember.userId,
-        paidMinor: sql<number>`coalesce(sum(${expense.amountMinor}) filter (where ${expense.paidByMemberId} = ${spaceMember.id}), 0)::int`,
-        shareMinor: sql<number>`coalesce(sum(${expenseSplit.shareMinor}), 0)::int`,
+        paidMinor: sql<number>`coalesce(
+          sum(${expense.amountMinor}) filter (where ${expense.paidByMemberId} = ${spaceMember.id}),
+          0
+        )::int`,
+        // `e.id is not null` is load-bearing. The split row joins regardless of
+        // the range, so without it an out-of-period split would still be
+        // counted and a period with no expenses would report the full
+        // all-time balance.
+        shareMinor: sql<number>`coalesce(
+          sum(${expenseSplit.shareMinor}) filter (where ${expense.id} is not null),
+          0
+        )::int`,
       })
       .from(spaceMember)
-      .leftJoin(
-        expenseSplit,
-        and(
-          eq(expenseSplit.memberId, spaceMember.id),
-          // `exists` correlates on the expense, so the date range is applied
-          // per split row rather than widening the join.
-          sql`exists (
-            select 1 from ${expense}
-            where ${expense.id} = ${expenseSplit.expenseId}
-              ${data.from ? sql`and ${expense.spentOn} >= ${data.from}` : sql``}
-              ${data.to ? sql`and ${expense.spentOn} <= ${data.to}` : sql``}
-              ${data.categoryIds && data.categoryIds.length > 0 ? sql`and ${expense.categoryId} in ${data.categoryIds}` : sql``}
-          )`,
-        ),
+      .leftJoin(expenseSplit, eq(expenseSplit.memberId, spaceMember.id))
+      .leftJoin(expense, and(...expenseJoin))
+      .where(
+        and(eq(spaceMember.spaceId, data.spaceId), isNull(spaceMember.archivedAt)),
       )
-      .where(and(eq(spaceMember.spaceId, data.spaceId), isNull(spaceMember.archivedAt)))
-      .groupBy(spaceMember.id, spaceMember.displayName, spaceMember.color, spaceMember.userId)
+      .groupBy(
+        spaceMember.id,
+        spaceMember.displayName,
+        spaceMember.color,
+        spaceMember.userId,
+      )
 
     const balances: Array<MemberBalance> = rows.map((r) => {
       const paid = Number(r.paidMinor)

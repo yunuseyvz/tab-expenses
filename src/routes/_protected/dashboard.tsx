@@ -3,6 +3,7 @@ import { createFileRoute, useSearch } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { Plus } from 'lucide-react'
 
+import type {ListFilter} from '#/lib/session';
 import type {PeriodPreset} from '#/lib/period';
 import { AppShell } from '#/components/AppShell'
 import { Dashboard } from '#/components/dashboard/Dashboard'
@@ -10,9 +11,17 @@ import { ExpenseSheet } from '#/components/expense/ExpenseSheet'
 import { PeriodSelector } from '#/components/dashboard/PeriodSelector'
 import { Button } from '#/components/ui/Button'
 import { listMySpaces } from '#/lib/auth.functions'
-import { listCategories, listMembers } from '#/lib/space.functions'
-import { useCurrentSpace } from '#/hooks/useCurrentSpace'
+import {
+  
+  balancesQuery,
+  categoriesQuery,
+  expensesQuery,
+  membersQuery,
+  spaceKeys,
+  totalsQuery
+} from '#/lib/session'
 import {  periodLabel, presetToPeriod } from '#/lib/period'
+import { useCurrentSpace } from '#/hooks/useCurrentSpace'
 
 export const Route = createFileRoute('/_protected/dashboard')({
   validateSearch: (s: Record<string, unknown>) => ({
@@ -22,7 +31,48 @@ export const Route = createFileRoute('/_protected/dashboard')({
     from: typeof s.from === 'string' ? s.from : undefined,
     to: typeof s.to === 'string' ? s.to : undefined,
   }),
-  loader: () => listMySpaces(),
+  // Prefetch everything the screen renders. This is what makes the SSR response
+  // complete markup instead of a suspended shell: the component's useQuery
+  // reads from a cache that is already warm on the server.
+  loaderDeps: ({ search }) => search,
+  loader: async ({ context, deps }) => {
+    const qc = context.queryClient
+
+    const spaces = await qc.ensureQueryData({
+      queryKey: spaceKeys.mySpaces,
+      queryFn: () => listMySpaces(),
+    })
+    const spaceId =
+      (deps.space ? spaces.find((s) => s.id === deps.space) : spaces[0])
+        ?.id ?? null
+    if (!spaceId) return
+
+    // A custom range wins over the preset; the two coexist in the URL so
+    // switching back to a preset does not discard the custom dates.
+    const period =
+      deps.period === 'custom'
+        ? { from: deps.from ?? null, to: deps.to ?? null }
+        : presetToPeriod(deps.period)
+
+    const categories = await qc.ensureQueryData(categoriesQuery(spaceId))
+    const allIds = categories.map((c: { id: string }) => c.id)
+    const categoryIds =
+      deps.cats === undefined
+        ? undefined
+        : deps.cats.split(',').filter((id: string) => allIds.includes(id))
+
+    const filter: ListFilter = { ...period, categoryIds }
+
+    // Keys must match the component's useQuery exactly, including the balances
+    // key which uses the same filter object even though it only reads from/to —
+    // a mismatched key is a cache miss and a blank first paint.
+    await Promise.all([
+      qc.ensureQueryData(membersQuery(spaceId)),
+      qc.ensureQueryData(expensesQuery(spaceId, filter)),
+      qc.ensureQueryData(totalsQuery(spaceId, filter)),
+      qc.ensureQueryData(balancesQuery(spaceId, filter)),
+    ])
+  },
   component: DashboardRoute,
 })
 
@@ -31,8 +81,6 @@ function DashboardRoute() {
   const { space, spaceId } = useCurrentSpace(search.space)
   const [sheetOpen, setSheetOpen] = useState(false)
 
-  // A custom range wins over the preset; the two coexist in the URL so
-  // switching back to a preset does not discard the custom dates.
   const period = useMemo(
     () =>
       search.period === 'custom'
@@ -42,19 +90,17 @@ function DashboardRoute() {
   )
 
   const categories = useQuery({
-    queryKey: ['spaces', spaceId, 'categories'],
-    queryFn: () => listCategories({ data: { spaceId: spaceId! } }),
+    ...categoriesQuery(spaceId ?? ''),
     enabled: Boolean(spaceId),
   })
 
   const members = useQuery({
-    queryKey: ['spaces', spaceId, 'members'],
-    queryFn: () => listMembers({ data: { spaceId: spaceId! } }),
+    ...membersQuery(spaceId ?? ''),
     enabled: Boolean(spaceId),
   })
 
-  // `cats` undefined means "no category filter"; an empty string means
-  // "the user deselected everything", which is a real, empty selection.
+  // `cats` undefined means "no category filter"; an empty string means "the
+  // user deselected everything", which is a real, empty selection.
   const allIds = useMemo(
     () => (categories.data ?? []).map((c) => c.id),
     [categories.data],

@@ -61,6 +61,10 @@ export function Dashboard({
     enabled: Boolean(spaceId),
   })
 
+  // SSR has already warmed these in the route loader, so these resolve from
+  // cache on first render. The keys are derived by the same helpers, so they
+  // cannot drift apart from what the loader prefetched.
+
   if (!spaceId) {
     return (
       <p className="text-sm text-ink-muted">Pick a space to see its ledger.</p>

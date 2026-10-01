@@ -98,7 +98,7 @@ export function PeriodSelector({
                 go({ period: 'custom', from: e.target.value || undefined })
               }
               className="bg-paper-sunk px-2 py-1.5 text-sm rounded-[3px]
-                shadow-[var(--shadow-deboss)] focus:outline-none
+                shadow-[var(--shadow-deboss)]
                 focus:shadow-[var(--shadow-raise)]"
             />
           </div>
@@ -117,7 +117,7 @@ export function PeriodSelector({
                 go({ period: 'custom', to: e.target.value || undefined })
               }
               className="bg-paper-sunk px-2 py-1.5 text-sm rounded-[3px]
-                shadow-[var(--shadow-deboss)] focus:outline-none
+                shadow-[var(--shadow-deboss)]
                 focus:shadow-[var(--shadow-raise)]"
             />
           </div>

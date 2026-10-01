@@ -8,10 +8,20 @@
  * Plain text on purpose — the code has to be readable in any mail client, and
  * an HTML template is not worth the dependency surface for a 6-digit code.
  */
-import 'server-only'
-
+import { createServerOnlyFn } from '@tanstack/react-start'
 import { Resend } from 'resend'
 import { env, usesMailpit } from './db/env'
+
+/**
+ * Split an RFC 5322 address ("Name <email@example.com>") into Mailpit's
+ * {Name, Email} shape. A bare address becomes a name-less entry rather than
+ * being dropped.
+ */
+export function addressFrom(value: string): { Name: string; Email: string } {
+  const match = /^\s*(.*?)\s*<([^>]+)>\s*$/.exec(value)
+  if (match) return { Name: match[1] ?? '', Email: match[2] ?? value }
+  return { Name: '', Email: value.trim() }
+}
 
 export type OtpType =
   | 'sign-in'
@@ -60,37 +70,42 @@ function bodyFor(type: OtpType, otp: string): string {
   ].join('\n')
 }
 
-export async function sendOtpEmail({ to, otp, type }: SendOtpArgs) {
-  const e = env()
-  const subject = subjectFor(type)
-  const text = bodyFor(type, otp)
+export const sendOtpEmail = createServerOnlyFn(
+  async function ({ to, otp, type }: SendOtpArgs) {
+    const e = env()
+    const subject = subjectFor(type)
+    const text = bodyFor(type, otp)
 
-  if (usesMailpit(e)) {
-    // Dev: hand the message to Mailpit so it shows up at http://localhost:8025
-    const res = await fetch(`http://${e.SMTP_HOST}:${e.SMTP_PORT}/api/v1/send`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        From: e.EMAIL_FROM,
-        To: [to],
-        Subject: subject,
-        Text: text,
-      }),
-    })
-    if (!res.ok) {
-      throw new Error(
-        `Mailpit send failed (${res.status}): ${await res.text()}`,
-      )
+    if (usesMailpit(e)) {
+      // Dev: hand the message to Mailpit's HTTP API so it shows up in the
+      // Mailpit UI. Note this is the REST port (8025), not the SMTP one, and
+      // it wants From/To as {Name, Email} objects rather than RFC 5322
+      // strings.
+      const res = await fetch(`${e.MAILPIT_API_URL.replace(/\/$/, '')}/api/v1/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          From: addressFrom(e.EMAIL_FROM),
+          To: [addressFrom(to)],
+          Subject: subject,
+          Text: text,
+        }),
+      })
+      if (!res.ok) {
+        throw new Error(
+          `Mailpit send failed (${res.status}): ${await res.text()}`,
+        )
+      }
+      return
     }
-    return
-  }
 
-  const resend = new Resend(e.RESEND_API_KEY)
-  const { error } = await resend.emails.send({
-    from: e.EMAIL_FROM,
-    to,
-    subject,
-    text,
-  })
-  if (error) throw new Error(`Resend send failed: ${error.message}`)
-}
+    const resend = new Resend(e.RESEND_API_KEY)
+    const { error } = await resend.emails.send({
+      from: e.EMAIL_FROM,
+      to,
+      subject,
+      text,
+    })
+    if (error) throw new Error(`Resend send failed: ${error.message}`)
+  },
+)

@@ -16,8 +16,13 @@ const serverSchema = z.object({
   BETTER_AUTH_URL: z.url(),
   RESEND_API_KEY: z.string().optional().default(''),
   EMAIL_FROM: z.string().min(1).default('Splitwise <noreply@example.com>'),
-  SMTP_HOST: z.string().optional().default('localhost'),
-  SMTP_PORT: z.coerce.number().int().positive().optional().default(1025),
+  // Mailpit's HTTP API (port 8025), not its SMTP port. We deliver through the
+  // REST send endpoint rather than speaking SMTP, so this is the only mail
+  // address we need in dev.
+  MAILPIT_API_URL: z
+    .string()
+    .optional()
+    .default('http://localhost:8025'),
   TRUSTED_PROXY_HEADERS: z
     .string()
     .optional()
@@ -47,8 +52,7 @@ export function env(): ServerEnv {
     BETTER_AUTH_URL: process.env.BETTER_AUTH_URL,
     RESEND_API_KEY: process.env.RESEND_API_KEY ?? '',
     EMAIL_FROM: process.env.EMAIL_FROM ?? undefined,
-    SMTP_HOST: process.env.SMTP_HOST ?? undefined,
-    SMTP_PORT: process.env.SMTP_PORT ?? undefined,
+    MAILPIT_API_URL: process.env.MAILPIT_API_URL ?? undefined,
     TRUSTED_PROXY_HEADERS: process.env.TRUSTED_PROXY_HEADERS ?? undefined,
     NODE_ENV: process.env.NODE_ENV ?? undefined,
   })

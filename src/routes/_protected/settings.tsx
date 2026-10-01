@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
 import type { PeriodPreset } from '#/lib/period'
+import { listMySpaces } from '#/lib/auth.functions'
 import { AppShell } from '#/components/AppShell'
 import { Button } from '#/components/ui/Button'
 import { Card, CardHeader, CardTitle, Row, SectionTitle } from '#/components/ui/Card'
@@ -14,9 +15,9 @@ import {
   archiveCategory,
   createCategory,
   createMember,
-  listCategories,
-  listMembers,
 } from '#/lib/space.functions'
+import { categoriesQuery, membersQuery, spaceKeys } from '#/lib/session'
+import { ThemePicker } from '#/components/ThemePicker'
 import { exportCsv } from '#/lib/csv.functions'
 
 export const Route = createFileRoute('/_protected/settings')({
@@ -24,6 +25,23 @@ export const Route = createFileRoute('/_protected/settings')({
     space: typeof s.space === 'string' ? s.space : undefined,
     period: (typeof s.period === 'string' ? s.period : 'all') as PeriodPreset,
   }),
+  loaderDeps: ({ search }) => search,
+  loader: async ({ context, deps }) => {
+    const spaces = await context.queryClient.ensureQueryData({
+      queryKey: spaceKeys.mySpaces,
+      queryFn: () => listMySpaces(),
+    })
+    const spaceId =
+      (deps.space
+        ? spaces.find((s) => s.id === deps.space)
+        : spaces[0])?.id ?? null
+    if (!spaceId) return
+
+    await Promise.all([
+      context.queryClient.ensureQueryData(membersQuery(spaceId)),
+      context.queryClient.ensureQueryData(categoriesQuery(spaceId)),
+    ])
+  },
   component: SettingsRoute,
 })
 
@@ -40,14 +58,12 @@ function SettingsRoute() {
   const [personal, setPersonal] = useState(false)
 
   const members = useQuery({
-    queryKey: ['spaces', spaceId, 'members'],
-    queryFn: () => listMembers({ data: { spaceId: spaceId! } }),
+    ...membersQuery(spaceId ?? ''),
     enabled: Boolean(spaceId),
   })
 
   const categories = useQuery({
-    queryKey: ['spaces', spaceId, 'categories'],
-    queryFn: () => listCategories({ data: { spaceId: spaceId! } }),
+    ...categoriesQuery(spaceId ?? ''),
     enabled: Boolean(spaceId),
   })
 
@@ -259,7 +275,7 @@ function SettingsRoute() {
                   onChange={(e) => setPersonalOwner(e.target.value)}
                   required
                   className="w-full bg-paper-sunk px-3 py-2 text-ink rounded-[3px]
-                    shadow-[var(--shadow-deboss)] focus:outline-none"
+                    shadow-[var(--shadow-deboss)]"
                 >
                   <option value="">Choose…</option>
                   {(members.data ?? []).map((m) => (
@@ -280,6 +296,13 @@ function SettingsRoute() {
               Add category
             </Button>
           </form>
+        </Card>
+
+        <Card className="mb-4">
+          <CardHeader>
+            <CardTitle>Appearance</CardTitle>
+          </CardHeader>
+          <ThemePicker />
         </Card>
 
         <Card>
@@ -345,7 +368,7 @@ function SwatchRow({
             }}
           >
             {value === s.key && (
-              <span aria-hidden className="text-white text-xs font-bold">
+              <span aria-hidden className="text-ink text-xs font-bold">
                 ✓
               </span>
             )}

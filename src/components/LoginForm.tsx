@@ -72,13 +72,35 @@ export function LoginForm({ redirectTo }: { redirectTo?: string }) {
     navigate({ to: redirectTo ?? '/dashboard' })
   }
 
+  /**
+   * Accept one digit, or several at once.
+   *
+   * A paste normally arrives via the onPaste handler below, but mobile OTP
+   * autofill, password managers, and hardware scanners often set the whole
+   * value through a plain input event instead. Distributing the characters here
+   * means those paths work rather than silently filling one box.
+   */
   function onDigit(i: number, value: string) {
-    const digit = value.replace(/\D/g, '').slice(-1)
+    const digits = value.replace(/\D/g, '')
+    if (digits.length === 0) {
+      const cleared = [...code]
+      cleared[i] = ''
+      setCode(cleared)
+      return
+    }
+
     const next = [...code]
-    next[i] = digit
+    digits
+      .slice(0, 6 - i)
+      .split('')
+      .forEach((d, offset) => {
+        next[i + offset] = d
+      })
     setCode(next)
     setError(null)
-    if (digit && i < 5) inputs.current[i + 1]?.focus()
+
+    const focusAt = Math.min(i + digits.length, 5)
+    inputs.current[focusAt]?.focus()
   }
 
   function onKeyDown(i: number, e: React.KeyboardEvent<HTMLInputElement>) {
@@ -171,13 +193,16 @@ export function LoginForm({ redirectTo }: { redirectTo?: string }) {
                   onKeyDown={(e) => onKeyDown(i, e)}
                   inputMode="numeric"
                   autoComplete={i === 0 ? 'one-time-code' : 'off'}
-                  maxLength={1}
+                  // Deliberately no maxLength: it would clip the value before
+                  // onChange sees it, so the multi-character autofill path
+                  // could never arrive. One character per box is enforced in
+                  // onDigit instead.
                   aria-label={`Digit ${i + 1}`}
                   className="tnum w-full h-14 text-center text-xl font-medium
                     bg-paper-sunk rounded-[3px] shadow-[var(--shadow-deboss)]
                     border-b-2 border-transparent
                     focus:shadow-[var(--shadow-raise)] focus:border-terracotta
-                    focus:outline-none"
+                   "
                 />
               ))}
             </div>
@@ -195,7 +220,7 @@ export function LoginForm({ redirectTo }: { redirectTo?: string }) {
               type="button"
               onClick={() => void sendCode()}
               disabled={cooldown > 0 || sending}
-              className="mt-4 text-sm text-terracotta underline underline-offset-4
+              className="mt-4 text-sm text-terracotta-ink underline underline-offset-4
                 disabled:text-ink-faint disabled:no-underline w-full text-center"
             >
               {cooldown > 0 ? `Resend code in ${cooldown}s` : 'Resend code'}
@@ -217,7 +242,7 @@ export function LoginForm({ redirectTo }: { redirectTo?: string }) {
       </AnimatePresence>
 
       {error && (
-        <p role="alert" className="mt-4 text-sm text-oxblood">
+        <p role="alert" className="mt-4 text-sm text-oxblood-ink">
           {error}
         </p>
       )}

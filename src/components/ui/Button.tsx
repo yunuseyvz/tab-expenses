@@ -21,12 +21,20 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        primary: 'bg-terracotta text-white hover:bg-terracotta-strong',
+        // The label is ink, not white: on a warm saturated fill white manages
+        // 1.7:1 at the plan's terracotta, and even at the corrected 0.68 fill
+        // it is 2.6:1. Ink on the same fill is 4.8:1 and reads as ink on paper,
+        // which is the art direction anyway.
+        //
+        // Hover lightens rather than darkens, because darkening a light fill
+        // drops the label straight back under 4.5:1. The pressed state is
+        // carried by the transform and the inset shadow instead.
+        primary: 'bg-terracotta text-ink hover:bg-terracotta-strong',
         secondary:
-          'bg-transparent text-ink border border-rule hover:border-terracotta',
+          'bg-transparent text-ink border border-rule hover:border-terracotta-ink',
         ghost: 'bg-transparent text-ink-muted hover:text-ink',
-        danger: 'bg-oxblood text-white hover:opacity-90',
-        link: 'bg-transparent text-terracotta underline underline-offset-4 p-0 h-auto',
+        danger: 'bg-oxblood-ink text-white hover:brightness-110',
+        link: 'bg-transparent text-terracotta-ink underline underline-offset-4 p-0 h-auto',
       },
       size: {
         sm: 'h-8 px-3 text-sm',

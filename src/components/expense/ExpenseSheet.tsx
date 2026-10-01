@@ -158,7 +158,7 @@ export function ExpenseSheet({
               className="w-full bg-paper-sunk px-3 py-2 text-ink rounded-[3px]
                 shadow-[var(--shadow-deboss)] border-b-2 border-transparent
                 focus:shadow-[var(--shadow-raise)] focus:border-terracotta
-                focus:outline-none"
+               "
             >
               <option value="">Uncategorised</option>
               {categories

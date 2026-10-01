@@ -4,6 +4,10 @@
  * Every handler here follows the two-layer auth rule: `ensureSession()` then
  * `requireSpaceMember()` / `requireSpaceOwner()`. The router guard is UX; this
  * is the security boundary.
+ *
+ * A cross-space note: createSpace, getSession, ensureSession and listMySpaces
+ * are defined in ./auth.functions, not here. `getSpace` is space-scoped and
+ * does check membership.
  */
 import { createServerFn } from '@tanstack/react-start'
 import { and, asc, eq, isNull, sql } from 'drizzle-orm'
@@ -14,8 +18,10 @@ import { getDb } from './db'
 import { category, space, spaceMember } from './db/schema'
 import {
   categoryInputSchema,
+  categoryUpdateSchema,
   currencySchema,
   memberInputSchema,
+  memberUpdateSchema,
   uuidSchema,
 } from './guards'
 
@@ -124,13 +130,7 @@ export const createMember = createServerFn({ method: 'POST' })
   })
 
 export const updateMember = createServerFn({ method: 'POST' })
-  .inputValidator(
-    memberInputSchema.extend({ memberId: uuidSchema }).partial({
-      displayName: true,
-      color: true,
-      defaultWeightBp: true,
-    }),
-  )
+  .inputValidator(memberUpdateSchema)
   .handler(async ({ data }) => {
     const session = await ensureSession()
     await requireSpaceMember(session.user.id, data.spaceId)
@@ -303,11 +303,7 @@ export const createCategory = createServerFn({ method: 'POST' })
   })
 
 export const updateCategory = createServerFn({ method: 'POST' })
-  .inputValidator(
-    categoryInputSchema
-      .extend({ categoryId: uuidSchema })
-      .partial({ name: true, color: true, icon: true, sortOrder: true }),
-  )
+  .inputValidator(categoryUpdateSchema)
   .handler(async ({ data }) => {
     const session = await ensureSession()
     await requireSpaceMember(session.user.id, data.spaceId)

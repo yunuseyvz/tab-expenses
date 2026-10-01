@@ -72,6 +72,39 @@ export const categoryInputSchema = z
   )
 export type CategoryInput = z.infer<typeof categoryInputSchema>
 
+/**
+ * Update schemas are written out explicitly rather than derived with
+ * `.partial()`.
+ *
+ * Two reasons, both of which bit in practice:
+ *  · Zod 4 refuses `.partial()` on an object that carries a `.refine()`, and
+ *    categoryInputSchema does.
+ *  · `.partial()` would also make the *identifiers* optional, so
+ *    `eq(spaceMember.spaceId, data.spaceId)` would not typecheck — and
+ *    allowing a missing spaceId in an authorisation filter is exactly the sort
+ *    of hole worth closing by construction.
+ *
+ * Category scope and owner are deliberately not updatable: a category's scope
+ * is fixed at creation, and changing it would silently invalidate the
+ * category_scope_owner_ck check constraint.
+ */
+export const memberUpdateSchema = z.object({
+  spaceId: uuidSchema,
+  memberId: uuidSchema,
+  displayName: z.string().trim().min(1).max(60).optional(),
+  color: swatchKeySchema.optional(),
+  defaultWeightBp: z.number().int().min(0).max(BP_TOTAL).optional(),
+})
+
+export const categoryUpdateSchema = z.object({
+  spaceId: uuidSchema,
+  categoryId: uuidSchema,
+  name: z.string().trim().min(1).max(60).optional(),
+  color: swatchKeySchema.optional(),
+  icon: z.string().trim().min(1).max(40).optional(),
+  sortOrder: z.number().int().optional(),
+})
+
 export const splitInputSchema = z.object({
   memberId: uuidSchema,
   weightBp: z.number().int().min(0).max(BP_TOTAL),

@@ -5,7 +5,8 @@ import { useQuery } from '@tanstack/react-query'
 import type {PeriodPreset} from '#/lib/period';
 import { AppShell } from '#/components/AppShell'
 import { Card, CardHeader, CardTitle, Row, SectionTitle } from '#/components/ui/Card'
-import { balancesQuery } from '#/lib/session'
+import { balancesQuery, spaceKeys } from '#/lib/session'
+import { listMySpaces } from '#/lib/auth.functions'
 import { formatMoney } from '#/lib/money'
 import {  presetToPeriod } from '#/lib/period'
 import { swatchColor } from '#/lib/swatches'
@@ -17,6 +18,21 @@ export const Route = createFileRoute('/_protected/balances')({
     space: typeof s.space === 'string' ? s.space : undefined,
     period: (typeof s.period === 'string' ? s.period : 'all') as PeriodPreset,
   }),
+  loaderDeps: ({ search }) => search,
+  loader: async ({ context, deps }) => {
+    const qc = context.queryClient
+
+    const spaces = await qc.ensureQueryData({
+      queryKey: spaceKeys.mySpaces,
+      queryFn: () => listMySpaces(),
+    })
+    const spaceId =
+      (deps.space ? spaces.find((s) => s.id === deps.space) : spaces[0])
+        ?.id ?? null
+    if (!spaceId) return
+
+    await qc.ensureQueryData(balancesQuery(spaceId, presetToPeriod(deps.period)))
+  },
   component: BalancesRoute,
 })
 

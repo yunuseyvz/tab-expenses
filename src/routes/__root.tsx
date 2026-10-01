@@ -2,14 +2,23 @@ import {
   HeadContent,
   Outlet,
   Scripts,
-  createRootRoute,
+  createRootRouteWithContext,
 } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
+import type { QueryClient } from '@tanstack/react-query'
 
 import { Toaster } from '#/components/ui/sonner'
+import { THEME_BOOTSTRAP } from '#/lib/theme'
 import '#/styles/app.css'
 
-export const Route = createRootRoute({
+/**
+ * Declaring the router context on the root route is what gives every child
+ * route its `context.queryClient` type. With a bare `createRootRoute`, children
+ * only see what their parents' `beforeLoad` returned.
+ */
+export const Route = createRootRouteWithContext<{
+  queryClient: QueryClient
+}>()({
   head: () => ({
     meta: [
       { charSet: 'utf-8' },
@@ -25,15 +34,16 @@ export const Route = createRootRoute({
       { rel: 'icon', href: '/favicon.svg', type: 'image/svg+xml' },
     ],
   }),
+  shellComponent: RootDocument,
   component: RootComponent,
 })
 
 function RootComponent() {
   return (
-    <RootDocument>
+    <>
       <Outlet />
       <Toaster />
-    </RootDocument>
+    </>
   )
 }
 
@@ -42,6 +52,16 @@ function RootDocument({ children }: Readonly<{ children: ReactNode }>) {
     <html lang="en" suppressHydrationWarning>
       <head>
         <HeadContent />
+        {/*
+          Applies the theme class before the first paint. Inline and
+          deliberately not a module: a deferred script would run after the
+          first frame and cause a flash of the wrong theme.
+        */}
+        <script
+          // biome-ignore lint/security/noDangerouslySetInnerHtml: must be
+          // inline and synchronous to run before paint.
+          dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP }}
+        />
       </head>
       <body>
         {/* Skip link: keyboard users land on content, not the nav. */}

@@ -24,17 +24,50 @@
   --color-paper-raised: oklch(0.978 0.010 85);
   --color-paper-sunk: oklch(0.93 0.014 85);
 
-  /* ── ink ───────────────────────────────────────────────────────────── */
+  /* ── ink ───────────────────────────────────────────────────────────────
+   * Lightness values are tuned so every level clears WCAG AA (4.5:1) against
+   * the surface it is actually used on. The ratios, measured in OKLCH:
+   *
+   *   ink        0.28  → 12.3:1 on paper, 11.1:1 on sunk
+   *   ink-muted  0.46  →  5.9:1 on paper,  5.3:1 on sunk
+   *   ink-faint  0.52  →  4.7:1 on paper,  4.8:1 on raised
+   *
+   * ink-faint is 4.2:1 on paper-sunk, so it is for paper and raised surfaces
+   * only. That is also why the ramp is this tight: on a paper this light there
+   * is room for two comfortably distinct greys that both pass, not three, so
+   * faint text is additionally differentiated by size and letterspacing rather
+   * than by being lighter still.
+   */
   --color-ink: oklch(0.28 0.02 60);
-  --color-ink-muted: oklch(0.52 0.018 60);
-  --color-ink-faint: oklch(0.68 0.014 60);
+  --color-ink-muted: oklch(0.46 0.018 60);
+  --color-ink-faint: oklch(0.52 0.014 60);
 
-  /* ── accents ───────────────────────────────────────────────────────── */
-  --color-terracotta: oklch(0.62 0.13 45);
-  --color-terracotta-strong: oklch(0.54 0.13 45);
-  --color-ochre: oklch(0.74 0.12 80);
-  --color-sage: oklch(0.6 0.075 150);
-  --color-oxblood: oklch(0.48 0.14 20);
+  /* ── accents ───────────────────────────────────────────────────────────
+   * Each accent has two roles with genuinely different contrast requirements,
+   * so each carries two tokens rather than one being asked to do both.
+   *
+   *   • as a FILL the saturated value is right — it is the art direction. The
+   *     label on top is then the question. Terracotta at the plan's 0.62 gives
+   *     3.83:1 with an ink label and 1.73:1 with a white one, i.e. an
+   *     unreadable primary button either way. Lifting the fill to 0.68 and
+   *     labelling it in ink gives 4.84:1 while keeping the warm saturated
+   *     terracotta, so that is what the fill token is. Darkening the *label*
+   *     is not an option: ink is already the darkest text colour available.
+   *   • as TEXT (links, "you owe", the focus ring) a fill is far too light —
+   *     terracotta reads 3.45:1 against paper — so the *-ink variants take a
+   *     darker step of the same hue.
+   *
+   * Measured with e2e/design.spec.ts, which rasterises through a canvas.
+   */
+  --color-terracotta: oklch(0.68 0.13 45); /* fill, ink label 4.8:1  */
+  --color-terracotta-strong: oklch(0.72 0.13 45); /* hover, 5.6:1     */
+  --color-terracotta-ink: oklch(0.48 0.11 45); /* text ≥ 4.5:1      */
+  --color-ochre: oklch(0.74 0.12 80); /* fill only, 1.4:1 as text  */
+  --color-ochre-ink: oklch(0.44 0.11 80); /* text ≥ 4.5:1      */
+  --color-sage: oklch(0.5 0.075 150); /* fill and text ≥ 4.5:1  */
+  --color-sage-ink: oklch(0.44 0.075 150);
+  --color-oxblood: oklch(0.48 0.14 20); /* fill, white label 7.0:1 */
+  --color-oxblood-ink: oklch(0.42 0.13 20); /* text and danger fill */
   --color-rule: oklch(0.86 0.016 80);
 
   /* ── elevation: the heart of the effect ────────────────────────────── */
@@ -82,22 +115,36 @@
 
 .dark {
   /* Dark mode is a separate art pass, not an inversion: paper under lamplight
-   * is warm charcoal, not black, and accents desaturate and lift or they
-   * vibrate against it. Grain is dialled down. */
+   * is warm charcoal, not black, and accents are lifted and desaturated or
+   * they vibrate against it. Grain is dialled down. */
   --color-paper: oklch(0.22 0.014 70);
   --color-paper-raised: oklch(0.26 0.016 70);
   --color-paper-sunk: oklch(0.19 0.012 70);
 
   --color-ink: oklch(0.92 0.012 85);
-  --color-ink-muted: oklch(0.72 0.014 80);
-  --color-ink-faint: oklch(0.58 0.012 80);
+  --color-ink-muted: oklch(0.7 0.014 80);
+  --color-ink-faint: oklch(0.64 0.012 80);
 
-  --color-terracotta: oklch(0.7 0.11 45);
-  --color-terracotta-strong: oklch(0.78 0.11 45);
-  --color-ochre: oklch(0.8 0.1 80);
-  --color-sage: oklch(0.72 0.07 150);
-  --color-oxblood: oklch(0.65 0.13 20);
-  --color-rule: oklch(0.36 0.014 75);
+  /* Dark mode is a separate art pass, not an inversion: paper under lamplight
+   * is warm charcoal, not black, and accents are lifted and desaturated or
+   * they vibrate against it. Grain is dialled down.
+   *
+   * Crucially the fill/text roles SWAP rather than carrying over. A near-white
+   * label needs a DARK fill, and link text on dark paper needs to be LIGHTER
+   * than the fill — the same terracotta value cannot serve both roles the way
+   * it nearly does in light mode. Values found by searching in-browser
+   * (scripts/find-dark-contrast.mjs) and asserted in e2e/design.spec.ts.
+   */
+  --color-terracotta: oklch(0.52 0.11 45); /* dark fill, ink label */
+  --color-terracotta-strong: oklch(0.46 0.11 45); /* hover: darkens, still ≥4.5 */
+  --color-terracotta-ink: oklch(0.645 0.1 45); /* text on dark paper */
+  --color-ochre: oklch(0.5 0.09 80); /* fill        */
+  --color-ochre-ink: oklch(0.64 0.09 80); /* text        */
+  --color-sage: oklch(0.63 0.07 150); /* fill and text */
+  --color-sage-ink: oklch(0.68 0.07 150);
+  --color-oxblood: oklch(0.525 0.13 20); /* fill, ink label */
+  --color-oxblood-ink: oklch(0.65 0.12 20); /* text on dark paper */
+  --color-rule: oklch(0.54 0.014 75);
 
   --shadow-deboss:
     inset 0 1px 2px rgb(0 0 0 / 0.4), inset 0 -1px 0 rgb(255 240 220 / 0.06);
@@ -139,14 +186,9 @@
   }
 
   /*
-   * Focus rings stay fully visible against the texture. Never outline: none
-   * without a replacement.
+   * Focus rings stay fully visible against the texture. See the unlayered
+   * rule at the end of this file, which is what actually wins the cascade.
    */
-  :focus-visible {
-    outline: 2px solid var(--color-terracotta);
-    outline-offset: 2px;
-    border-radius: 2px;
-  }
 
   ::selection {
     background: color-mix(in oklch, var(--color-ochre) 45%, transparent);
@@ -173,6 +215,52 @@
     background: var(--color-paper-raised);
     box-shadow: var(--shadow-float);
     border-radius: 2px;
+  }
+
+  /*
+   * Tactile slider: a debossed groove with a raised thumb.
+   *
+   * The thumb needs explicit styling in both engines. Without it Chromium falls
+   * back to its default blue thumb, which is visibly off-palette in a warm
+   * ledger — and `accent-color` alone does not reach the thumb.
+   */
+  .range-tactile {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 100%;
+    height: 0.375rem;
+    border-radius: 9999px;
+    background: var(--color-paper-sunk);
+    box-shadow: var(--shadow-deboss);
+    cursor: pointer;
+  }
+
+  .range-tactile::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 1.15rem;
+    height: 1.15rem;
+    border-radius: 9999px;
+    background: var(--color-terracotta);
+    border: 2px solid var(--color-paper-raised);
+    box-shadow: var(--shadow-raise);
+    /* Transform only — never animate box-shadow. */
+    transition: transform 150ms var(--ease-out-soft);
+  }
+
+  .range-tactile::-moz-range-thumb {
+    width: 1.15rem;
+    height: 1.15rem;
+    border-radius: 9999px;
+    background: var(--color-terracotta);
+    border: 2px solid var(--color-paper-raised);
+    box-shadow: var(--shadow-raise);
+    transition: transform 150ms var(--ease-out-soft);
+  }
+
+  .range-tactile:active::-webkit-slider-thumb,
+  .range-tactile:active::-moz-range-thumb {
+    transform: scale(1.12);
   }
 
   /* Cards, list rows, sheets. */
@@ -203,4 +291,23 @@
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/*
+ * ── Focus ring, deliberately unlayered ─────────────────────────────────
+ *
+ * Unlayered rules beat every @layer rule regardless of specificity, so this
+ * cannot be overridden by a component's `focus:outline-none` utility. That
+ * matters: an earlier draft put `focus:outline-none` on the inputs, which
+ * quietly removed the ring for keyboard users — the exact failure the plan
+ * calls out as non-negotiable. Declared this way it fails safe instead of
+ * failing open.
+ *
+ * :focus-visible rather than :focus, so a mouse click leaves no ring while
+ * text inputs (which browsers always treat as focus-visible) keep theirs.
+ */
+:focus-visible {
+  outline: 2px solid var(--color-terracotta);
+  outline-offset: 2px;
+  border-radius: 2px;
 }
