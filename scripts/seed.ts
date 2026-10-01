@@ -52,7 +52,11 @@ async function main() {
 
     const [wg] = await db
       .insert(space)
-      .values({ name: 'Hauptstraße', currency: 'EUR', createdByUserId: DEMO_USER_ID })
+      .values({
+        name: 'Hauptstraße',
+        currency: 'EUR',
+        createdByUserId: DEMO_USER_ID,
+      })
       .returning()
     if (!wg) throw new Error('failed to insert space')
 
@@ -101,7 +105,9 @@ async function main() {
     ]
     const sharedRows = await db
       .insert(category)
-      .values(shared.map((c) => ({ ...c, spaceId: wg.id, scope: 'shared' as const })))
+      .values(
+        shared.map((c) => ({ ...c, spaceId: wg.id, scope: 'shared' as const })),
+      )
       .returning()
     const byName = new Map(sharedRows.map((c) => [c.name, c]))
 
@@ -137,18 +143,106 @@ async function main() {
       weights: Array<[typeof me, number]>
     }> = [
       // The 60/40 case from the plan: €100, 60% mine, 40% Vater's.
-      { daysAgo: 1, purpose: 'Weekly groceries', minor: 10000, category: 'Groceries', payer: me, weights: [[me, 6000], [vater, 4000]] },
-      { daysAgo: 2, purpose: 'Electricity', minor: 8450, category: 'Utilities', payer: vater, weights: [[me, 5000], [vater, 5000]] },
-      { daysAgo: 3, purpose: 'Pharmacy', minor: 2370, category: 'Health', payer: me, weights: [[me, 6000], [vater, 4000]] },
+      {
+        daysAgo: 1,
+        purpose: 'Weekly groceries',
+        minor: 10000,
+        category: 'Groceries',
+        payer: me,
+        weights: [
+          [me, 6000],
+          [vater, 4000],
+        ],
+      },
+      {
+        daysAgo: 2,
+        purpose: 'Electricity',
+        minor: 8450,
+        category: 'Utilities',
+        payer: vater,
+        weights: [
+          [me, 5000],
+          [vater, 5000],
+        ],
+      },
+      {
+        daysAgo: 3,
+        purpose: 'Pharmacy',
+        minor: 2370,
+        category: 'Health',
+        payer: me,
+        weights: [
+          [me, 6000],
+          [vater, 4000],
+        ],
+      },
       // Odd cent: 5c at 50/30/20 → 3/1/1. The payer absorbs the odd cent.
-      { daysAgo: 4, purpose: 'Bread', minor: 5, category: 'Groceries', payer: vater, weights: [[me, 5000], [vater, 3000], [mila, 2000]] },
-      { daysAgo: 5, purpose: 'Rent transfer', minor: 145000, category: 'Home', payer: me, weights: [[me, 5000], [vater, 5000]] },
-      { daysAgo: 6, purpose: 'Train tickets', minor: 4900, category: null, payer: me, weights: [[me, 6000], [vater, 4000]] },
+      {
+        daysAgo: 4,
+        purpose: 'Bread',
+        minor: 5,
+        category: 'Groceries',
+        payer: vater,
+        weights: [
+          [me, 5000],
+          [vater, 3000],
+          [mila, 2000],
+        ],
+      },
+      {
+        daysAgo: 5,
+        purpose: 'Rent transfer',
+        minor: 145000,
+        category: 'Home',
+        payer: me,
+        weights: [
+          [me, 5000],
+          [vater, 5000],
+        ],
+      },
+      {
+        daysAgo: 6,
+        purpose: 'Train tickets',
+        minor: 4900,
+        category: null,
+        payer: me,
+        weights: [
+          [me, 6000],
+          [vater, 4000],
+        ],
+      },
       // Last month, so the period selector has something to switch to.
-      { daysAgo: 40, purpose: 'Previous rent', minor: 145000, category: 'Home', payer: me, weights: [[me, 5000], [vater, 5000]] },
-      { daysAgo: 45, purpose: 'Internet', minor: 3999, category: 'Utilities', payer: vater, weights: [[me, 5000], [vater, 5000]] },
+      {
+        daysAgo: 40,
+        purpose: 'Previous rent',
+        minor: 145000,
+        category: 'Home',
+        payer: me,
+        weights: [
+          [me, 5000],
+          [vater, 5000],
+        ],
+      },
+      {
+        daysAgo: 45,
+        purpose: 'Internet',
+        minor: 3999,
+        category: 'Utilities',
+        payer: vater,
+        weights: [
+          [me, 5000],
+          [vater, 5000],
+        ],
+      },
       // Personal category: only in Mila's own totals.
-      { daysAgo: 7, purpose: 'Watercolours', minor: 3200, category: 'Mila — hobby budget', payer: mila, weights: [[mila, 10000]] },
+      {
+        daysAgo: 7,
+        purpose: 'Watercolours',
+        minor: 3200,
+        category: 'Mila — hobby budget',
+        payer: mila,
+        weights: [[mila, 10000]],
+      },
     ]
 
     for (const e of plan) {
@@ -156,7 +250,10 @@ async function main() {
       if (weightTotal !== 10_000) {
         throw new Error(`${e.purpose}: weights sum to ${weightTotal}`)
       }
-      const shares = allocate(e.minor, e.weights.map(([, w]) => w))
+      const shares = allocate(
+        e.minor,
+        e.weights.map(([, w]) => w),
+      )
 
       const [row] = await db
         .insert(expense)

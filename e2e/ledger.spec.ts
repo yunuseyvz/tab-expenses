@@ -4,21 +4,21 @@
  */
 import { expect, test } from '@playwright/test'
 
-
-
-
-
 test.describe('ledger', () => {
   // These run against the session established in global-setup.
   test('shows the seeded dashboard totals', async ({ page }) => {
     await page.goto('/dashboard?period=all')
 
-    await expect(page.getByRole('heading', { name: 'Hauptstraße' })).toBeVisible()
+    await expect(
+      page.getByRole('heading', { name: 'Hauptstraße' }),
+    ).toBeVisible()
     await expect(page.getByText('Total spend')).toBeVisible()
     await expect(page.getByText('Your share')).toBeVisible()
   })
 
-  test('the ledger lists the seeded expenses grouped by day', async ({ page }) => {
+  test('the ledger lists the seeded expenses grouped by day', async ({
+    page,
+  }) => {
     await page.goto('/expenses?period=all')
 
     await expect(page.getByRole('heading', { name: 'Expenses' })).toBeVisible()
@@ -28,7 +28,9 @@ test.describe('ledger', () => {
     await expect(page.getByText(/split \d+ ways/).first()).toBeVisible()
   })
 
-  test('the category filter narrows the total in one pass', async ({ page }) => {
+  test('the category filter narrows the total in one pass', async ({
+    page,
+  }) => {
     await page.goto('/dashboard?period=all')
 
     const total = page.locator('p.tnum.font-serif').first()
@@ -74,7 +76,9 @@ test.describe('ledger', () => {
     await expect(page.getByText('Mila').first()).toBeVisible()
   })
 
-  test('creates an expense and it persists across a reload', async ({ page }) => {
+  test('creates an expense and it persists across a reload', async ({
+    page,
+  }) => {
     await page.goto('/dashboard?period=all')
 
     await page.getByRole('button', { name: 'New expense' }).click()

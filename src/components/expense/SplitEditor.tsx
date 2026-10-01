@@ -136,9 +136,7 @@ export function SplitEditor({
             if (next && drafts.length === 0 && members.length > 0) {
               // Pre-fill from each member's default weight, falling back to an
               // even split when nobody has set one.
-              const hasDefaults = members.some(
-                (m) => m.defaultWeightBp > 0,
-              )
+              const hasDefaults = members.some((m) => m.defaultWeightBp > 0)
               if (hasDefaults) {
                 onDraftsChange(
                   members.map((m) => ({

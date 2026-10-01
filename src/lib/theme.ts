@@ -39,10 +39,7 @@ export function applyTheme(theme: Theme) {
   // Keep the browser chrome in step with the page.
   const meta = document.querySelector('meta[name="theme-color"]')
   if (meta) {
-    meta.setAttribute(
-      'content',
-      resolved === 'dark' ? '#26211c' : '#f6f1e6',
-    )
+    meta.setAttribute('content', resolved === 'dark' ? '#26211c' : '#f6f1e6')
   }
 }
 

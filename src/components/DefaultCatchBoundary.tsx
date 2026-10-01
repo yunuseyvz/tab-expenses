@@ -13,10 +13,7 @@ export function DefaultCatchBoundary({ error }: { error: unknown }) {
         : JSON.stringify(error)
 
   return (
-    <main
-      id="main"
-      className="min-h-dvh flex items-center justify-center p-6"
-    >
+    <main id="main" className="min-h-dvh flex items-center justify-center p-6">
       <div className="card max-w-md w-full p-6">
         <h1 className="text-xl font-semibold mb-2">Something went wrong</h1>
         <p className="text-sm text-ink-muted mb-4 break-words">{message}</p>

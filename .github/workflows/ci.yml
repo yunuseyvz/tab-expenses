@@ -1,0 +1,198 @@
+name: ci
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DATABASE_URL: postgresql://app:app@localhost:5432/app
+  BETTER_AUTH_SECRET: ci-only-secret-not-used-in-production-32ch
+  BETTER_AUTH_URL: http://localhost:3000
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: app
+          POSTGRES_PASSWORD: app
+          POSTGRES_DB: app
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U app"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.8.1
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Format check
+        run: pnpm format:check
+
+      - name: No secret may use the VITE_ prefix
+        # Vite inlines VITE_* into the client bundle at build time, so this is a
+        # published-secret check, not a style preference.
+        run: pnpm guard:vite-env
+
+      - name: Every server function checks session and space membership
+        run: pnpm guard:auth
+
+      - name: Unit and integration tests
+        run: pnpm test
+
+      - name: Schema constraints hold against a real database
+        run: pnpm db:migrate && pnpm db:verify-constraints
+
+      - name: Seed and check the split invariant
+        run: pnpm db:seed
+
+      - name: Build
+        run: pnpm build
+
+      - name: The build must not inline a secret
+        # Second line of defence: scan the emitted client assets for values that
+        # only exist in the server environment.
+        run: |
+          if grep -rlE "ci-only-secret|postgresql://app:app" .output/public 2>/dev/null; then
+            echo "::error::a server secret was found in the client bundle"
+            exit 1
+          fi
+          echo "client bundle is clean"
+
+  e2e:
+    runs-on: ubuntu-latest
+    needs: verify
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: app
+          POSTGRES_PASSWORD: app
+          POSTGRES_DB: app
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U app"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.8.1
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - name: Install browser
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: End-to-end
+        # Brings up Postgres and Mailpit, migrates, seeds, builds, serves, runs
+        # Playwright against a phone-sized viewport.
+        env:
+          DATABASE_URL: postgresql://app:app@localhost:5432/app
+        run: pnpm test:e2e
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
+  docker:
+    runs-on: ubuntu-latest
+    needs: verify
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build the image
+        run: docker build -t splitwise:ci .
+
+      - name: The image must run as a non-root user
+        run: |
+          USER=$(docker inspect -f '{{.Config.User}}' splitwise:ci)
+          echo "image runs as: ${USER:-root}"
+          if [ -z "$USER" ] || [ "$USER" = "root" ] || [ "$USER" = "0" ]; then
+            echo "::error::the runtime image must not run as root"
+            exit 1
+          fi
+
+      - name: Compose config is valid
+        run: docker compose config --quiet
+        env:
+          POSTGRES_PASSWORD: ci
+          BETTER_AUTH_SECRET: ci-only-secret-not-used-in-production-32ch
+          BETTER_AUTH_URL: https://example.invalid
+
+      - name: Smoke test the container
+        run: |
+          docker network create swl-ci
+          docker run -d --name swl-db --network swl-ci \
+            -e POSTGRES_USER=app -e POSTGRES_PASSWORD=app -e POSTGRES_DB=app \
+            postgres:17-alpine
+          for i in $(seq 1 30); do
+            docker exec swl-db pg_isready -U app >/dev/null 2>&1 && break
+            sleep 1
+          done
+          docker run -d --name swl-app --network swl-ci -p 3000:3000 \
+            -e DATABASE_URL=postgresql://app:app@swl-db:5432/app \
+            -e BETTER_AUTH_SECRET=ci-only-secret-not-used-in-production-32ch \
+            -e BETTER_AUTH_URL=http://localhost:3000 \
+            -e NODE_ENV=production \
+            splitwise:ci
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:3000/ping >/dev/null 2>&1; then
+              echo "container is serving"
+              docker exec swl-app ps >/dev/null
+              docker logs swl-app | tail -20
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::container did not become ready"
+          docker logs swl-app
+          exit 1

@@ -6,12 +6,7 @@
 import { useState } from 'react'
 import { Link, useRouterState } from '@tanstack/react-router'
 import { AnimatePresence, motion } from 'motion/react'
-import {
-  LayoutGrid,
-  List,
-  Scale,
-  Settings as SettingsIcon,
-} from 'lucide-react'
+import { LayoutGrid, List, Scale, Settings as SettingsIcon } from 'lucide-react'
 
 import { authClient } from '#/lib/auth-client'
 import { cn } from '#/lib/cn'

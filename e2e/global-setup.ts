@@ -49,7 +49,9 @@ export default async function globalSetup() {
   // Capture the session cookie into Playwright's storageState format.
   const setCookie = signIn.headers.get('set-cookie')
   if (!setCookie) {
-    throw new Error('sign-in succeeded but set no cookie — is tanstackStartCookies() last?')
+    throw new Error(
+      'sign-in succeeded but set no cookie — is tanstackStartCookies() last?',
+    )
   }
   const [pair] = setCookie.split(';')
   const eq = pair!.indexOf('=')

@@ -21,7 +21,7 @@
 @theme {
   /* ── paper ─────────────────────────────────────────────────────────── */
   --color-paper: oklch(0.965 0.012 85);
-  --color-paper-raised: oklch(0.978 0.010 85);
+  --color-paper-raised: oklch(0.978 0.01 85);
   --color-paper-sunk: oklch(0.93 0.014 85);
 
   /* ── ink ───────────────────────────────────────────────────────────────
@@ -86,7 +86,8 @@
   /* ── type ──────────────────────────────────────────────────────────── */
   --font-sans:
     'Inter var', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-serif: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
+  --font-serif:
+    'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
   --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, monospace;
 
   /* ── motion: springs over durations ────────────────────────────────── */
@@ -136,7 +137,9 @@
    * (scripts/find-dark-contrast.mjs) and asserted in e2e/design.spec.ts.
    */
   --color-terracotta: oklch(0.52 0.11 45); /* dark fill, ink label */
-  --color-terracotta-strong: oklch(0.46 0.11 45); /* hover: darkens, still ≥4.5 */
+  --color-terracotta-strong: oklch(
+    0.46 0.11 45
+  ); /* hover: darkens, still ≥4.5 */
   --color-terracotta-ink: oklch(0.645 0.1 45); /* text on dark paper */
   --color-ochre: oklch(0.5 0.09 80); /* fill        */
   --color-ochre-ink: oklch(0.64 0.09 80); /* text        */

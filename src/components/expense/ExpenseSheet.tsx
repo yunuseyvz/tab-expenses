@@ -3,11 +3,11 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
 import type { Category, SpaceMember } from '#/lib/db/schema'
-import type {SplitDraft} from '#/components/expense/SplitEditor';
+import type { SplitDraft } from '#/components/expense/SplitEditor'
 import { Sheet } from '#/components/AppShell'
 import { Button } from '#/components/ui/Button'
 import { Input, Label, Textarea } from '#/components/ui/Input'
-import {  SplitEditor } from '#/components/expense/SplitEditor'
+import { SplitEditor } from '#/components/expense/SplitEditor'
 import { createExpense } from '#/lib/expense.functions'
 import { parseAmountToMinor } from '#/lib/money'
 import { today } from '#/lib/period'
@@ -162,7 +162,10 @@ export function ExpenseSheet({
             >
               <option value="">Uncategorised</option>
               {categories
-                .filter((c) => c.scope === 'shared' || c.ownerMemberId === paidByMemberId)
+                .filter(
+                  (c) =>
+                    c.scope === 'shared' || c.ownerMemberId === paidByMemberId,
+                )
                 .map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
@@ -176,7 +179,10 @@ export function ExpenseSheet({
         {categories.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
             {categories
-              .filter((c) => c.scope === 'shared' || c.ownerMemberId === paidByMemberId)
+              .filter(
+                (c) =>
+                  c.scope === 'shared' || c.ownerMemberId === paidByMemberId,
+              )
               .map((c) => (
                 <button
                   key={c.id}

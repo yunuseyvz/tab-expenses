@@ -4,18 +4,10 @@ import { cn } from '#/lib/cn'
 
 /** A card sitting on the paper: raised, warm, square-ish corners. */
 export function Card({ className, ...props }: ComponentProps<'div'>) {
-  return (
-    <div
-      className={cn('card p-4', className)}
-      {...props}
-    />
-  )
+  return <div className={cn('card p-4', className)} {...props} />
 }
 
-export function CardHeader({
-  className,
-  ...props
-}: ComponentProps<'div'>) {
+export function CardHeader({ className, ...props }: ComponentProps<'div'>) {
   return (
     <div
       className={cn(
@@ -55,10 +47,7 @@ export function Row({ className, ...props }: ComponentProps<'div'>) {
 }
 
 /** Section heading in the editorial/typographic voice of the Sera base style. */
-export function SectionTitle({
-  className,
-  ...props
-}: ComponentProps<'h3'>) {
+export function SectionTitle({ className, ...props }: ComponentProps<'h3'>) {
   return (
     <h3
       className={cn(

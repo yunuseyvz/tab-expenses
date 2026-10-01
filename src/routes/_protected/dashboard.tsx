@@ -3,8 +3,8 @@ import { createFileRoute, useSearch } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { Plus } from 'lucide-react'
 
-import type {ListFilter} from '#/lib/session';
-import type {PeriodPreset} from '#/lib/period';
+import type { ListFilter } from '#/lib/session'
+import type { PeriodPreset } from '#/lib/period'
 import { AppShell } from '#/components/AppShell'
 import { Dashboard } from '#/components/dashboard/Dashboard'
 import { ExpenseSheet } from '#/components/expense/ExpenseSheet'
@@ -12,21 +12,22 @@ import { PeriodSelector } from '#/components/dashboard/PeriodSelector'
 import { Button } from '#/components/ui/Button'
 import { listMySpaces } from '#/lib/auth.functions'
 import {
-  
   balancesQuery,
   categoriesQuery,
   expensesQuery,
   membersQuery,
   spaceKeys,
-  totalsQuery
+  totalsQuery,
 } from '#/lib/session'
-import {  periodLabel, presetToPeriod } from '#/lib/period'
+import { periodLabel, presetToPeriod } from '#/lib/period'
 import { useCurrentSpace } from '#/hooks/useCurrentSpace'
 
 export const Route = createFileRoute('/_protected/dashboard')({
   validateSearch: (s: Record<string, unknown>) => ({
     space: typeof s.space === 'string' ? s.space : undefined,
-    period: (typeof s.period === 'string' ? s.period : 'thisMonth') as PeriodPreset,
+    period: (typeof s.period === 'string'
+      ? s.period
+      : 'thisMonth') as PeriodPreset,
     cats: typeof s.cats === 'string' ? s.cats : undefined,
     from: typeof s.from === 'string' ? s.from : undefined,
     to: typeof s.to === 'string' ? s.to : undefined,
@@ -43,8 +44,8 @@ export const Route = createFileRoute('/_protected/dashboard')({
       queryFn: () => listMySpaces(),
     })
     const spaceId =
-      (deps.space ? spaces.find((s) => s.id === deps.space) : spaces[0])
-        ?.id ?? null
+      (deps.space ? spaces.find((s) => s.id === deps.space) : spaces[0])?.id ??
+      null
     if (!spaceId) return
 
     // A custom range wins over the preset; the two coexist in the URL so

@@ -19,7 +19,11 @@ export function InlinePeriod({
   onChange: (preset: PeriodPreset) => void
 }) {
   return (
-    <div role="radiogroup" aria-label="Period" className="mb-4 flex flex-wrap gap-2">
+    <div
+      role="radiogroup"
+      aria-label="Period"
+      className="mb-4 flex flex-wrap gap-2"
+    >
       {PRESETS.map((p) => {
         const active = current === p.key
         return (

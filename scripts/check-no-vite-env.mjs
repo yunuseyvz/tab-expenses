@@ -34,7 +34,8 @@ const seen = new Set()
 
 function walk(dir) {
   for (const entry of readdirSync(dir)) {
-    if (entry === 'node_modules' || entry === '.git' || entry === '.output') continue
+    if (entry === 'node_modules' || entry === '.git' || entry === '.output')
+      continue
     const path = join(dir, entry)
     if (statSync(path).isDirectory()) walk(path)
     else check(path)
@@ -42,7 +43,8 @@ function walk(dir) {
 }
 
 function check(path) {
-  if (!['.ts', '.tsx', '.js', '.mjs', '.css', '.json'].includes(extname(path))) return
+  if (!['.ts', '.tsx', '.js', '.mjs', '.css', '.json'].includes(extname(path)))
+    return
   if (path.includes('routeTree.gen')) return
   const src = readFileSync(path, 'utf8')
 

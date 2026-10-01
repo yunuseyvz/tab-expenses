@@ -37,10 +37,7 @@ export const space = pgTable('space', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: text('name').notNull(),
   // One currency per space: sums are always meaningful, no FX maintenance.
-  currency: text('currency')
-    .$type<string>()
-    .default('EUR')
-    .notNull(),
+  currency: text('currency').$type<string>().default('EUR').notNull(),
   createdByUserId: text('created_by_user_id')
     .notNull()
     .references(() => user.id, { onDelete: 'restrict' }),
@@ -98,7 +95,10 @@ export const category = pgTable(
     icon: text('icon').notNull(),
     // 'shared' categories appear in the common ledger; 'personal' ones belong
     // to a single member and are excluded from shared views.
-    scope: text('scope').$type<'shared' | 'personal'>().default('shared').notNull(),
+    scope: text('scope')
+      .$type<'shared' | 'personal'>()
+      .default('shared')
+      .notNull(),
     ownerMemberId: uuid('owner_member_id').references(() => spaceMember.id, {
       onDelete: 'cascade',
     }),
@@ -210,7 +210,10 @@ export const spaceRelations = relations(space, ({ many, one }) => ({
   categories: many(category),
   expenses: many(expense),
   invites: many(spaceInvite),
-  createdBy: one(user, { fields: [space.createdByUserId], references: [user.id] }),
+  createdBy: one(user, {
+    fields: [space.createdByUserId],
+    references: [user.id],
+  }),
 }))
 
 export const spaceMemberRelations = relations(spaceMember, ({ one, many }) => ({

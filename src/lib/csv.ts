@@ -29,9 +29,7 @@ export function toCsv(
 ): string {
   const lines = [CSV_HEADER.join(',')]
   for (const row of rows) {
-    lines.push(
-      CSV_HEADER.map((h) => csvEscape(String(row[h] ?? ''))).join(','),
-    )
+    lines.push(CSV_HEADER.map((h) => csvEscape(String(row[h] ?? ''))).join(','))
   }
   // Trailing newline: POSIX text files end with one, and Excel is happier.
   return `${lines.join('\n')}\n`
@@ -105,9 +103,7 @@ export function parseCsv(text: string): ParseResult {
     return { rows, errors: [{ line: 0, message: 'File is empty' }] }
   }
 
-  const header = splitCsvLine(lines[0]!).map((h) =>
-    h.trim().toLowerCase(),
-  )
+  const header = splitCsvLine(lines[0]!).map((h) => h.trim().toLowerCase())
   const missing = CSV_HEADER.filter((h) => !header.includes(h))
   if (missing.length > 0) {
     return {

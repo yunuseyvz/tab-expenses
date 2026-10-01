@@ -10,10 +10,7 @@ import { cn } from '#/lib/cn'
  * At rest the field is sunk into the paper; focus lifts it and tints the rule
  * terracotta. Only background-color and border-color transition.
  */
-export function Input({
-  className,
-  ...props
-}: ComponentProps<'input'>) {
+export function Input({ className, ...props }: ComponentProps<'input'>) {
   return (
     <input
       className={cn(
@@ -34,10 +31,7 @@ export function Input({
 }
 
 /** Visible label. Always paired with an Input — placeholder is not a label. */
-export function Label({
-  className,
-  ...props
-}: ComponentProps<'label'>) {
+export function Label({ className, ...props }: ComponentProps<'label'>) {
   return (
     <label
       className={cn(
@@ -50,10 +44,7 @@ export function Label({
 }
 
 /** Debossed multi-line field, same language as Input. */
-export function Textarea({
-  className,
-  ...props
-}: ComponentProps<'textarea'>) {
+export function Textarea({ className, ...props }: ComponentProps<'textarea'>) {
   return (
     <textarea
       className={cn(

@@ -13,7 +13,6 @@
  */
 import { queryOptions } from '@tanstack/react-query'
 
-
 import { getBalances, getTotals, listExpenses } from './expense.functions'
 import { listCategories, listMembers } from './space.functions'
 import type { QueryClient } from '@tanstack/react-query'
@@ -23,8 +22,7 @@ export const spaceKeys = {
   all: ['spaces'] as const,
   mySpaces: ['my-spaces'] as const,
   members: (spaceId: string) => ['spaces', spaceId, 'members'] as const,
-  categories: (spaceId: string) =>
-    ['spaces', spaceId, 'categories'] as const,
+  categories: (spaceId: string) => ['spaces', spaceId, 'categories'] as const,
   expenses: (spaceId: string, filter: unknown) =>
     ['spaces', spaceId, 'expenses', filter] as const,
   totals: (spaceId: string, filter: unknown) =>
@@ -116,9 +114,14 @@ export function balancesQuery(spaceId: string, filter: Period) {
  */
 export async function ensureAll(
   queryClient: QueryClient,
-  entries: Array<{ queryKey: ReadonlyArray<unknown>; queryFn: () => Promise<unknown> }>,
+  entries: Array<{
+    queryKey: ReadonlyArray<unknown>
+    queryFn: () => Promise<unknown>
+  }>,
 ) {
   await Promise.all(
-    entries.map((e) => queryClient.ensureQueryData({ queryKey: e.queryKey, queryFn: e.queryFn })),
+    entries.map((e) =>
+      queryClient.ensureQueryData({ queryKey: e.queryKey, queryFn: e.queryFn }),
+    ),
   )
 }

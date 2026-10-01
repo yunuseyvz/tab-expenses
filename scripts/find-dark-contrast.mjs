@@ -64,10 +64,22 @@ const out = await page.evaluate(() => {
   }
 
   return {
-    'ink-muted C=0.014 H=80 (text on paper)': textOn(0.014, 80, [paper, raised]),
-    'ink-faint C=0.012 H=80 (text on paper)': textOn(0.012, 80, [paper, raised]),
-    'terracotta-ink C=0.10 H=45 (text on paper)': textOn(0.1, 45, [paper, raised]),
-    'oxblood-ink C=0.12 H=20 (text on paper)': textOn(0.12, 20, [paper, raised]),
+    'ink-muted C=0.014 H=80 (text on paper)': textOn(0.014, 80, [
+      paper,
+      raised,
+    ]),
+    'ink-faint C=0.012 H=80 (text on paper)': textOn(0.012, 80, [
+      paper,
+      raised,
+    ]),
+    'terracotta-ink C=0.10 H=45 (text on paper)': textOn(0.1, 45, [
+      paper,
+      raised,
+    ]),
+    'oxblood-ink C=0.12 H=20 (text on paper)': textOn(0.12, 20, [
+      paper,
+      raised,
+    ]),
     'ochre-ink C=0.09 H=80 (text on paper)': textOn(0.09, 80, [paper, raised]),
     'sage C=0.07 H=150 (text on paper)': textOn(0.07, 150, [paper, raised]),
     'terracotta FILL C=0.11 H=45 (ink label)': fillFor(0.11, 45),

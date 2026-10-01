@@ -12,17 +12,16 @@ import { z } from 'zod'
 
 const serverSchema = z.object({
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
-  BETTER_AUTH_SECRET: z.string().min(16, 'BETTER_AUTH_SECRET must be >= 16 chars'),
+  BETTER_AUTH_SECRET: z
+    .string()
+    .min(16, 'BETTER_AUTH_SECRET must be >= 16 chars'),
   BETTER_AUTH_URL: z.url(),
   RESEND_API_KEY: z.string().optional().default(''),
   EMAIL_FROM: z.string().min(1).default('Splitwise <noreply@example.com>'),
   // Mailpit's HTTP API (port 8025), not its SMTP port. We deliver through the
   // REST send endpoint rather than speaking SMTP, so this is the only mail
   // address we need in dev.
-  MAILPIT_API_URL: z
-    .string()
-    .optional()
-    .default('http://localhost:8025'),
+  MAILPIT_API_URL: z.string().optional().default('http://localhost:8025'),
   TRUSTED_PROXY_HEADERS: z
     .string()
     .optional()

@@ -24,10 +24,7 @@ export function addressFrom(value: string): { Name: string; Email: string } {
 }
 
 export type OtpType =
-  | 'sign-in'
-  | 'email-verification'
-  | 'forget-password'
-  | 'change-email'
+  'sign-in' | 'email-verification' | 'forget-password' | 'change-email'
 
 export interface SendOtpArgs {
   to: string
@@ -70,18 +67,23 @@ function bodyFor(type: OtpType, otp: string): string {
   ].join('\n')
 }
 
-export const sendOtpEmail = createServerOnlyFn(
-  async function ({ to, otp, type }: SendOtpArgs) {
-    const e = env()
-    const subject = subjectFor(type)
-    const text = bodyFor(type, otp)
+export const sendOtpEmail = createServerOnlyFn(async function ({
+  to,
+  otp,
+  type,
+}: SendOtpArgs) {
+  const e = env()
+  const subject = subjectFor(type)
+  const text = bodyFor(type, otp)
 
-    if (usesMailpit(e)) {
-      // Dev: hand the message to Mailpit's HTTP API so it shows up in the
-      // Mailpit UI. Note this is the REST port (8025), not the SMTP one, and
-      // it wants From/To as {Name, Email} objects rather than RFC 5322
-      // strings.
-      const res = await fetch(`${e.MAILPIT_API_URL.replace(/\/$/, '')}/api/v1/send`, {
+  if (usesMailpit(e)) {
+    // Dev: hand the message to Mailpit's HTTP API so it shows up in the
+    // Mailpit UI. Note this is the REST port (8025), not the SMTP one, and
+    // it wants From/To as {Name, Email} objects rather than RFC 5322
+    // strings.
+    const res = await fetch(
+      `${e.MAILPIT_API_URL.replace(/\/$/, '')}/api/v1/send`,
+      {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -90,22 +92,22 @@ export const sendOtpEmail = createServerOnlyFn(
           Subject: subject,
           Text: text,
         }),
-      })
-      if (!res.ok) {
-        throw new Error(
-          `Mailpit send failed (${res.status}): ${await res.text()}`,
-        )
-      }
-      return
+      },
+    )
+    if (!res.ok) {
+      throw new Error(
+        `Mailpit send failed (${res.status}): ${await res.text()}`,
+      )
     }
+    return
+  }
 
-    const resend = new Resend(e.RESEND_API_KEY)
-    const { error } = await resend.emails.send({
-      from: e.EMAIL_FROM,
-      to,
-      subject,
-      text,
-    })
-    if (error) throw new Error(`Resend send failed: ${error.message}`)
-  },
-)
+  const resend = new Resend(e.RESEND_API_KEY)
+  const { error } = await resend.emails.send({
+    from: e.EMAIL_FROM,
+    to,
+    subject,
+    text,
+  })
+  if (error) throw new Error(`Resend send failed: ${error.message}`)
+})

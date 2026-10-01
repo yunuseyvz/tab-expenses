@@ -25,7 +25,9 @@ test('refuses a wrong code, then accepts the right one', async ({ page }) => {
   const code = await requestOtp(EMAIL)
 
   // A resend cooldown is shown, so the user is not left hammering the button.
-  await expect(page.getByRole('button', { name: /Resend code in/ })).toBeVisible()
+  await expect(
+    page.getByRole('button', { name: /Resend code in/ }),
+  ).toBeVisible()
 
   // ── a wrong code must be refused ──────────────────────────────────────
   const wrong = code === '000000' ? '111111' : '000000'

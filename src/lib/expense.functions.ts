@@ -8,18 +8,7 @@
  * commit, so a bug in `allocate` cannot silently corrupt the ledger.
  */
 import { createServerFn } from '@tanstack/react-start'
-import {
-  
-  and,
-  asc,
-  desc,
-  eq,
-  gte,
-  inArray,
-  isNull,
-  lte,
-  sql
-} from 'drizzle-orm'
+import { and, asc, desc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { ensureSession, requireSpaceMember } from './auth.functions'
@@ -28,7 +17,7 @@ import { category, expense, expenseSplit, spaceMember } from './db/schema'
 import { expenseInputSchema, periodFilterSchema, uuidSchema } from './guards'
 import { BP_TOTAL, allocate, parseAmountToMinor } from './money'
 import { settle } from './settle'
-import type {SQL} from 'drizzle-orm';
+import type { SQL } from 'drizzle-orm'
 import type { Settlement } from './settle'
 
 /**
@@ -211,7 +200,10 @@ export const createExpense = createServerFn({ method: 'POST' })
       .where(
         and(
           eq(spaceMember.spaceId, data.spaceId),
-          inArray(spaceMember.id, splits.map((s) => s.memberId)),
+          inArray(
+            spaceMember.id,
+            splits.map((s) => s.memberId),
+          ),
         ),
       )
     const known = new Set(participants.map((p) => p.id))
@@ -221,7 +213,10 @@ export const createExpense = createServerFn({ method: 'POST' })
       }
     }
 
-    const shares = allocate(amountMinor, splits.map((s) => s.weightBp))
+    const shares = allocate(
+      amountMinor,
+      splits.map((s) => s.weightBp),
+    )
 
     const created = await db.transaction(async (tx) => {
       const [row] = await tx
@@ -250,7 +245,9 @@ export const createExpense = createServerFn({ method: 'POST' })
 
       // Re-assert the invariant against what actually landed in the table.
       const [check] = await tx
-        .select({ total: sql<number>`coalesce(sum(${expenseSplit.shareMinor}), 0)::int` })
+        .select({
+          total: sql<number>`coalesce(sum(${expenseSplit.shareMinor}), 0)::int`,
+        })
         .from(expenseSplit)
         .where(eq(expenseSplit.expenseId, row.id))
 
@@ -296,12 +293,16 @@ export const updateExpense = createServerFn({ method: 'POST' })
     const [existing] = await db
       .select()
       .from(expense)
-      .where(and(eq(expense.id, data.expenseId), eq(expense.spaceId, data.spaceId)))
+      .where(
+        and(eq(expense.id, data.expenseId), eq(expense.spaceId, data.spaceId)),
+      )
       .limit(1)
     if (!existing) throw new Error('Not found')
 
     const amountMinor =
-      data.amount !== undefined ? parseAmountToMinor(data.amount) : existing.amountMinor
+      data.amount !== undefined
+        ? parseAmountToMinor(data.amount)
+        : existing.amountMinor
     const paidByMemberId = data.paidByMemberId ?? existing.paidByMemberId
 
     return db.transaction(async (tx) => {
@@ -309,7 +310,10 @@ export const updateExpense = createServerFn({ method: 'POST' })
         .update(expense)
         .set({
           amountMinor,
-          categoryId: data.categoryId !== undefined ? data.categoryId : existing.categoryId,
+          categoryId:
+            data.categoryId !== undefined
+              ? data.categoryId
+              : existing.categoryId,
           paidByMemberId,
           spentOn: data.spentOn ?? existing.spentOn,
           purpose: data.purpose ?? existing.purpose,
@@ -329,7 +333,9 @@ export const updateExpense = createServerFn({ method: 'POST' })
         }
         const weightSum = splits.reduce((s, r) => s + r.weightBp, 0)
         if (weightSum !== BP_TOTAL) {
-          throw new Error(`Split weights must total 100%, got ${weightSum / 100}%`)
+          throw new Error(
+            `Split weights must total 100%, got ${weightSum / 100}%`,
+          )
         }
 
         const seen = new Set<string>()
@@ -338,9 +344,14 @@ export const updateExpense = createServerFn({ method: 'POST' })
           seen.add(s.memberId)
         }
 
-        const shares = allocate(amountMinor, splits.map((s) => s.weightBp))
+        const shares = allocate(
+          amountMinor,
+          splits.map((s) => s.weightBp),
+        )
 
-        await tx.delete(expenseSplit).where(eq(expenseSplit.expenseId, data.expenseId))
+        await tx
+          .delete(expenseSplit)
+          .where(eq(expenseSplit.expenseId, data.expenseId))
         await tx.insert(expenseSplit).values(
           splits.map((s, i) => ({
             expenseId: data.expenseId,
@@ -351,7 +362,9 @@ export const updateExpense = createServerFn({ method: 'POST' })
         )
 
         const [check] = await tx
-          .select({ total: sql<number>`coalesce(sum(${expenseSplit.shareMinor}), 0)::int` })
+          .select({
+            total: sql<number>`coalesce(sum(${expenseSplit.shareMinor}), 0)::int`,
+          })
           .from(expenseSplit)
           .where(eq(expenseSplit.expenseId, data.expenseId))
         if (Number(check?.total ?? 0) !== amountMinor) {
@@ -374,7 +387,9 @@ export const deleteExpense = createServerFn({ method: 'POST' })
     // guessed id from removing another space's expense.
     const deleted = await db
       .delete(expense)
-      .where(and(eq(expense.id, data.expenseId), eq(expense.spaceId, data.spaceId)))
+      .where(
+        and(eq(expense.id, data.expenseId), eq(expense.spaceId, data.spaceId)),
+      )
       .returning({ id: expense.id })
 
     if (deleted.length === 0) throw new Error('Not found')
@@ -384,7 +399,11 @@ export const deleteExpense = createServerFn({ method: 'POST' })
 // ── reads ─────────────────────────────────────────────────────────────────
 
 export const listExpenses = createServerFn({ method: 'GET' })
-  .inputValidator(periodFilterSchema.extend({ limit: z.number().int().min(1).max(500).default(200) }))
+  .inputValidator(
+    periodFilterSchema.extend({
+      limit: z.number().int().min(1).max(500).default(200),
+    }),
+  )
   .handler(async ({ data }) => {
     const session = await ensureSession()
     await requireSpaceMember(session.user.id, data.spaceId)
@@ -429,7 +448,9 @@ export const listExpenses = createServerFn({ method: 'GET' })
       // Drizzle's `date()` mode already yields a 'YYYY-MM-DD' string.
       spentOn: r.spentOn,
       createdAt:
-        r.createdAt instanceof Date ? r.createdAt.toISOString() : String(r.createdAt),
+        r.createdAt instanceof Date
+          ? r.createdAt.toISOString()
+          : String(r.createdAt),
       splits: splitMap.get(r.id) ?? [],
     }))
   })
@@ -491,7 +512,9 @@ export const getTotals = createServerFn({ method: 'GET' })
           categoryFilter(data.categoryIds),
         ),
       )
-      .where(and(eq(category.spaceId, data.spaceId), isNull(category.archivedAt)))
+      .where(
+        and(eq(category.spaceId, data.spaceId), isNull(category.archivedAt)),
+      )
       .groupBy(category.id, category.name, category.color, category.icon)
       .orderBy(desc(sql`coalesce(sum(${expense.amountMinor}), 0)`))
 
@@ -501,15 +524,12 @@ export const getTotals = createServerFn({ method: 'GET' })
     // "Your share" = your portion of the filtered expenses, read from the
     // stored share_minor rather than recomputed from weights.
     const [share] = await db
-      .select({ total: sql<number>`coalesce(sum(${expenseSplit.shareMinor}), 0)::int` })
+      .select({
+        total: sql<number>`coalesce(sum(${expenseSplit.shareMinor}), 0)::int`,
+      })
       .from(expenseSplit)
       .innerJoin(expense, eq(expenseSplit.expenseId, expense.id))
-      .where(
-        and(
-          eq(expenseSplit.memberId, member.id),
-          ...conditions,
-        ),
-      )
+      .where(and(eq(expenseSplit.memberId, member.id), ...conditions))
 
     return {
       totalMinor,
@@ -597,7 +617,10 @@ export const getBalances = createServerFn({ method: 'GET' })
       .leftJoin(expenseSplit, eq(expenseSplit.memberId, spaceMember.id))
       .leftJoin(expense, and(...expenseJoin))
       .where(
-        and(eq(spaceMember.spaceId, data.spaceId), isNull(spaceMember.archivedAt)),
+        and(
+          eq(spaceMember.spaceId, data.spaceId),
+          isNull(spaceMember.archivedAt),
+        ),
       )
       .groupBy(
         spaceMember.id,
@@ -637,5 +660,3 @@ export const getBalances = createServerFn({ method: 'GET' })
       yourMemberId: me.id,
     } satisfies BalancesResult
   })
-
-

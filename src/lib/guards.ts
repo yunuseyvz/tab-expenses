@@ -30,7 +30,9 @@ export const isoDateSchema = z
     const [y, m, d] = s.split('-').map(Number)
     const dt = new Date(y ?? 0, (m ?? 1) - 1, d ?? 1)
     return (
-      dt.getFullYear() === y && dt.getMonth() === (m ?? 1) - 1 && dt.getDate() === d
+      dt.getFullYear() === y &&
+      dt.getMonth() === (m ?? 1) - 1 &&
+      dt.getDate() === d
     )
   }, 'not a real calendar date')
 
@@ -42,12 +44,7 @@ export const memberInputSchema = z.object({
   spaceId: uuidSchema,
   displayName: z.string().trim().min(1, 'name is required').max(60),
   color: swatchKeySchema,
-  defaultWeightBp: z
-    .number()
-    .int()
-    .min(0)
-    .max(BP_TOTAL)
-    .default(0),
+  defaultWeightBp: z.number().int().min(0).max(BP_TOTAL).default(0),
 })
 export type MemberInput = z.infer<typeof memberInputSchema>
 

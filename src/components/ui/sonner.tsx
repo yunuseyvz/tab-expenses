@@ -2,8 +2,8 @@
  * Toaster wired to the warm-tactile tokens. `sonner` is shadcn's supported
  * toast replacement; the `toast` component is deprecated.
  */
-import { Toaster as Sonner  } from 'sonner'
-import type {ToasterProps} from 'sonner';
+import { Toaster as Sonner } from 'sonner'
+import type { ToasterProps } from 'sonner'
 
 export function Toaster(props: ToasterProps) {
   return (

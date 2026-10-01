@@ -82,7 +82,9 @@ test.describe('split editor', () => {
     await expect(page.getByRole('status')).toHaveText('Totals 100%')
   })
 
-  test('refuses an amount with more than two decimal places', async ({ page }) => {
+  test('refuses an amount with more than two decimal places', async ({
+    page,
+  }) => {
     await page.goto('/dashboard?period=all')
     await page.getByRole('button', { name: 'New expense' }).click()
 
@@ -91,6 +93,8 @@ test.describe('split editor', () => {
 
     // aria-invalid marks the field; the client will not parse it as cents.
     await expect(amount).toHaveAttribute('aria-invalid', 'true')
-    await expect(page.getByRole('button', { name: 'Save expense' })).toBeDisabled()
+    await expect(
+      page.getByRole('button', { name: 'Save expense' }),
+    ).toBeDisabled()
   })
 })

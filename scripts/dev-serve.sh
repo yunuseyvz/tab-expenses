@@ -3,7 +3,12 @@
 #
 # Deliberately avoids `pkill -f <pattern>`: the pattern text appears in the
 # killer's own command line, so pkill matches and kills the shell running it.
-# This resolves the PID by listening port instead.
+# This resolves the PID by recorded PID file instead.
+#
+# With nitro/vite the build emits a self-contained .output/, so the server runs
+# as plain `node .output/server/index.mjs`. Without it, Start's default shape is
+# dist/ plus a fetch-style server entry served by srvx — handled automatically
+# so this script keeps working either way.
 set -e
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
@@ -33,13 +38,14 @@ BETTER_AUTH_URL="http://127.0.0.1:$PORT"
 export BETTER_AUTH_URL
 
 # --- run -----------------------------------------------------------------
-# Start's default build shape: a client/ dir plus a fetch-style server entry,
-# served by srvx. See
-# https://tanstack.com/start/latest/docs/framework/react/guide/hosting
-# The static dir is resolved relative to the server entry, not the cwd.
 cd "$ROOT"
-npx --yes srvx --prod --port "$PORT" -s ../client ./dist/server/server.js \
-  > "$LOG_DIR/server.log" 2>&1 &
+if [ -f .output/server/index.mjs ]; then
+  PORT="$PORT" HOST=127.0.0.1 node .output/server/index.mjs \
+    > "$LOG_DIR/server.log" 2>&1 &
+else
+  npx --yes srvx --prod --port "$PORT" -s ../client ./dist/server/server.js \
+    > "$LOG_DIR/server.log" 2>&1 &
+fi
 SERVER_PID=$!
 echo "$SERVER_PID" > "$LOG_DIR/pid"
 

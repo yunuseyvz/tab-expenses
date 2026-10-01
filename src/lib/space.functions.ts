@@ -13,7 +13,11 @@ import { createServerFn } from '@tanstack/react-start'
 import { and, asc, eq, isNull, sql } from 'drizzle-orm'
 
 import { z } from 'zod'
-import { ensureSession, requireSpaceMember, requireSpaceOwner } from './auth.functions'
+import {
+  ensureSession,
+  requireSpaceMember,
+  requireSpaceOwner,
+} from './auth.functions'
 import { getDb } from './db'
 import { category, space, spaceMember } from './db/schema'
 import {
@@ -103,7 +107,10 @@ export const listMembers = createServerFn({ method: 'GET' })
       .select()
       .from(spaceMember)
       .where(
-        and(eq(spaceMember.spaceId, data.spaceId), isNull(spaceMember.archivedAt)),
+        and(
+          eq(spaceMember.spaceId, data.spaceId),
+          isNull(spaceMember.archivedAt),
+        ),
       )
       .orderBy(asc(spaceMember.createdAt))
   })
@@ -252,7 +259,10 @@ export const claimMember = createServerFn({ method: 'POST' })
 
 export const listCategories = createServerFn({ method: 'GET' })
   .inputValidator(
-    z.object({ spaceId: uuidSchema, includePersonal: z.boolean().default(true) }),
+    z.object({
+      spaceId: uuidSchema,
+      includePersonal: z.boolean().default(true),
+    }),
   )
   .handler(async ({ data }) => {
     const session = await ensureSession()
@@ -268,9 +278,7 @@ export const listCategories = createServerFn({ method: 'GET' })
           isNull(category.archivedAt),
           // Personal categories are excluded from shared views but remain
           // visible to the member who owns them.
-          data.includePersonal
-            ? sql`true`
-            : sql`${category.scope} = 'shared'`,
+          data.includePersonal ? sql`true` : sql`${category.scope} = 'shared'`,
         ),
       )
       .orderBy(asc(category.sortOrder), asc(category.name))

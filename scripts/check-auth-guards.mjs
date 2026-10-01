@@ -80,8 +80,7 @@ function check(path) {
     // The exported name, so exemptions are keyed by function rather than by
     // position — a reordering must not silently change what is exempt.
     const before = src.slice(0, starts[i])
-    const name =
-      /export const (\w+)\s*=\s*$/.exec(before)?.[1] ?? `fn${i + 1}`
+    const name = /export const (\w+)\s*=\s*$/.exec(before)?.[1] ?? `fn${i + 1}`
     const whereNamed = `${path} (${name})`
     const exempt = MEMBERSHIP_EXEMPT.has(name)
 
@@ -108,7 +107,9 @@ function check(path) {
     // space. Accepting the former as satisfying the latter is exactly the hole
     // this check exists to close, so the membership rule looks for the
     // membership helpers only.
-    const hasMembershipCheck = /requireSpaceMember\(|requireSpaceOwner\(/.test(chunk)
+    const hasMembershipCheck = /requireSpaceMember\(|requireSpaceOwner\(/.test(
+      chunk,
+    )
 
     if (acceptsSpaceId && !hasMembershipCheck && !exempt) {
       violations.push(
@@ -121,7 +122,9 @@ function check(path) {
     const writes = method === 'POST' || method === 'PUT' || method === 'PATCH'
     if (writes && /archiveMember|updateMember|updateCategory/.test(chunk)) {
       if (!/requireSpaceOwner\(|requireSpaceMember\(/.test(chunk)) {
-        violations.push(`${whereNamed}: mutates space configuration with no guard at all.`)
+        violations.push(
+          `${whereNamed}: mutates space configuration with no guard at all.`,
+        )
       }
     }
 
@@ -145,7 +148,9 @@ walk(LIB)
 // The env module is the one legitimate place process.env is read.
 const envSrc = readFileSync(join(LIB, 'db/env.ts'), 'utf8')
 if (!/process\.env/.test(envSrc)) {
-  violations.push('src/lib/db/env.ts no longer reads process.env — is it still needed?')
+  violations.push(
+    'src/lib/db/env.ts no longer reads process.env — is it still needed?',
+  )
 }
 
 if (violations.length > 0) {
@@ -159,4 +164,6 @@ if (violations.length > 0) {
   process.exit(1)
 }
 
-console.log('auth guard check passed: every server function checks the session and space membership')
+console.log(
+  'auth guard check passed: every server function checks the session and space membership',
+)

@@ -58,7 +58,10 @@ const measure = await page.evaluate(
           if (ratio(toRgb(`oklch(${L.toFixed(3)} ${C} ${H})`), bg) >= 4.5) {
             found[sName] = {
               L: L.toFixed(3),
-              ratio: ratio(toRgb(`oklch(${L.toFixed(3)} ${C} ${H})`), bg).toFixed(2),
+              ratio: ratio(
+                toRgb(`oklch(${L.toFixed(3)} ${C} ${H})`),
+                bg,
+              ).toFixed(2),
             }
             break
           }

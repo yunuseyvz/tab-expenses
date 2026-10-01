@@ -5,7 +5,13 @@ import { motion } from 'motion/react'
 import type { Category } from '#/lib/db/schema'
 import type { PeriodPreset } from '#/lib/period'
 import type { ListFilter } from '#/lib/session'
-import { Card, CardHeader, CardTitle, Row, SectionTitle } from '#/components/ui/Card'
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  Row,
+  SectionTitle,
+} from '#/components/ui/Card'
 import { CategoryChips } from '#/components/dashboard/CategoryChips'
 import { CategoryDonut } from '#/components/dashboard/CategoryDonut'
 import { balancesQuery, expensesQuery, totalsQuery } from '#/lib/session'
@@ -110,7 +116,10 @@ export function Dashboard({
           </p>
           <p
             className="text-xs mt-1 tnum font-medium"
-            style={{ color: yourNet >= 0 ? 'var(--color-sage)' : 'var(--color-oxblood)' }}
+            style={{
+              color:
+                yourNet >= 0 ? 'var(--color-sage)' : 'var(--color-oxblood)',
+            }}
           >
             {yourNet >= 0 ? 'you are owed ' : 'you owe '}
             {formatMoney(Math.abs(yourNet), currency)}

@@ -1,5 +1,5 @@
-import {  cva } from 'class-variance-authority'
-import type {VariantProps} from 'class-variance-authority';
+import { cva } from 'class-variance-authority'
+import type { VariantProps } from 'class-variance-authority'
 import type { ComponentProps } from 'react'
 
 import { cn } from '#/lib/cn'
@@ -47,7 +47,8 @@ const buttonVariants = cva(
   },
 )
 
-type ButtonProps = ComponentProps<'button'> & VariantProps<typeof buttonVariants>
+type ButtonProps = ComponentProps<'button'> &
+  VariantProps<typeof buttonVariants>
 
 export function Button({
   className,

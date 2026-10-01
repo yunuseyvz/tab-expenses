@@ -2,19 +2,18 @@ import { useMemo, useState } from 'react'
 import { createFileRoute, useNavigate, useSearch } from '@tanstack/react-router'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 
-import type {PeriodPreset} from '#/lib/period';
-import type {ListFilter} from '#/lib/session';
+import type { PeriodPreset } from '#/lib/period'
+import type { ListFilter } from '#/lib/session'
 import { AppShell } from '#/components/AppShell'
 import { Card } from '#/components/ui/Card'
 import { Button } from '#/components/ui/Button'
 import { ExpenseSheet } from '#/components/expense/ExpenseSheet'
 import { listMySpaces } from '#/lib/auth.functions'
 import {
-  
   categoriesQuery,
   expensesQuery,
   membersQuery,
-  spaceKeys
+  spaceKeys,
 } from '#/lib/session'
 import { formatMoney } from '#/lib/money'
 import { fromISODate, groupByDay, presetToPeriod } from '#/lib/period'
@@ -39,8 +38,8 @@ export const Route = createFileRoute('/_protected/expenses')({
       queryFn: () => listMySpaces(),
     })
     const spaceId =
-      (deps.space ? spaces.find((s) => s.id === deps.space) : spaces[0])
-        ?.id ?? null
+      (deps.space ? spaces.find((s) => s.id === deps.space) : spaces[0])?.id ??
+      null
     if (!spaceId) return
 
     const period = presetToPeriod(deps.period)
@@ -112,7 +111,10 @@ function ExpensesRoute() {
     void navigate({ to: '/expenses', search: { ...search, ...patch } })
   }
 
-  const totalShown = (expenses.data ?? []).reduce((s, e) => s + e.amountMinor, 0)
+  const totalShown = (expenses.data ?? []).reduce(
+    (s, e) => s + e.amountMinor,
+    0,
+  )
 
   return (
     <AppShell>

@@ -22,9 +22,14 @@ export function bpToPercent(bp: number): number {
  *
  * @throws if weights are negative, or sum to something other than BP_TOTAL.
  */
-export function allocate(amount: number, weights: ReadonlyArray<number>): Array<number> {
+export function allocate(
+  amount: number,
+  weights: ReadonlyArray<number>,
+): Array<number> {
   if (!Number.isSafeInteger(amount) || amount < 0) {
-    throw new RangeError(`amount must be a non-negative safe integer: ${amount}`)
+    throw new RangeError(
+      `amount must be a non-negative safe integer: ${amount}`,
+    )
   }
   if (weights.length === 0) {
     throw new RangeError('allocate needs at least one weight')
@@ -62,7 +67,9 @@ export function allocate(amount: number, weights: ReadonlyArray<number>): Array<
   if (leftover !== 0) {
     // Only reachable with more leftover cents than participants, which the
     // weight-sum check above already makes impossible. Fail loudly anyway.
-    throw new Error(`allocate could not distribute ${leftover} leftover cent(s)`)
+    throw new Error(
+      `allocate could not distribute ${leftover} leftover cent(s)`,
+    )
   }
 
   return shares

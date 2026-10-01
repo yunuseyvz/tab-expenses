@@ -44,7 +44,7 @@ const out = await page.evaluate(() => {
   const white = toRgb('#ffffff')
 
   const rows = []
-  for (let L = 0.40; L <= 0.80; L += 0.02) {
+  for (let L = 0.4; L <= 0.8; L += 0.02) {
     const fill = toRgb(`oklch(${L.toFixed(2)} 0.13 45)`)
     rows.push({
       L: L.toFixed(2),
@@ -60,7 +60,9 @@ console.log('  L      ink-label  white-label')
 for (const r of out) {
   const okInk = Number(r.ink) >= 4.5 ? 'OK ' : '   '
   const okWhite = Number(r.white) >= 4.5 ? 'OK ' : '   '
-  console.log(`  ${r.L}   ${okInk}${r.ink.padStart(5)}   ${okWhite}${r.white.padStart(5)}`)
+  console.log(
+    `  ${r.L}   ${okInk}${r.ink.padStart(5)}   ${okWhite}${r.white.padStart(5)}`,
+  )
 }
 
 await browser.close()

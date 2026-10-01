@@ -1,0 +1,19 @@
+{
+  "name": "Splitwise — shared household expense ledger",
+  "short_name": "Splitwise",
+  "description": "Shared household expenses with percentage splits and a settlement view.",
+  "start_url": "/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f6f1e6",
+  "theme_color": "#f6f1e6",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

@@ -6,9 +6,9 @@
  */
 import { useEffect, useState } from 'react'
 
-import type {Theme} from '#/lib/theme';
+import type { Theme } from '#/lib/theme'
 import { cn } from '#/lib/cn'
-import {  applyTheme, readStoredTheme, setTheme } from '#/lib/theme'
+import { applyTheme, readStoredTheme, setTheme } from '#/lib/theme'
 
 const OPTIONS: Array<{ value: Theme; label: string; hint: string }> = [
   { value: 'light', label: 'Light', hint: 'Paper in daylight' },

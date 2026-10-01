@@ -70,7 +70,9 @@ describe('settle', () => {
   })
 
   it('handles a single member who is owed money', () => {
-    expect(settle([{ memberId: 'a', displayName: 'A', netMinor: 5000 }])).toEqual([])
+    expect(
+      settle([{ memberId: 'a', displayName: 'A', netMinor: 5000 }]),
+    ).toEqual([])
   })
 
   it('a 1¢ 60/40 split owes nobody anything', () => {
@@ -173,7 +175,10 @@ describe('amountStringSchema', () => {
 })
 
 describe('categoryInputSchema', () => {
-  const base = { spaceId: 'a'.repeat(0) + '018f0000-0000-7000-8000-000000000001', name: 'Home' }
+  const base = {
+    spaceId: 'a'.repeat(0) + '018f0000-0000-7000-8000-000000000001',
+    name: 'Home',
+  }
 
   it('requires an owner for a personal category', () => {
     // Mirrors the category_scope_owner_ck check constraint, but at validation
@@ -246,10 +251,18 @@ describe('expenseInputSchema', () => {
   })
 
   it('rejects a bad amount, date, or empty purpose', () => {
-    expect(expenseInputSchema.safeParse({ ...base, amount: 'abc' }).success).toBe(false)
-    expect(expenseInputSchema.safeParse({ ...base, amount: '0' }).success).toBe(false)
-    expect(expenseInputSchema.safeParse({ ...base, spentOn: '2026-02-31' }).success).toBe(false)
-    expect(expenseInputSchema.safeParse({ ...base, purpose: '   ' }).success).toBe(false)
+    expect(
+      expenseInputSchema.safeParse({ ...base, amount: 'abc' }).success,
+    ).toBe(false)
+    expect(expenseInputSchema.safeParse({ ...base, amount: '0' }).success).toBe(
+      false,
+    )
+    expect(
+      expenseInputSchema.safeParse({ ...base, spentOn: '2026-02-31' }).success,
+    ).toBe(false)
+    expect(
+      expenseInputSchema.safeParse({ ...base, purpose: '   ' }).success,
+    ).toBe(false)
   })
 
   it('rejects a split weight outside 0..10000', () => {

@@ -100,7 +100,9 @@ describe('parseCsv', () => {
     )
     // The good rows still import; the bad one is reported, not swallowed.
     expect(rows).toHaveLength(2)
-    expect(errors).toEqual([{ line: 3, message: 'bad or missing date: "not-a-date"' }])
+    expect(errors).toEqual([
+      { line: 3, message: 'bad or missing date: "not-a-date"' },
+    ])
   })
 
   it('rejects impossible dates rather than shifting them', () => {

@@ -14,7 +14,10 @@ const SHOTS = [
   { name: 'login', path: '/login', auth: false },
   { name: 'setup', path: '/setup', auth: false },
   { name: 'dashboard', path: '/dashboard?period=all' },
-  { name: 'dashboard-filtered', path: '/dashboard?period=all&cats=__GROCERIES__' },
+  {
+    name: 'dashboard-filtered',
+    path: '/dashboard?period=all&cats=__GROCERIES__',
+  },
   { name: 'expenses', path: '/expenses?period=all' },
   { name: 'balances', path: '/balances?period=all' },
   { name: 'settings', path: '/settings' },

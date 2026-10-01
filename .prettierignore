@@ -1,0 +1,16 @@
+dist
+node_modules
+.output
+.d
+.tanstack
+.screenshots
+test-results
+playwright-report
+coverage
+screenshots
+*.local
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store

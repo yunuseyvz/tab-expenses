@@ -2,13 +2,19 @@ import { useMemo } from 'react'
 import { createFileRoute, useNavigate, useSearch } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 
-import type {PeriodPreset} from '#/lib/period';
+import type { PeriodPreset } from '#/lib/period'
 import { AppShell } from '#/components/AppShell'
-import { Card, CardHeader, CardTitle, Row, SectionTitle } from '#/components/ui/Card'
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  Row,
+  SectionTitle,
+} from '#/components/ui/Card'
 import { balancesQuery, spaceKeys } from '#/lib/session'
 import { listMySpaces } from '#/lib/auth.functions'
 import { formatMoney } from '#/lib/money'
-import {  presetToPeriod } from '#/lib/period'
+import { presetToPeriod } from '#/lib/period'
 import { swatchColor } from '#/lib/swatches'
 import { useCurrentSpace } from '#/hooks/useCurrentSpace'
 import { InlinePeriod } from '#/components/InlinePeriod'
@@ -27,11 +33,13 @@ export const Route = createFileRoute('/_protected/balances')({
       queryFn: () => listMySpaces(),
     })
     const spaceId =
-      (deps.space ? spaces.find((s) => s.id === deps.space) : spaces[0])
-        ?.id ?? null
+      (deps.space ? spaces.find((s) => s.id === deps.space) : spaces[0])?.id ??
+      null
     if (!spaceId) return
 
-    await qc.ensureQueryData(balancesQuery(spaceId, presetToPeriod(deps.period)))
+    await qc.ensureQueryData(
+      balancesQuery(spaceId, presetToPeriod(deps.period)),
+    )
   },
   component: BalancesRoute,
 })

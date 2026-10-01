@@ -115,7 +115,9 @@ export function LoginForm({ redirectTo }: { redirectTo?: string }) {
     const text = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6)
     if (!text) return
     e.preventDefault()
-    const next = Array(6).fill('').map((_, i) => text[i] ?? '')
+    const next = Array(6)
+      .fill('')
+      .map((_, i) => text[i] ?? '')
     setCode(next)
     inputs.current[Math.min(text.length, 5)]?.focus()
   }
@@ -164,7 +166,12 @@ export function LoginForm({ redirectTo }: { redirectTo?: string }) {
                 placeholder="you@example.com"
               />
             </div>
-            <Button type="submit" size="lg" className="w-full" disabled={sending}>
+            <Button
+              type="submit"
+              size="lg"
+              className="w-full"
+              disabled={sending}
+            >
               {sending ? 'Sending…' : 'Send code'}
             </Button>
           </motion.form>

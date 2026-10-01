@@ -34,7 +34,11 @@ const DB_URL = process.env.DATABASE_URL
 async function requireSpaceMember(userId: string, spaceId: string) {
   const db = getDb()
   const [row] = await db
-    .select({ id: spaceMember.id, displayName: spaceMember.displayName, role: spaceMember.role })
+    .select({
+      id: spaceMember.id,
+      displayName: spaceMember.displayName,
+      role: spaceMember.role,
+    })
     .from(spaceMember)
     .where(
       and(
@@ -62,18 +66,44 @@ describe.skipIf(!DB_URL)('cross-household isolation', () => {
   beforeAll(async () => {
     const db = getDb()
     await db.insert(user).values([
-      { id: ownerId, name: 'Owner', email: `owner-${suffix}@test.local`, emailVerified: true },
-      { id: strangerId, name: 'Stranger', email: `stranger-${suffix}@test.local`, emailVerified: true },
+      {
+        id: ownerId,
+        name: 'Owner',
+        email: `owner-${suffix}@test.local`,
+        emailVerified: true,
+      },
+      {
+        id: strangerId,
+        name: 'Stranger',
+        email: `stranger-${suffix}@test.local`,
+        emailVerified: true,
+      },
     ])
 
     await db.insert(space).values([
-      { id: spaceA, name: 'Space A', currency: 'EUR', createdByUserId: ownerId },
-      { id: spaceB, name: 'Space B', currency: 'EUR', createdByUserId: strangerId },
+      {
+        id: spaceA,
+        name: 'Space A',
+        currency: 'EUR',
+        createdByUserId: ownerId,
+      },
+      {
+        id: spaceB,
+        name: 'Space B',
+        currency: 'EUR',
+        createdByUserId: strangerId,
+      },
     ])
 
     const [a] = await db
       .insert(spaceMember)
-      .values({ spaceId: spaceA, userId: ownerId, displayName: 'Owner', color: 'terracotta', role: 'owner' })
+      .values({
+        spaceId: spaceA,
+        userId: ownerId,
+        displayName: 'Owner',
+        color: 'terracotta',
+        role: 'owner',
+      })
       .returning()
     memberA = a!.id
 
@@ -89,7 +119,12 @@ describe.skipIf(!DB_URL)('cross-household isolation', () => {
 
     const [c] = await db
       .insert(category)
-      .values({ spaceId: spaceA, name: `Cat-${suffix}`, color: 'terracotta', icon: 'home' })
+      .values({
+        spaceId: spaceA,
+        name: `Cat-${suffix}`,
+        color: 'terracotta',
+        icon: 'home',
+      })
       .returning()
     categoryA = c!.id
 
@@ -119,9 +154,7 @@ describe.skipIf(!DB_URL)('cross-household isolation', () => {
     const db = getDb()
     await db.delete(space).where(eq(space.id, spaceA))
     await db.delete(space).where(eq(space.id, spaceB))
-    await db
-      .delete(user)
-      .where(sql`${user.id} in (${ownerId}, ${strangerId})`)
+    await db.delete(user).where(sql`${user.id} in (${ownerId}, ${strangerId})`)
     await closeDb()
   })
 
@@ -135,7 +168,9 @@ describe.skipIf(!DB_URL)('cross-household isolation', () => {
   it('rejects a user who is not a member of the space', async () => {
     // The stranger is a legitimate user with their own space, so this is
     // exactly the cross-household case: a valid session, wrong space.
-    await expect(requireSpaceMember(strangerId, spaceA)).rejects.toThrow('Not found')
+    await expect(requireSpaceMember(strangerId, spaceA)).rejects.toThrow(
+      'Not found',
+    )
   })
 
   it('rejects a non-member for a space that does not exist, indistinguishably', async () => {
@@ -164,7 +199,9 @@ describe.skipIf(!DB_URL)('cross-household isolation', () => {
       .set({ archivedAt: new Date() })
       .where(eq(spaceMember.id, memberA))
 
-    await expect(requireSpaceMember(ownerId, spaceA)).rejects.toThrow('Not found')
+    await expect(requireSpaceMember(ownerId, spaceA)).rejects.toThrow(
+      'Not found',
+    )
 
     // Restore, so the remaining tests in this file still have a member.
     await db
@@ -188,9 +225,12 @@ describe.skipIf(!DB_URL)('cross-household isolation', () => {
     // A second row for a user who already has one is refused by the database.
     // Drizzle wraps driver errors, so match the cause rather than the message.
     await expect(
-      db
-        .insert(spaceMember)
-        .values({ spaceId: spaceA, userId: ownerId, displayName: `Dup-${suffix}`, color: 'teal' }),
+      db.insert(spaceMember).values({
+        spaceId: spaceA,
+        userId: ownerId,
+        displayName: `Dup-${suffix}`,
+        color: 'teal',
+      }),
     ).rejects.toThrow(
       expect.objectContaining({
         cause: expect.objectContaining({
@@ -214,9 +254,12 @@ describe.skipIf(!DB_URL)('split invariant under a real database', () => {
       email: `inv-${suffix}@test.local`,
       emailVerified: true,
     })
-    await db
-      .insert(space)
-      .values({ id: sid, name: 'Invariant space', currency: 'EUR', createdByUserId: uid })
+    await db.insert(space).values({
+      id: sid,
+      name: 'Invariant space',
+      currency: 'EUR',
+      createdByUserId: uid,
+    })
   })
 
   afterAll(async () => {
@@ -230,7 +273,13 @@ describe.skipIf(!DB_URL)('split invariant under a real database', () => {
     const db = getDb()
     const [m1] = await db
       .insert(spaceMember)
-      .values({ spaceId: sid, userId: uid, displayName: 'A', color: 'terracotta', role: 'owner' })
+      .values({
+        spaceId: sid,
+        userId: uid,
+        displayName: 'A',
+        color: 'terracotta',
+        role: 'owner',
+      })
       .returning()
     const [m2] = await db
       .insert(spaceMember)
@@ -255,7 +304,10 @@ describe.skipIf(!DB_URL)('split invariant under a real database', () => {
 
     for (const [amount, weights, label] of cases) {
       const shares = allocate(amount, weights)
-      expect(shares.reduce((s, x) => s + x, 0), label).toBe(amount)
+      expect(
+        shares.reduce((s, x) => s + x, 0),
+        label,
+      ).toBe(amount)
 
       const [e] = await db
         .insert(expense)
@@ -281,7 +333,9 @@ describe.skipIf(!DB_URL)('split invariant under a real database', () => {
 
       // Read it back the way the balance query does.
       const [row] = await db
-        .select({ total: sql<number>`coalesce(sum(${expenseSplit.shareMinor}), 0)::int` })
+        .select({
+          total: sql<number>`coalesce(sum(${expenseSplit.shareMinor}), 0)::int`,
+        })
         .from(expenseSplit)
         .where(eq(expenseSplit.expenseId, e!.id))
       expect(Number(row?.total), label).toBe(amount)

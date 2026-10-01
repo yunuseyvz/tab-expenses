@@ -1,0 +1,81 @@
+# Splitwise — single-VPS deployment.
+#
+# One `docker compose up --build` brings up the app, Postgres, and (in dev) a
+# mail catcher. In production, Coolify's Traefik terminates TLS in front of
+# `app` on port 3000; the app itself expects X-Forwarded-For, which is why
+# TRUSTED_PROXY_HEADERS is on.
+#
+# Secrets come from .env — copy .env.example and fill it in. Nothing secret is
+# baked into the image.
+
+name: splitwise
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:-app}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # The app's entrypoint also waits for the port, but a real healthcheck
+      # means `depends_on: condition: service_healthy` actually holds.
+      test:
+        [
+          'CMD-SHELL',
+          'pg_isready -U ${POSTGRES_USER:-app} -d ${POSTGRES_DB:-app}',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    # Not published to the host: only the app needs to reach it.
+    expose:
+      - '5432'
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: '3000'
+      # In-network hostname, not localhost: the app is a separate container.
+      DATABASE_URL: postgresql://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-app}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET is required}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:?BETTER_AUTH_URL is required}
+      # Traefik is in front, so the real client IP is in X-Forwarded-For.
+      TRUSTED_PROXY_HEADERS: 'true'
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-Splitwise <noreply@example.com>}
+    expose:
+      - '3000'
+    ports:
+      # Bound on the host for the dev flow. In production, prefer letting
+      # Coolify's Traefik do the routing and delete this block.
+      - '${APP_PORT:-3000}:3000'
+
+  # Dev only. `docker compose --profile dev up` starts it; without the profile
+  # it stays down, so a production `up` cannot accidentally expose a mail
+  # catcher on a public interface.
+  mailpit:
+    image: axllent/mailpit:latest
+    restart: unless-stopped
+    profiles: [dev]
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: 1
+      MP_SMTP_AUTH_ALLOW_INSECURE: 1
+    ports:
+      - '8025:8025' # web UI
+      # SMTP stays unexposed to the host; the app talks to the REST API.
+      - '1025:1025'
+
+volumes:
+  pgdata:
