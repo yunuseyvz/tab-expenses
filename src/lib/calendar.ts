@@ -157,30 +157,3 @@ export function longDate(iso: string, locale = 'en'): string {
     return iso
   }
 }
-
-/**
- * A date range as one short label.
- *
- * "1 Sep – 30 Sep" rather than "1 Sep 2026 – 30 Sep 2026", because this lives
- * in a button that has to stay narrow beside three preset pills. The year
- * appears when the range crosses one, which is the case where dropping it would
- * be actively misleading.
- */
-export function rangeLabel(from?: string, to?: string, locale = 'en'): string {
-  if (!from && !to) return ''
-  const fmt = (iso: string, withYear: boolean) =>
-    new Intl.DateTimeFormat(locale, {
-      day: 'numeric',
-      month: 'short',
-      ...(withYear ? { year: 'numeric' } : {}),
-    }).format(fromISODate(iso))
-
-  if (from && to) {
-    const sameYear =
-      fromISODate(from).getFullYear() === fromISODate(to).getFullYear()
-    return sameYear
-      ? `${fmt(from, false)} – ${fmt(to, false)} ${fromISODate(to).getFullYear()}`
-      : `${fmt(from, true)} – ${fmt(to, true)}`
-  }
-  return from ? `From ${fmt(from, true)}` : `To ${fmt(to!, true)}`
-}

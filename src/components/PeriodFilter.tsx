@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 
 import type { PeriodPreset } from '#/lib/period'
 import { DateField } from '#/components/ui/DateField'
-import { rangeLabel } from '#/lib/calendar'
+import { usePopoverPlacement } from '#/hooks/usePopoverPlacement'
 import { cn } from '#/lib/cn'
 
 const PRESETS: Array<{ key: PeriodPreset; label: string }> = [
@@ -12,25 +12,31 @@ const PRESETS: Array<{ key: PeriodPreset; label: string }> = [
   { key: 'custom', label: 'Custom' },
 ]
 
+const PANEL_WIDTH = 300
+
 /**
  * The period control, on every screen that has one.
  *
- * Previously three: a joined segmented control on the dashboard and two
- * rows of separate pills elsewhere, with the custom range existing on exactly
- * one of them. That made "the same control" mean something different depending
- * on the page, and it is why Custom was ever missing from two screens.
+ * Previously three: a joined segmented control on the dashboard and two rows of
+ * separate pills elsewhere, with the custom range on exactly one of them. That
+ * made "the same control" mean something different depending on the page, and
+ * it is why Custom was ever missing from two screens.
  *
- * MINIMAL BY ONE CONTROL, NOT BY TWO SMALLER ONES
- * The range is a single button showing the span it currently covers, rather
- * than two date fields sitting beside the presets. Two fields inline are two
- * more bordered boxes competing with four pills on a 390px screen; one button
- * that reports the range as a phrase reads better and costs the width of a
- * word. The two pickers live in its popover, where there is room for them and
- * where they are not competing with anything.
+ * CUSTOM IS ITS OWN DISCLOSURE
+ * The two attempts before this were both wrong in instructive ways. A trailing
+ * "Dates" button needed a trigger of its own merely to stay dimmed until Custom
+ * was chosen, and its popover — wider than its own button — hung off the right
+ * edge of a phone. Putting the fields on a row of their own fixed the overflow
+ * but cost a line of vertical space on every screen, permanently, to show two
+ * controls that are meaningless nine times out of ten.
  *
- * The button is always present and dimmed unless Custom is selected. Hiding it
- * would move everything below the filter when you chose Custom, and would hide
- * the only clue that Custom does anything at all.
+ * So Custom opens the panel itself. There is nothing else to click, nothing
+ * inert to grey out, and nothing to reserve space for. The panel hangs off the
+ * Custom pill, which is the one control whose meaning is "I want to set dates".
+ *
+ * Dates apply as they are picked — no Apply button — because every other control
+ * in this filter takes effect on click, and a button that only says "Apply" next
+ * to two fields that visibly change the list underneath is noise.
  */
 export function PeriodFilter({
   current,
@@ -49,19 +55,18 @@ export function PeriodFilter({
   }) => void
   className?: string
 }) {
-  const [open, setOpen] = useState(false)
-  const [draft, setDraft] = useState<{ from?: string; to?: string }>({
-    from,
-    to,
-  })
-  const root = useRef<HTMLDivElement>(null)
-
   const custom = current === 'custom'
+  const [open, setOpen] = useState(false)
+  const root = useRef<HTMLDivElement>(null)
+  const { anchor, placement } = usePopoverPlacement<HTMLSpanElement>({
+    open,
+    width: PANEL_WIDTH,
+  })
 
-  // Reopening on a different range shows that range, not the last one typed.
+  // A popover that outlives the thing it is about is worse than no popover.
   useEffect(() => {
-    if (open) setDraft({ from, to })
-  }, [open, from, to])
+    if (!custom) setOpen(false)
+  }, [custom])
 
   useEffect(() => {
     if (!open) return
@@ -79,10 +84,10 @@ export function PeriodFilter({
     }
   }, [open])
 
-  const label = rangeLabel(draft.from, draft.to)
+  const unbounded = !from && !to
 
   return (
-    <div className={cn('mb-4 flex flex-wrap items-center gap-1.5', className)}>
+    <div ref={root} className={cn('mb-4', className)}>
       <div
         role="radiogroup"
         aria-label="Period"
@@ -90,13 +95,25 @@ export function PeriodFilter({
       >
         {PRESETS.map((p) => {
           const active = current === p.key
-          return (
+          const isCustom = p.key === 'custom'
+          const pill = (
             <button
-              key={p.key}
               type="button"
               role="radio"
               aria-checked={active}
-              onClick={() => onChange({ period: p.key })}
+              aria-haspopup={isCustom ? 'dialog' : undefined}
+              aria-expanded={isCustom ? open : undefined}
+              onClick={() => {
+                if (!isCustom) {
+                  onChange({ period: p.key })
+                  return
+                }
+                // First press selects it *and* opens the panel, because a
+                // control that changes state without showing you what the state
+                // does is the definition of a dead end. A second press closes it.
+                if (!active) onChange({ period: p.key })
+                setOpen((o) => (active ? !o : true))
+              }}
               className={cn(
                 'px-2.5 py-1.5 text-sm rounded-[var(--radius-sm)]',
                 'transition-[background-color,box-shadow] duration-150',
@@ -108,102 +125,85 @@ export function PeriodFilter({
               {p.label}
             </button>
           )
-        })}
-      </div>
 
-      <div ref={root} className="relative">
-        <button
-          type="button"
-          onClick={() => custom && setOpen((o) => !o)}
-          disabled={!custom}
-          aria-haspopup="dialog"
-          aria-expanded={open}
-          title={
-            custom ? 'Choose the range' : 'Pick Custom first to choose a range'
-          }
-          className={cn(
-            'px-2.5 py-1.5 text-sm rounded-[var(--radius-sm)]',
-            'border border-dashed border-rule/80',
-            'transition-[color,background-color,border-color,opacity] duration-150',
-            custom
-              ? 'text-ink hover:bg-[var(--color-paper-sunk)] hover:border-terracotta/50'
-              : // Dimmed rather than hidden: an inert control that is still
-                // there explains why it is empty.
-                'text-ink-faint opacity-55 cursor-not-allowed',
-          )}
-        >
-          {label || 'Dates'}
-        </button>
+          if (!isCustom) return pill
 
-        {open && (
-          <div
-            role="dialog"
-            aria-label="Date range"
-            className="absolute z-50 mt-1.5 left-0 w-[min(21rem,calc(100vw-2rem))]
-              rounded-[var(--radius-lg)] border border-rule
-              bg-[var(--color-paper-raised)] p-3
-              shadow-[var(--shadow-float)]"
-          >
-            <div className="flex items-center gap-2">
-              <DateField
-                id="range-from"
-                label="From date"
-                placeholder="From"
-                compact
-                value={draft.from ?? ''}
-                onChange={(next) =>
-                  setDraft((d) => ({ ...d, from: next || undefined }))
-                }
-                className="flex-1"
-              />
-              <span aria-hidden className="text-ink-faint text-sm">
-                –
-              </span>
-              <DateField
-                id="range-to"
-                label="To date"
-                placeholder="To"
-                compact
-                value={draft.to ?? ''}
-                onChange={(next) =>
-                  setDraft((d) => ({ ...d, to: next || undefined }))
-                }
-                className="flex-1"
-              />
-            </div>
-
-            <div className="mt-3 flex gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  onChange({ period: 'custom', from: draft.from, to: draft.to })
-                  setOpen(false)
-                }}
-                className="flex-1 rounded-[var(--radius-sm)] py-1.5 text-sm
-                  font-medium bg-[var(--color-terracotta)] text-[var(--color-ink)]
-                  transition-transform duration-150 active:scale-[0.97]
-                  motion-reduce:active:scale-100"
-              >
-                Apply
-              </button>
-              {(from || to) && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    onChange({ from: undefined, to: undefined })
-                    setDraft({})
-                    setOpen(false)
-                  }}
-                  className="rounded-[var(--radius-sm)] px-3 py-1.5 text-sm
-                    text-ink-muted transition-colors duration-150
-                    hover:bg-[var(--color-paper-sunk)]"
+          return (
+            <span key={p.key} ref={anchor} className="relative inline-flex">
+              {pill}
+              {open && (
+                <div
+                  role="dialog"
+                  aria-label="Custom date range"
+                  style={
+                    placement
+                      ? { left: placement.left, width: placement.width }
+                      : undefined
+                  }
+                  // top-full, not just a margin: without it `top` is auto, the
+                  // panel falls back to its static position beside the pill, and
+                  // it swallows the very click that is meant to close it.
+                  className="absolute z-50 top-full mt-1.5 left-0
+                    w-[min(18.75rem,calc(100vw-1rem))]
+                    rounded-[var(--radius-lg)] border border-rule
+                    bg-[var(--color-paper-raised)]
+                    p-3 shadow-[var(--shadow-float)]"
                 >
-                  Clear
-                </button>
+                  <div className="space-y-2">
+                    <div>
+                      <span className="block text-xs text-ink-faint mb-1">
+                        From
+                      </span>
+                      <DateField
+                        label="From date"
+                        placeholder="Any date"
+                        compact
+                        value={from ?? ''}
+                        onChange={(v) => onChange({ from: v || undefined })}
+                      />
+                    </div>
+                    <div>
+                      <span className="block text-xs text-ink-faint mb-1">
+                        To
+                      </span>
+                      <DateField
+                        label="To date"
+                        placeholder="Any date"
+                        compact
+                        value={to ?? ''}
+                        onChange={(v) => onChange({ to: v || undefined })}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Stated rather than left to be inferred: an empty range
+                      means no bounds, which means everything. Without this,
+                      choosing Custom looks like it did nothing at all — which is
+                      indistinguishable from a filter that is broken. */}
+                  {unbounded && (
+                    <p className="mt-2.5 text-xs text-ink-faint">
+                      No dates set — showing everything.
+                    </p>
+                  )}
+
+                  {!unbounded && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onChange({ from: undefined, to: undefined })
+                      }
+                      className="mt-2.5 text-xs text-ink-muted
+                        transition-colors duration-150 hover:text-ink
+                        underline underline-offset-4"
+                    >
+                      Clear dates
+                    </button>
+                  )}
+                </div>
               )}
-            </div>
-          </div>
-        )}
+            </span>
+          )
+        })}
       </div>
     </div>
   )

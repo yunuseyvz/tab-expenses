@@ -13,6 +13,7 @@ import {
   startOfMonth,
 } from '#/lib/calendar'
 import { cn } from '#/lib/cn'
+import { usePopoverPlacement } from '#/hooks/usePopoverPlacement'
 
 /**
  * A date field with a real calendar.
@@ -60,10 +61,16 @@ export function DateField({
   locale?: string
 }) {
   const [open, setOpen] = useState(false)
+  // The panel is 19rem and hangs off a trigger that is often half that width, so
+  // it has to be measured rather than assumed to fit. See the hook for why a
+  // negative offset is the expected result, not a bug.
+  const { anchor: root, placement } = usePopoverPlacement<HTMLDivElement>({
+    open,
+    width: 19 * 16,
+  })
   const [cursor, setCursor] = useState<Date>(() =>
     value ? fromISODate(value) : new Date(),
   )
-  const root = useRef<HTMLDivElement>(null)
   const gridRef = useRef<HTMLDivElement>(null)
   const panelId = useId()
 
@@ -213,6 +220,11 @@ export function DateField({
           role="dialog"
           aria-label={label ?? 'Choose a date'}
           onKeyDown={onGridKeyDown}
+          style={
+            placement
+              ? { left: placement.left, width: placement.width }
+              : undefined
+          }
           className="absolute z-50 mt-1.5 left-0
             w-[min(19rem,calc(100vw-2rem))]
             rounded-[var(--radius-lg)] border border-rule
