@@ -64,7 +64,7 @@ async function main() {
 
     const [demoUser] = await sql<Array<{ id: string }>>`
       insert into "user" (id, name, email, email_verified, created_at, updated_at)
-      values (${demoUserIdToInsert}, 'Vale', ${DEMO_EMAIL}, true, now(), now())
+      values (${demoUserIdToInsert}, 'Sam', ${DEMO_EMAIL}, true, now(), now())
       on conflict (email) do update
         set name = excluded.name,
             email_verified = true,
@@ -88,7 +88,7 @@ async function main() {
     const [wg] = await db
       .insert(space)
       .values({
-        name: 'Hauptstraße',
+        name: 'Flat 3B',
         currency: 'EUR',
         createdByUserId: demoUserId,
       })
@@ -100,7 +100,7 @@ async function main() {
       .values({
         spaceId: wg.id,
         userId: demoUserId,
-        displayName: 'Vale',
+        displayName: 'Sam',
         color: 'terracotta',
         defaultWeightBp: 6000,
         role: 'owner',
@@ -111,7 +111,7 @@ async function main() {
       .values({
         spaceId: wg.id,
         userId: null, // virtual member — carries a share, never registers
-        displayName: 'Vater',
+        displayName: 'Alex',
         color: 'sage',
         defaultWeightBp: 4000,
         role: 'member',
@@ -122,7 +122,7 @@ async function main() {
       .values({
         spaceId: wg.id,
         userId: null,
-        displayName: 'Mila',
+        displayName: 'Robin',
         color: 'indigo',
         defaultWeightBp: 0,
         role: 'member',
@@ -146,11 +146,11 @@ async function main() {
       .returning()
     const byName = new Map(sharedRows.map((c) => [c.name, c]))
 
-    // A personal category: excluded from shared views, still counted in Mila's
+    // A personal category: excluded from shared views, still counted in Robin's
     // own balance.
     await db.insert(category).values({
       spaceId: wg.id,
-      name: 'Mila — hobby budget',
+      name: 'Robin — hobby budget',
       color: 'plum',
       icon: 'palette',
       scope: 'personal',
@@ -177,7 +177,7 @@ async function main() {
       payer: typeof me
       weights: Array<[typeof me, number]>
     }> = [
-      // The 60/40 case from the plan: €100, 60% mine, 40% Vater's.
+      // The 60/40 case from the plan: €100, 60% mine, 40% Alex's.
       {
         daysAgo: 1,
         purpose: 'Weekly groceries',
@@ -269,12 +269,12 @@ async function main() {
           [vater, 5000],
         ],
       },
-      // Personal category: only in Mila's own totals.
+      // Personal category: only in Robin's own totals.
       {
         daysAgo: 7,
         purpose: 'Watercolours',
         minor: 3200,
-        category: 'Mila — hobby budget',
+        category: 'Robin — hobby budget',
         payer: mila,
         weights: [[mila, 10000]],
       },
@@ -338,7 +338,7 @@ async function main() {
     }
 
     console.log(`Seeded space "${wg.name}" (${wg.id})`)
-    console.log(`  members:    Vale (you), Vater, Mila`)
+    console.log(`  members:    Sam (you), Alex, Robin`)
     console.log(`  categories: ${shared.length} shared + 1 personal`)
     console.log(`  expenses:   ${plan.length}, split invariant verified`)
     console.log(`\nSign in as ${DEMO_EMAIL} to see it.`)

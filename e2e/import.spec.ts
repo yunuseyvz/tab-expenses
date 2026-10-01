@@ -5,21 +5,36 @@
  * matters most is that a bad file changes nothing at all.
  */
 import { expect, test } from '@playwright/test'
+import type { Page } from '@playwright/test'
 
 const HEADER = 'date,purpose,amount,category,paid_by,note'
+
+/**
+ * The importer lives in a sheet, not on the settings page.
+ *
+ * Opening it through the row rather than jumping straight to the field, because
+ * the row is what the test is actually about: if the row stops opening the sheet,
+ * every test below would fail on a timeout with a message about a textarea that
+ * was never rendered, which says nothing useful.
+ */
+async function openImportSheet(page: Page) {
+  await page.getByRole('button', { name: /Import from a spreadsheet/ }).click()
+  await expect(page.getByLabel('CSV contents')).toBeVisible()
+}
 
 test.describe('csv import', () => {
   test('reports problems and imports nothing', async ({ page }) => {
     await page.goto('/settings')
+    await openImportSheet(page)
 
     await page
       .getByLabel('CSV contents')
       .fill(
         [
           HEADER,
-          '2026-03-01,Good row,10.00,Groceries,Vater,',
-          'not-a-date,Bad date,10.00,Groceries,Vater,',
-          '2026-03-03,Another good row,5.00,Groceries,Vater,',
+          '2026-03-01,Good row,10.00,Groceries,Alex,',
+          'not-a-date,Bad date,10.00,Groceries,Alex,',
+          '2026-03-03,Another good row,5.00,Groceries,Alex,',
         ].join('\n'),
       )
 
@@ -28,7 +43,7 @@ test.describe('csv import', () => {
     // The problem is named with a line number, and the user is told nothing
     // will be imported.
     await expect(
-      page.getByText(/problem\(s\) — nothing will be imported/),
+      page.getByText(/problem\(s\), so nothing will be imported/),
     ).toBeVisible()
     await expect(page.getByText(/Line 3: bad or missing date/)).toBeVisible()
 
@@ -40,6 +55,7 @@ test.describe('csv import', () => {
 
   test('refuses a row whose payer is not a member', async ({ page }) => {
     await page.goto('/settings')
+    await openImportSheet(page)
 
     await page
       .getByLabel('CSV contents')
@@ -58,6 +74,7 @@ test.describe('csv import', () => {
 
   test('previews a clean file, then imports it', async ({ page }) => {
     await page.goto('/settings')
+    await openImportSheet(page)
 
     // Timestamped so re-running the suite does not collide with the
     // duplicate check, which is itself part of what is being tested.
@@ -67,8 +84,8 @@ test.describe('csv import', () => {
       .fill(
         [
           HEADER,
-          `2026-05-0${(stamp % 9) + 1},Imported groceries ${stamp},12.34,Groceries,Vater,from a sheet`,
-          `2026-05-0${(stamp % 8) + 1},Imported pharmacy ${stamp},23.70,Health,Vale,`,
+          `2026-05-0${(stamp % 9) + 1},Imported groceries ${stamp},12.34,Groceries,Alex,from a sheet`,
+          `2026-05-0${(stamp % 8) + 1},Imported pharmacy ${stamp},23.70,Health,Sam,`,
         ].join('\n'),
       )
 
@@ -91,11 +108,12 @@ test.describe('csv import', () => {
     page,
   }) => {
     await page.goto('/settings')
+    await openImportSheet(page)
 
     const stamp = Date.now()
     const csv = [
       HEADER,
-      `2026-06-0${(stamp % 9) + 1},Duplicate probe ${stamp},42.00,Utilities,Vater,`,
+      `2026-06-0${(stamp % 9) + 1},Duplicate probe ${stamp},42.00,Utilities,Alex,`,
     ].join('\n')
 
     for (const round of [1, 2]) {

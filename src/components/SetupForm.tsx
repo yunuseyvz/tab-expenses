@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -30,6 +30,23 @@ export function SetupForm({
 }) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+
+  // Whether there is anywhere to go back to. `/setup` has no Cancel because
+  // there is nothing behind it: an account with no space has no screen to return
+  // to, and the honest thing is to not offer one.
+  const [canCancel, setCanCancel] = useState(false)
+  useEffect(() => {
+    // Read after mount, so this is not a render-time history access.
+    setCanCancel(window.history.length > 1)
+  }, [])
+
+  // History rather than a named route, because the caller is whichever switcher
+  // the person used: the sidebar's "New space" and the floating bar's are the
+  // same link and neither of them has a canonical previous page.
+  const back = () => {
+    if (window.history.length > 1) window.history.back()
+    else void navigate({ to: '/setup' })
+  }
 
   const [name, setName] = useState('')
   const [currency, setCurrency] = useState('EUR')
@@ -182,14 +199,39 @@ export function SetupForm({
           </div>
         </fieldset>
 
-        <Button
-          type="submit"
-          size="lg"
-          className="w-full"
-          disabled={create.isPending}
-        >
-          {create.isPending ? 'Creating…' : 'Create space'}
-        </Button>
+        <div className="flex gap-2.5">
+          <Button
+            type="submit"
+            size="lg"
+            className="flex-1"
+            disabled={create.isPending}
+          >
+            {create.isPending ? 'Creating…' : 'Create space'}
+          </Button>
+          {/* Cancel, and only when there is somewhere to cancel back to.
+           *
+           * `/setup` is the first-run flow: there is nothing behind it, the
+           * account has no space at all, and the only way out is signing out. A
+           * Cancel that could not do either of those would be a control that
+           * lies about being able to leave.
+           *
+           * `/spaces/new` is reached *from* the app, by tapping "New space", so
+           * there is a real previous page. It goes back with the browser history
+           * rather than a hard-coded path, because the switcher is in the sidebar
+           * and the floating bar on a phone and neither of those is "/settings";
+           * history is the only thing that knows where you actually came from. */}
+          {canCancel && (
+            <Button
+              type="button"
+              variant="secondary"
+              size="lg"
+              onClick={back}
+              disabled={create.isPending}
+            >
+              Cancel
+            </Button>
+          )}
+        </div>
       </form>
     </div>
   )

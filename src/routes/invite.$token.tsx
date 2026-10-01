@@ -96,7 +96,7 @@ function InviteRoute() {
         ) : info?.status === 'expired' ? (
           <Outcome
             title="This invitation has expired"
-            body="Ask whoever invited you to send a new one — it only takes a moment."
+            body="Ask whoever invited you to send a new one. It only takes a moment."
           />
         ) : info ? (
           <>

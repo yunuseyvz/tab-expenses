@@ -165,7 +165,7 @@ export const sendInviteEmail = createServerOnlyFn(async function ({
     `    ${acceptUrl}`,
     '',
     `The link works for anyone signed in as ${to}, and expires in ${days} day${days === 1 ? '' : 's'}.`,
-    'If you were not expecting this, ignore this message — nothing has changed.',
+    'If you were not expecting this, ignore this message. Nothing has changed.',
     '',
     '— Tab',
   ].join('\n')

@@ -109,7 +109,7 @@ export const updateSpace = createServerFn({ method: 'POST' })
         .where(eq(expense.spaceId, data.spaceId))
       if (Number(count?.n ?? 0) > 0) {
         throw new Error(
-          'The currency cannot change once a space has expenses — every amount was entered in the old one.',
+          'The currency cannot change once a space has expenses. Every amount was entered in the old one.',
         )
       }
     }
@@ -336,19 +336,43 @@ export const archiveMember = createServerFn({ method: 'POST' })
     await requireSpaceOwner(session.user.id, data.spaceId)
     const db = getDb()
 
-    // The last owner cannot be archived — the space would be unmanageable.
-    const remaining = await db
-      .select({ n: sql<number>`count(*)::int` })
+    // The last owner cannot be archived, because a household with no owner
+    // cannot be managed.
+    //
+    // Only when the member being archived *is* an owner. This used to count
+    // owners and throw if there was one, without ever looking at who was being
+    // removed, so a household with a single owner could not remove anybody at
+    // all: not the other owner-less members, nobody. One person owning the
+    // ledger while everybody else is on it is the ordinary case, so this locked
+    // the roster in exactly the setup most people have. Reported as "Cannot
+    // archive the last owner" while removing someone who was not an owner.
+    const target = await db
+      .select({ role: spaceMember.role })
       .from(spaceMember)
       .where(
         and(
+          eq(spaceMember.id, data.memberId),
           eq(spaceMember.spaceId, data.spaceId),
-          eq(spaceMember.role, 'owner'),
-          isNull(spaceMember.archivedAt),
         ),
       )
-    if ((remaining[0]?.n ?? 0) <= 1) {
-      throw new Error('Cannot archive the last owner')
+      .limit(1)
+
+    if (target[0]?.role === 'owner') {
+      const owners = await db
+        .select({ n: sql<number>`count(*)::int` })
+        .from(spaceMember)
+        .where(
+          and(
+            eq(spaceMember.spaceId, data.spaceId),
+            eq(spaceMember.role, 'owner'),
+            isNull(spaceMember.archivedAt),
+          ),
+        )
+      if ((owners[0]?.n ?? 0) <= 1) {
+        throw new Error(
+          'This is the only owner of the household. Make someone else an owner before removing this one.',
+        )
+      }
     }
 
     const [row] = await db

@@ -11,9 +11,7 @@ test.describe('ledger', () => {
   test('shows the seeded dashboard totals', async ({ page }) => {
     await page.goto('/dashboard?period=all')
 
-    await expect(
-      page.getByRole('heading', { name: 'Hauptstraße' }),
-    ).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Flat 3B' })).toBeVisible()
     await expect(page.getByText('Total spend')).toBeVisible()
     await expect(page.getByText('Your share')).toBeVisible()
   })
@@ -78,9 +76,9 @@ test.describe('ledger', () => {
     await expect(page.getByRole('heading', { name: 'Balances' })).toBeVisible()
     await expect(page.getByText('Per member')).toBeVisible()
     // Every member appears in the per-member table, virtual ones included.
-    // (Vater also appears in a settlement line, hence .first().)
-    await expect(page.getByText('Vater').first()).toBeVisible()
-    await expect(page.getByText('Mila').first()).toBeVisible()
+    // (Alex also appears in a settlement line, hence .first().)
+    await expect(page.getByText('Alex').first()).toBeVisible()
+    await expect(page.getByText('Robin').first()).toBeVisible()
   })
 
   test('creates an expense and it persists across a reload', async ({
@@ -95,7 +93,7 @@ test.describe('ledger', () => {
     const purpose = `E2E save ${Date.now()}`
     await page.getByLabel('Amount').fill('100.00')
     await page.getByLabel('What was it for').fill(purpose)
-    await chooseOption(page, page.getByLabel('Paid by'), 'Vale')
+    await chooseOption(page, page.getByLabel('Paid by'), 'Sam')
 
     // No split: the payer takes 100% and the save button is immediately live.
     await expect(page.getByRole('status')).toHaveCount(0)

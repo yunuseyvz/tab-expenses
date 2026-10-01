@@ -2,7 +2,7 @@
  * Creating an expense, including the split editor.
  *
  * The live euro preview is the part worth testing: the plan requires that
- * "Vater: €40.00" is shown while dragging so the rounding is visible and
+ * "Alex: €40.00" is shown while dragging so the rounding is visible and
  * trustworthy rather than something to verify after saving.
  */
 import { expect, test } from '@playwright/test'
@@ -21,7 +21,7 @@ test.describe('split editor', () => {
 
     await page.getByLabel('Amount').fill('100.00')
     await page.getByLabel('What was it for').fill('E2E split check')
-    await chooseOption(page, page.getByLabel('Paid by'), 'Vale')
+    await chooseOption(page, page.getByLabel('Paid by'), 'Sam')
 
     // The switch's <input> is sr-only inside its <label>, so it cannot be
     // clicked directly. Clicking the visible label is what a person does, and
@@ -36,13 +36,13 @@ test.describe('split editor', () => {
     // silently renormalising the weights.
     await expect(page.getByRole('status')).toBeVisible()
 
-    await page.getByLabel('Vale percent').fill('60')
-    await page.getByLabel('Vater percent').fill('30')
+    await page.getByLabel('Sam percent').fill('60')
+    await page.getByLabel('Alex percent').fill('30')
 
     // 60 + 30 leaves 10% unassigned, and it must say so.
     await expect(page.getByRole('status')).toHaveText('10% left to assign')
 
-    await page.getByLabel('Mila percent').fill('10')
+    await page.getByLabel('Robin percent').fill('10')
     await expect(page.getByRole('status')).toHaveText('Totals 100%')
 
     // The previews are the money each person is charged.
@@ -51,7 +51,7 @@ test.describe('split editor', () => {
     await expect(sheet.getByText('€10.00')).toBeVisible()
 
     // Over-assigning is reported, not clamped.
-    await page.getByLabel('Mila percent').fill('20')
+    await page.getByLabel('Robin percent').fill('20')
     await expect(page.getByRole('status')).toHaveText('10% over-assigned')
   })
 
@@ -61,7 +61,7 @@ test.describe('split editor', () => {
 
     await page.getByLabel('Amount').fill('50.00')
     await page.getByLabel('What was it for').fill('E2E unbalanced')
-    await chooseOption(page, page.getByLabel('Paid by'), 'Vale')
+    await chooseOption(page, page.getByLabel('Paid by'), 'Sam')
     // The switch's <input> is sr-only inside its <label>, so it cannot be
     // clicked directly. Clicking the visible label is what a person does, and
     // the label association toggles it.
@@ -70,9 +70,9 @@ test.describe('split editor', () => {
       page.getByRole('switch', { name: /Split between members/ }),
     ).toBeChecked()
 
-    await page.getByLabel('Vale percent').fill('60')
-    await page.getByLabel('Vater percent').fill('30')
-    await page.getByLabel('Mila percent').fill('0')
+    await page.getByLabel('Sam percent').fill('60')
+    await page.getByLabel('Alex percent').fill('30')
+    await page.getByLabel('Robin percent').fill('0')
 
     // The save button is disabled while the split does not add up, so an
     // invalid split can never reach the server.
@@ -87,7 +87,7 @@ test.describe('split editor', () => {
 
     await page.getByLabel('Amount').fill('10.00')
     await page.getByLabel('What was it for').fill('E2E equal preset')
-    await chooseOption(page, page.getByLabel('Paid by'), 'Vale')
+    await chooseOption(page, page.getByLabel('Paid by'), 'Sam')
     // The switch's <input> is sr-only inside its <label>, so it cannot be
     // clicked directly. Clicking the visible label is what a person does, and
     // the label association toggles it.

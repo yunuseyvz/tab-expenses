@@ -72,10 +72,15 @@ services:
       MAILPIT_API_URL: http://mailpit:8025
     expose:
       - '3000'
-    ports:
-      # Bound on the host for the dev flow. In production, prefer letting
-      # Coolify's Traefik do the routing and delete this block.
-      - '${APP_PORT:-3000}:3000'
+    # No `ports:` here on purpose.
+    #
+    # Publishing 3000 on the host is how a local dev flow reaches the app, but it
+    # is the wrong shape for a deploy: the reverse proxy in front routes to the
+    # container directly, and a published port sends traffic around the proxy and
+    # past TLS. `expose` above is the declaration that stays, and
+    # docker-compose.dev.yml adds the host port for development.
+    #
+    # So: base file alone for a deploy, both files for `docker compose up`.
 
   # Dev only. `docker compose --profile dev up` starts it; without the profile
   # it stays down, so a production `up` cannot accidentally expose a mail

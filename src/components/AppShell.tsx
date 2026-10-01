@@ -529,6 +529,25 @@ export function Sheet({
   const [mounted, setMounted] = useState(false)
   useEffect(() => setMounted(true), [])
 
+  // Escape closes it. This was assumed to be true for as long as the sheet had a
+  // Close button in its header, so nobody checked: there was no listener, and the
+  // header button covered for it. Removing the button left the keyboard with no
+  // way out of a dialog, which is the one thing a dialog must not do.
+  //
+  // It matters most for the sheets that have no footer button of their own. A
+  // sheet opened to invite someone has nothing but the backdrop to click.
+  useEffect(() => {
+    if (!open) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation()
+        onClose()
+      }
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [open, onClose])
+
   const panel = (
     <AnimatePresence>
       {open && (
@@ -572,15 +591,19 @@ export function Sheet({
                   shadow-[var(--shadow-deboss)]"
               />
             </div>
-            <div className="flex items-center justify-between px-5 py-2.5 shrink-0">
+            {/* No close control in the header.
+             *
+             * Every sheet already has three: a Cancel button in its footer, the
+             * backdrop, and Escape. This one was a fourth, in the least useful
+             * position, and it was the only one of the four that did nothing on
+             * mobile, where a header Close is nowhere near the Cancel people use.
+             *
+             * Removing it leaves the title alone in the bar, which is where a
+             * title belongs anyway. The drag handle is what says "this is
+             * dismissible" on a phone, and the backdrop says it everywhere else.
+             */}
+            <div className="px-5 py-2.5 shrink-0">
               <h2 className="text-xl tracking-tight">{title}</h2>
-              <button
-                type="button"
-                onClick={onClose}
-                className="text-sm text-ink-muted hover:text-ink"
-              >
-                Close
-              </button>
             </div>
             {/* No bottom padding here. A sticky footer pins to the bottom of
                 this box, so padding on it becomes a visible gap between the

@@ -18,9 +18,7 @@ test.describe('space switching', () => {
   }) => {
     // The shared session belongs to the seeded demo account.
     await page.goto('/dashboard')
-    await expect(
-      page.getByRole('heading', { name: 'Hauptstraße' }),
-    ).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Flat 3B' })).toBeVisible()
 
     // Scoped to the navigation landmark rather than matched by role alone: the
     // expenses screen has a second visible listbox trigger (the member filter),
@@ -53,7 +51,7 @@ test.describe('space switching', () => {
     // A fresh space, so the assertions below cannot pass on stale data.
     const name = `Ferienhaus ${Date.now()}`
     await page.getByLabel('Space name').fill(name)
-    await page.getByLabel('Your name in this space').fill('Vale')
+    await page.getByLabel('Your name in this space').fill('Sam')
     await page.getByRole('button', { name: 'Create space' }).click()
 
     await expect(page).toHaveURL(/\/dashboard/)
@@ -98,10 +96,8 @@ test.describe('space switching', () => {
     // attached to one event and not drifting onto tab taps.
     await switcher.click()
     const blur = watchContent(page)
-    await page.getByRole('option', { name: /Hauptstraße/ }).click()
-    await expect(
-      page.getByRole('heading', { name: 'Hauptstraße' }),
-    ).toBeVisible()
+    await page.getByRole('option', { name: /Flat 3B/ }).click()
+    await expect(page.getByRole('heading', { name: 'Flat 3B' })).toBeVisible()
 
     const frames = await blur
     expect(
@@ -122,25 +118,25 @@ test.describe('space switching', () => {
 
     // ── the remembered default is what the cookie is for ───────────────
     // The nav links deliberately carry no space, so clicking one drops the param
-    // from the URL. Landing on Hauptstraße anyway can only mean the
+    // from the URL. Landing on Flat 3B anyway can only mean the
     // remembered-space cookie was written — if it were not, every bare
     // /dashboard would quietly fall back to the first space, which still looks
     // right right up until you own two.
     await page.getByRole('link', { name: 'Balances' }).click()
     await expect(page).toHaveURL(/\/balances/)
     expect(new URL(page.url()).searchParams.get('space')).toBeNull()
-    await expectSwitcher('Hauptstraße')
+    await expectSwitcher('Flat 3B')
 
     await page.reload()
     expect(new URL(page.url()).searchParams.get('space')).toBeNull()
     await expect(page.getByRole('heading', { name: 'Balances' })).toBeVisible()
-    await expectSwitcher('Hauptstraße')
+    await expectSwitcher('Flat 3B')
 
     // ── a ?space= for someone else's space must be refused, not obeyed ──
     // resolveSpaceId ignores ids the user does not belong to. The screen has to
     // keep showing a real household rather than going blank.
     await page.goto('/balances?space=00000000-0000-4000-8000-000000000000')
-    await expectSwitcher('Hauptstraße')
+    await expectSwitcher('Flat 3B')
     await expect(page.getByRole('heading', { name: 'Balances' })).toBeVisible()
   })
 })
@@ -179,9 +175,7 @@ test.describe('the space cookie', () => {
     page,
   }) => {
     await page.goto('/dashboard')
-    await expect(
-      page.getByRole('heading', { name: 'Hauptstraße' }),
-    ).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Flat 3B' })).toBeVisible()
 
     const switcher = page
       .getByRole('navigation', { name: 'Main' })

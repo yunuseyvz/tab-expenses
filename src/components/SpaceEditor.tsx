@@ -160,200 +160,223 @@ export function SpaceEditor({
       ),
   })
 
-  if (!space) return null
-
   const s = summary.data
   const hasExpenses = (s?.expenses ?? 0) > 0
   // The name is the gate, so it is compared the way a person would say it:
   // trailing spaces and capitalisation are not a different household.
-  const nameMatches = typed.trim().toLowerCase() === space.name.toLowerCase()
+  // Safe to compute with no space: the body that uses it is not rendered then.
+  const nameMatches =
+    !!space && typed.trim().toLowerCase() === space.name.toLowerCase()
 
+  // `open` rather than `open`, with the body conditional inside the sheet.
+  //
+  // This used to `return null` the moment the space went away, which unmounted
+  // the Sheet outright and so skipped its exit animation entirely: the sheet was
+  // simply gone between one frame and the next while everything else in the app
+  // animated out. AnimatePresence can only animate a child that stays mounted
+  // long enough to be told to leave, so the sheet stays mounted and closes
+  // itself.
+  //
+  // `key` is what makes that safe. Without it the two steps of the delete
+  // confirmation share one body, and closing mid-confirm would leave the typed
+  // name in place for whoever opens the editor next.
   return (
     <Sheet
-      open
+      open={!!space}
       onClose={onClose}
+      key={space?.id ?? 'none'}
       title={confirming ? 'Delete space' : 'Edit space'}
     >
-      {confirming ? (
-        <div className="space-y-4 pb-4">
-          <div className="rounded-[var(--radius-md)] border border-oxblood-ink/40 bg-oxblood-ink/10 p-3">
-            <p className="text-sm leading-relaxed">
-              <strong className="font-medium">{space.name}</strong> will be
-              deleted for everyone in it. There is no undo, no trash and no copy
-              kept anywhere.
-            </p>
-          </div>
+      {space && (
+        <>
+          {confirming ? (
+            <div className="space-y-4 pb-4">
+              <div className="rounded-[var(--radius-md)] border border-oxblood-ink/40 bg-oxblood-ink/10 p-3">
+                <p className="text-sm leading-relaxed">
+                  <strong className="font-medium">{space.name}</strong> will be
+                  deleted for everyone in it. There is no undo, no trash and no
+                  copy kept anywhere.
+                </p>
+              </div>
 
-          {s ? (
-            <dl className="rounded-[var(--radius-md)] border border-rule bg-[var(--color-paper-sunk)] divide-y divide-rule">
-              <Lost
-                label={
-                  s.expenses === 1 ? '1 expense' : `${s.expenses} expenses`
-                }
-                detail={
-                  s.expenses > 0
-                    ? formatMoney(s.totalMinor, space.currency)
-                    : 'nothing recorded yet'
-                }
-              />
-              <Lost
-                label={s.members === 1 ? '1 member' : `${s.members} members`}
-                detail="lose access immediately"
-              />
-              {s.categories > 0 && (
-                <Lost
-                  label={
-                    s.categories === 1
-                      ? '1 category'
-                      : `${s.categories} categories`
-                  }
-                />
+              {s ? (
+                <dl className="rounded-[var(--radius-md)] border border-rule bg-[var(--color-paper-sunk)] divide-y divide-rule">
+                  <Lost
+                    label={
+                      s.expenses === 1 ? '1 expense' : `${s.expenses} expenses`
+                    }
+                    detail={
+                      s.expenses > 0
+                        ? formatMoney(s.totalMinor, space.currency)
+                        : 'nothing recorded yet'
+                    }
+                  />
+                  <Lost
+                    label={
+                      s.members === 1 ? '1 member' : `${s.members} members`
+                    }
+                    detail="lose access immediately"
+                  />
+                  {s.categories > 0 && (
+                    <Lost
+                      label={
+                        s.categories === 1
+                          ? '1 category'
+                          : `${s.categories} categories`
+                      }
+                    />
+                  )}
+                  {s.invites > 0 && (
+                    <Lost
+                      label={`${s.invites} pending invite${s.invites === 1 ? '' : 's'}`}
+                      detail="links stop working"
+                    />
+                  )}
+                </dl>
+              ) : (
+                <p className="text-sm text-ink-faint">
+                  Counting what will be lost…
+                </p>
               )}
-              {s.invites > 0 && (
-                <Lost
-                  label={`${s.invites} pending invite${s.invites === 1 ? '' : 's'}`}
-                  detail="links stop working"
-                />
-              )}
-            </dl>
-          ) : (
-            <p className="text-sm text-ink-faint">
-              Counting what will be lost…
-            </p>
-          )}
 
-          <div>
-            {/* normal-case is load-bearing, not styling. The Label is
+              <div>
+                {/* normal-case is load-bearing, not styling. The Label is
                 uppercased, and CSS uppercase rewrites ß to SS — so without this
                 the instruction reads "TYPE HAUPTSTRASSE" for a space called
                 "Hauptstraße" and asks for a string the gate will never accept. */}
-            <Label htmlFor="space-delete-confirm">
-              Type{' '}
-              <span className="font-medium text-ink normal-case">
-                {space.name}
-              </span>{' '}
-              to confirm
-            </Label>
-            <Input
-              id="space-delete-confirm"
-              value={typed}
-              autoComplete="off"
-              spellCheck={false}
-              autoFocus
-              onChange={(e) => setTyped(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && nameMatches) remove.mutate(space)
+                <Label htmlFor="space-delete-confirm">
+                  Type{' '}
+                  <span className="font-medium text-ink normal-case">
+                    {space.name}
+                  </span>{' '}
+                  to confirm
+                </Label>
+                <Input
+                  id="space-delete-confirm"
+                  value={typed}
+                  autoComplete="off"
+                  spellCheck={false}
+                  autoFocus
+                  onChange={(e) => setTyped(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && nameMatches) remove.mutate(space)
+                  }}
+                  placeholder={space.name}
+                />
+              </div>
+
+              <div className="flex gap-2 pt-1">
+                <Button
+                  variant="danger"
+                  disabled={!nameMatches || remove.isPending || !s}
+                  onClick={() => remove.mutate(space)}
+                  className="flex-1"
+                >
+                  <Trash2 size={15} aria-hidden />
+                  {remove.isPending ? 'Deleting…' : 'Delete space'}
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => {
+                    setConfirming(false)
+                    setTyped('')
+                  }}
+                >
+                  Back
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault()
+                save.mutate()
               }}
-              placeholder={space.name}
-            />
-          </div>
-
-          <div className="flex gap-2 pt-1">
-            <Button
-              variant="danger"
-              disabled={!nameMatches || remove.isPending || !s}
-              onClick={() => remove.mutate(space)}
-              className="flex-1"
+              // pb-4 because this sheet has no sticky footer to supply it.
+              className="space-y-4 pb-4"
             >
-              <Trash2 size={15} aria-hidden />
-              {remove.isPending ? 'Deleting…' : 'Delete space'}
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => {
-                setConfirming(false)
-                setTyped('')
-              }}
-            >
-              Back
-            </Button>
-          </div>
-        </div>
-      ) : (
-        <form
-          onSubmit={(e) => {
-            e.preventDefault()
-            save.mutate()
-          }}
-          // pb-4 because this sheet has no sticky footer to supply it.
-          className="space-y-4 pb-4"
-        >
-          <div>
-            <Label htmlFor="space-edit-name">Name</Label>
-            <Input
-              id="space-edit-name"
-              required
-              maxLength={80}
-              // Empty means "unchanged", so the field shows a placeholder rather
-              // than being pre-filled — one less thing to keep in sync.
-              value={name}
-              placeholder={space.name}
-              onChange={(e) => setName(e.target.value)}
-            />
-          </div>
+              <div>
+                <Label htmlFor="space-edit-name">Name</Label>
+                <Input
+                  id="space-edit-name"
+                  required
+                  maxLength={80}
+                  // Empty means "unchanged", so the field shows a placeholder rather
+                  // than being pre-filled — one less thing to keep in sync.
+                  value={name}
+                  placeholder={space.name}
+                  onChange={(e) => setName(e.target.value)}
+                />
+              </div>
 
-          <div>
-            <Label htmlFor="space-edit-currency">Currency</Label>
-            <Select
-              id="space-edit-currency"
-              aria-label="Currency"
-              value={currency || space.currency}
-              disabled={hasExpenses}
-              onChange={(e) => setCurrency(e.target.value)}
-            >
-              {CURRENCIES.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </Select>
-            {hasExpenses && (
-              <p className="mt-1.5 text-xs text-ink-faint">
-                Locked. Every amount was entered in {space.currency}, so
-                relabelling the currency would restate the whole history.
-              </p>
-            )}
-          </div>
+              <div>
+                <Label htmlFor="space-edit-currency">Currency</Label>
+                <Select
+                  id="space-edit-currency"
+                  aria-label="Currency"
+                  value={currency || space.currency}
+                  disabled={hasExpenses}
+                  onChange={(e) => setCurrency(e.target.value)}
+                >
+                  {CURRENCIES.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </Select>
+                {hasExpenses && (
+                  <p className="mt-1.5 text-xs text-ink-faint">
+                    Locked. Every amount was entered in {space.currency}, so
+                    relabelling the currency would restate the whole history.
+                  </p>
+                )}
+              </div>
 
-          <div>
-            <Label>Avatar</Label>
-            <AvatarPicker
-              value={icon ?? space.icon ?? null}
-              seed={space.id}
-              name={space.name}
-              onChange={setIcon}
-              kind="space"
-              label="Space avatar"
-            />
-          </div>
+              <div>
+                <Label>Avatar</Label>
+                <AvatarPicker
+                  value={icon ?? space.icon ?? null}
+                  seed={space.id}
+                  name={space.name}
+                  onChange={setIcon}
+                  kind="space"
+                  label="Space avatar"
+                />
+              </div>
 
-          <div className="flex gap-2 pt-1">
-            <Button type="submit" disabled={save.isPending} className="flex-1">
-              {save.isPending ? 'Saving…' : 'Save'}
-            </Button>
-            <Button type="button" variant="secondary" onClick={onClose}>
-              Cancel
-            </Button>
-          </div>
+              <div className="flex gap-2 pt-1">
+                <Button
+                  type="submit"
+                  disabled={save.isPending}
+                  className="flex-1"
+                >
+                  {save.isPending ? 'Saving…' : 'Save'}
+                </Button>
+                <Button type="button" variant="secondary" onClick={onClose}>
+                  Cancel
+                </Button>
+              </div>
 
-          {/* Kept below the form and out of its way: this is a decision, not
+              {/* Kept below the form and out of its way: this is a decision, not
               another field, and it should not be one stray tap from Save. */}
-          <div className="border-t border-rule pt-4">
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => setConfirming(true)}
-              className="text-oxblood-ink hover:bg-oxblood-ink/10"
-            >
-              <Trash2 size={15} aria-hidden />
-              Delete space
-            </Button>
-            <p className="mt-1.5 text-xs text-ink-faint">
-              Removes this space and everything in it, for everyone.
-            </p>
-          </div>
-        </form>
+              <div className="border-t border-rule pt-4">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => setConfirming(true)}
+                  className="text-oxblood-ink hover:bg-oxblood-ink/10"
+                >
+                  <Trash2 size={15} aria-hidden />
+                  Delete space
+                </Button>
+                <p className="mt-1.5 text-xs text-ink-faint">
+                  Removes this space and everything in it, for everyone.
+                </p>
+              </div>
+            </form>
+          )}
+        </>
       )}
     </Sheet>
   )

@@ -80,8 +80,8 @@
    * "blue-grey theme", which is a different look, not a less Claude one.
    */
   --color-paper: oklch(0.968 0.004 255);
-  --color-paper-raised: oklch(0.986 0.003 255);
-  --color-paper-sunk: oklch(0.938 0.0055 255);
+  --color-paper-raised: oklch(0.99 0.0025 255);
+  --color-paper-sunk: oklch(0.944 0.005 255);
 
   /* ── ink ───────────────────────────────────────────────────────────────
    * Lightness values are tuned so every level clears WCAG AA (4.5:1) against
@@ -147,7 +147,12 @@
    * would turn every field into a disabled-looking rectangle, so the edge has
    * to carry it. This is a 1px line, not a fill: dark enough to be a boundary,
    * light enough that the field still reads as paper with a line round it. */
-  --rule-field: oklch(0.655 0.008 255);
+  /*
+   * A field boundary, so 1.4.11's 3:1 applies. This is measured against *both*
+   * paper surfaces, not just the raised one: an input on a sunken card sits on
+   * `paper`, and clearing only `raised` left that at 2.9:1.
+   */
+  --rule-field: oklch(0.6 0.008 255);
 
   /* ── elevation: the heart of the effect ────────────────────────────── */
   /* pressed into the paper — inputs, wells, pressed toggles */
@@ -293,8 +298,28 @@
    * Ratios asserted in e2e/design.spec.ts; measured in-browser, not by hand.
    */
   --color-paper: oklch(0.19 0.006 255);
-  --color-paper-raised: oklch(0.265 0.007 255);
-  --color-paper-sunk: oklch(0.15 0.005 255);
+  /*
+   * The two raised surfaces, lifted rather than dropped.
+   *
+   * Selected things in this app are painted with `--color-paper-sunk`: the active
+   * nav pill, the selected row in a listbox, the current household in the menu.
+   * On dark paper that made every selection a *hole*. Measured: raised L 0.0184
+   * against sunk L 0.0033, so a selected row sat 1.28:1 *below* the card it was
+   * in, and the one thing you had chosen looked like the one thing missing.
+   *
+   * "Sunk" is the right name for a field that should read as a well you type
+   * into, and the wrong name for a selection. So the fix is not to stop using
+   * the token but to stop the dark value from going so far below the surface it
+   * sits on: 0.15 was more than twice the step down that light mode takes
+   * (0.044 against 0.038 here), which is what made it read as absence rather than
+   * as emphasis.
+   *
+   * These are now the same distance apart in both themes, which is the part that
+   * matters: a selection should look equally like a selection whichever theme
+   * you are in.
+   */
+  --color-paper-raised: oklch(0.29 0.007 255);
+  --color-paper-sunk: oklch(0.235 0.006 255);
 
   --color-ink: oklch(0.95 0.004 255);
   --color-ink-muted: oklch(0.78 0.006 255);
@@ -315,9 +340,17 @@
   /* Hairlines are non-text and need 3:1 against the surface they sit on
    * (WCAG 1.4.11), which on a dark surface means a much lighter line than
    * intuition suggests. */
-  --color-rule: oklch(0.55 0.008 255);
+  /*
+   * 3:1 against `--color-paper-raised`, which this fell under when that surface
+   * was lifted from 0.265 to 0.29. 1.4.11 asks for 3:1 on the boundary of a
+   * control, and a secondary button is a control: it uses `border-rule`.
+   */
+  --color-rule: oklch(0.62 0.008 255);
   /* Dark mode needs a *lighter* line, not a darker one: on a dark surface the
    * boundary is only visible if it rises above the fill. */
+  /* Measured against paper, raised and sunk rather than raised alone: an input
+   * on a sunken card sits on `sunk`, and 0.56 is the value that clears 3:1 on
+   * all three. */
   --rule-field: oklch(0.56 0.008 255);
 
   --shadow-deboss:
@@ -335,7 +368,7 @@
    * behind it show through, softened by a backdrop blur, with a hairline of
    * light along the top edge. Only works on surfaces that actually have
    * something behind them, so it is for chrome — bars, nav, sheets — not cards. */
-  --surface-material: oklch(0.265 0.007 255 / 0.72);
+  --surface-material: oklch(0.29 0.007 255 / 0.72);
   --material-blur: 20px;
   --material-edge: inset 0 1px 0 rgb(255 255 255 / 0.06);
 
@@ -343,7 +376,7 @@
    * material flips between appearances based on what is behind it, and the
    * usual answer on a dark ground is *less* transparency, not more — a pale
    * film over charcoal reads as haze. */
-  --glass-surface: oklch(0.265 0.007 255 / 0.58);
+  --glass-surface: oklch(0.29 0.007 255 / 0.58);
   --glass-blur: 22px;
   --glass-saturate: 160%;
   --glass-edge:
@@ -373,7 +406,7 @@
     );
   }
   .dark {
-    --glass-surface: oklch(0.265 0.007 255);
+    --glass-surface: oklch(0.29 0.007 255);
     --glass-scrim: linear-gradient(
       to top,
       oklch(0.19 0.006 255) 60%,

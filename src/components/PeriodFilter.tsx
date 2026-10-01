@@ -190,7 +190,7 @@ export function PeriodFilter({
                       indistinguishable from a filter that is broken. */}
                   {unbounded && (
                     <p className="mt-2.5 text-xs text-ink-faint">
-                      No dates set — showing everything.
+                      No dates set, so everything is shown.
                     </p>
                   )}
 

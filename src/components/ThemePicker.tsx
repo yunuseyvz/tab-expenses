@@ -16,7 +16,7 @@ const OPTIONS: Array<{ value: Theme; label: string; hint: string }> = [
   { value: 'system', label: 'System', hint: 'Follow the device' },
 ]
 
-export function ThemePicker() {
+export function ThemePicker({ heading = true }: { heading?: boolean } = {}) {
   // Render neutral on the server and the first client render, then read the
   // stored value. Reading localStorage during render would break hydration.
   const [theme, setThemeState] = useState<Theme>('system')
@@ -40,9 +40,16 @@ export function ThemePicker() {
 
   return (
     <div>
-      <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-ink-faint mb-2">
-        Theme
-      </h2>
+      {/* `heading={false}` when the control sits inside a row that already says
+          what it is. A row labelled "Appearance" with a control underneath it
+          captioned "THEME" states the same thing twice, and the second one costs
+          a line of vertical space in the middle of a row that is otherwise one
+          line tall. */}
+      {heading && (
+        <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-ink-faint mb-2">
+          Theme
+        </h2>
+      )}
       <div
         role="radiogroup"
         aria-label="Theme"

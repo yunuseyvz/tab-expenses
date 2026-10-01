@@ -75,8 +75,8 @@ export function InvitePanel({ spaceId }: { spaceId: string }) {
         <CardTitle>Invite people</CardTitle>
       </CardHeader>
       <p className="text-xs text-ink-faint mb-3">
-        We email them a link. They accept it from their own account — a member
-        with no login is a <strong>virtual member</strong> below instead.
+        They accept it from their own account. No account? Use{' '}
+        <strong>Add a virtual member</strong> instead.
       </p>
 
       <form
@@ -84,10 +84,21 @@ export function InvitePanel({ spaceId }: { spaceId: string }) {
           e.preventDefault()
           invite.mutate()
         }}
-        className="flex gap-2 items-end"
+        // The label spans both controls, and the field and the button share one
+        // row, rather than the label sitting inside a column beside the button.
+        //
+        // The old shape aligned them with `items-end`, which put the button's
+        // *bottom* level with the field's bottom — and the button is 40px against
+        // the field's 46px, so its top edge sat 6px lower and the pair read as
+        // offset even though they were technically flush. Matching the two
+        // control heights with a magic number would break the moment the field's
+        // padding changed; letting the row stretch them to each other cannot.
+        className="flex flex-col gap-1.5"
       >
-        <div className="flex-1">
-          <Label htmlFor="invite-email">Email address</Label>
+        <Label htmlFor="invite-email" className="mb-0">
+          Email address
+        </Label>
+        <div className="flex gap-2 items-stretch">
           <Input
             id="invite-email"
             type="email"
@@ -96,19 +107,33 @@ export function InvitePanel({ spaceId }: { spaceId: string }) {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="vale@example.com"
+            className="flex-1 min-w-0"
           />
+          {/* `h-auto` and `self-stretch`, in that order.
+           *
+           * `items-stretch` on the row does nothing to a button that carries an
+           * explicit height, and every size but `link` does: md is h-10, which
+           * is 40px against this field's 46px. `h-auto` drops the fixed height so
+           * the row's stretch applies, and the button takes whatever height the
+           * field is — which is 46px today and stays correct if the field's
+           * padding ever changes, where a hard-coded h-[46px] would not. */}
+          <Button
+            type="submit"
+            disabled={invite.isPending || !email}
+            className="shrink-0 h-auto self-stretch"
+          >
+            {invite.isPending ? (
+              <>
+                <Loader2 size={15} className="animate-spin" aria-hidden />{' '}
+                Sending
+              </>
+            ) : (
+              <>
+                <Mail size={15} aria-hidden /> Invite
+              </>
+            )}
+          </Button>
         </div>
-        <Button type="submit" disabled={invite.isPending || !email}>
-          {invite.isPending ? (
-            <>
-              <Loader2 size={15} className="animate-spin" aria-hidden /> Sending
-            </>
-          ) : (
-            <>
-              <Mail size={15} aria-hidden /> Invite
-            </>
-          )}
-        </Button>
       </form>
 
       {rows.length > 0 && (

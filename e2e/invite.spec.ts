@@ -67,9 +67,9 @@ test.describe('space invitations', () => {
     })
     const owner = await ownerCtx.newPage()
 
-    // A dedicated space, not the seeded Hauptstraße. Adding a member to the
+    // A dedicated space, not the seeded Flat 3B. Adding a member to the
     // shared one leaks into every later spec: the split editor labels its
-    // controls by display name, so a second "Vale" makes "Vale percent" match
+    // controls by display name, so a second "Sam" makes "Sam percent" match
     // two elements and fails an unrelated test with a baffling message.
     await owner.goto('/spaces/new')
     await owner.getByLabel('Space name').fill('Invite Test Space')
@@ -116,7 +116,7 @@ test.describe('space invitations', () => {
     // ── the invited address registers and joins ─────────────────────────
     const valeCtx = await browser.newContext()
     const vale = await valeCtx.newPage()
-    await registerUser(vale, 'Vale', VALE)
+    await registerUser(vale, 'Sam', VALE)
 
     await vale.goto(link)
     await vale.getByRole('button', { name: /^Join / }).click()
@@ -132,13 +132,11 @@ test.describe('space invitations', () => {
     await vale.goto('/settings')
     await vale.getByRole('link', { name: 'New space' }).first().click()
     await expect(vale).toHaveURL(/\/spaces\/new/)
-    await vale.getByLabel('Space name').fill('Vale alone')
-    await vale.getByLabel('Your name in this space').fill('Vale')
+    await vale.getByLabel('Space name').fill('Sam alone')
+    await vale.getByLabel('Your name in this space').fill('Sam')
     await vale.getByRole('button', { name: 'Create space' }).click()
     await expect(vale).toHaveURL(/\/dashboard/)
-    await expect(
-      vale.getByRole('heading', { name: 'Vale alone' }),
-    ).toBeVisible()
+    await expect(vale.getByRole('heading', { name: 'Sam alone' })).toBeVisible()
 
     // Two households, one account.
     await vale.locator('button[aria-haspopup=listbox]:visible').click()

@@ -146,6 +146,12 @@ test.describe('design system', () => {
         // Focus ring is a non-text element: 3:1 per WCAG 1.4.11.
         ['focus ring / paper', 'var(--color-terracotta-ink)', paper, 3],
         ['focus ring / raised', 'var(--color-terracotta-ink)', raised, 3],
+        // A field's own boundary, against every surface a field can sit on.
+        // This only ever checked 'raised', which left it at 2.9:1 on 'paper',
+        // the surface an input on a sunken card actually has behind it.
+        ['field edge / paper', 'var(--rule-field)', paper, 3],
+        ['field edge / raised', 'var(--rule-field)', raised, 3],
+        ['field edge / sunk', 'var(--rule-field)', sunk, 3],
       ]
 
       const lum = (rgb) => {
@@ -659,7 +665,16 @@ test.describe('design system', () => {
         ['ink on terracotta-strong (hover)', 'var(--color-ink)', window.__toRgb('var(--color-terracotta-strong)'), 4.5],
         ['ink on oxblood fill', 'var(--color-ink)', window.__toRgb('var(--color-oxblood)'), 4.5],
         // Hairlines are non-text: 3:1 per WCAG 1.4.11.
+        // '--color-rule' draws secondary-button borders, so 3:1 applies to it
+        // under 1.4.11. Asserted on all three surfaces because lifting
+        // 'paper-raised' in the dark-mode tweak is what pulled this under: the
+        // surface moved toward the rule, not the other way round.
+        ['rule / paper (non-text)', 'var(--color-rule)', paper, 3],
         ['rule / raised (non-text)', 'var(--color-rule)', raised, 3],
+        ['rule / sunk (non-text)', 'var(--color-rule)', sunk, 3],
+        ['field edge / paper', 'var(--rule-field)', paper, 3],
+        ['field edge / raised', 'var(--rule-field)', raised, 3],
+        ['field edge / sunk', 'var(--rule-field)', sunk, 3],
       ]
 
       const lum = (rgb) => {

@@ -1,34 +1,32 @@
 import { useState } from 'react'
-import { Link, createFileRoute, useSearch } from '@tanstack/react-router'
-import { LogOut } from 'lucide-react'
+import { createFileRoute, useSearch } from '@tanstack/react-router'
+import { FileDown, FileUp, LogOut, Plus, UserPlus, X } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
 import type { PeriodPreset } from '#/lib/period'
 import type { CategoryIconName } from '#/lib/category-icons'
+import type { RemovalKind } from '#/components/settings/ConfirmRemoval'
 import { iconFor } from '#/lib/category-icons'
 import { getSession, listMySpaces, updateProfile } from '#/lib/auth.functions'
-import { AppShell } from '#/components/AppShell'
+import { AppShell, Sheet } from '#/components/AppShell'
 import { authClient } from '#/lib/auth-client'
 import { Avatar } from '#/components/Avatar'
 import { AvatarPicker } from '#/components/AvatarPicker'
 import { IconPicker } from '#/components/IconPicker'
-import { Switch } from '#/components/ui/Switch'
 import { InvitePanel } from '#/components/InvitePanel'
+import { ImportCard } from '#/components/settings/ImportCard'
+import { ConfirmRemoval } from '#/components/settings/ConfirmRemoval'
+import { SettingsGroup, SettingsRow } from '#/components/settings/SettingsGroup'
 import { Button } from '#/components/ui/Button'
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  Row,
-  SectionTitle,
-} from '#/components/ui/Card'
-import { Input, Label, Select, Textarea } from '#/components/ui/Input'
+import { Input, Label, Select } from '#/components/ui/Input'
+import { Switch } from '#/components/ui/Switch'
 import { SWATCHES, swatchColor } from '#/lib/swatches'
 import { useCurrentSpace } from '#/hooks/useCurrentSpace'
 import { resolveSpaceId } from '#/lib/space-preference'
 import {
   archiveCategory,
+  archiveMember,
   createCategory,
   createMember,
 } from '#/lib/space.functions'
@@ -40,148 +38,46 @@ import {
 } from '#/lib/session'
 import { ThemePicker } from '#/components/ThemePicker'
 import { exportCsv } from '#/lib/csv.functions'
-import { commitImport, previewImport } from '#/lib/csv-import.functions'
 
 /**
- * CSV import, the migration path from the spreadsheet this app replaces.
+ * Settings: one screen, four groups, nothing hidden behind a tap.
  *
- * Two steps on purpose: preview reports exactly what would happen, then commit.
- * Importing a file straight into a shared ledger is not a thing to do
- * optimistically.
+ * This went to drill-down sub-pages for Members, Categories, Invites, Import and
+ * Export, on the reasoning that an operating system's settings are a list you
+ * tap through. That was wrong for this app. A household is a handful of people
+ * and a handful of categories, so every one of those pages held two or three
+ * rows and a form, and reaching the fifth member meant a page change to read a
+ * list you could have seen at a glance. The depth cost a screen's worth of taps
+ * and gave back nothing.
+ *
+ * So: everything is here, and compactness comes from the forms rather than from
+ * the navigation. A roster you can read without tapping is worth far more than a
+ * roster on its own page, and the only thing still worth a page is the thing too
+ * big to sit in a row: the CSV importer's preview table.
+ *
+ * The ordering is by how often you come here, not by how important each thing
+ * sounds. Household first, because nearly every visit is about the ledger.
+ * Account last, because your own avatar is set once and then never again, and a
+ * row you will not touch does not belong above the ones you will.
+ *
+ * Categories is a group of its own rather than a tail on Household: it is the
+ * longest list on the page, and putting it in the same card made "Groceries"
+ * read as a fourth person. Household then holds the people and the invitation,
+ * which are the same subject.
+ *
+ * Add-forms are collapsed until asked for. An empty name field and a colour
+ * swatch are eleven controls of furniture for something you do once: nothing
+ * when closed, and a screenful when open.
  */
-export function ImportCard({ spaceId }: { spaceId: string | null }) {
-  const queryClient = useQueryClient()
-  const [text, setText] = useState('')
-  const [preview, setPreview] = useState<Awaited<
-    ReturnType<typeof previewImport>
-  > | null>(null)
-
-  const runPreview = useMutation({
-    mutationFn: () => previewImport({ data: { spaceId: spaceId!, csv: text } }),
-    onSuccess: setPreview,
-    onError: (e) =>
-      toast.error(e instanceof Error ? e.message : 'Could not read that file'),
-  })
-
-  const commit = useMutation({
-    mutationFn: () => commitImport({ data: { spaceId: spaceId!, csv: text } }),
-    onSuccess: async (r) => {
-      toast.success(
-        `Imported ${r.created} row(s)` +
-          (r.skippedDuplicates > 0
-            ? `, skipped ${r.skippedDuplicates} duplicate(s)`
-            : ''),
-      )
-      setText('')
-      setPreview(null)
-      await queryClient.invalidateQueries({ queryKey: ['spaces', spaceId] })
-    },
-    onError: (e) =>
-      toast.error(e instanceof Error ? e.message : 'Import failed'),
-  })
-
-  return (
-    <Card className="mb-4">
-      <CardHeader>
-        <CardTitle>Import from a spreadsheet</CardTitle>
-      </CardHeader>
-      <p className="text-xs text-ink-faint mb-3">
-        CSV with the columns{' '}
-        <code className="font-mono">
-          date, purpose, amount, category, paid_by, note
-        </code>
-        . Categories and members are matched by name and created if missing.
-        Re-running skips rows already present.
-      </p>
-
-      <div className="flex gap-2 mb-3">
-        <input
-          type="file"
-          accept=".csv,text/csv"
-          aria-label="Choose a CSV file"
-          onChange={async (e) => {
-            const file = e.target.files?.[0]
-            if (!file) return
-            setText(await file.text())
-            setPreview(null)
-          }}
-          className="text-sm"
-        />
-      </div>
-
-      <Textarea
-        rows={4}
-        aria-label="CSV contents"
-        value={text}
-        onChange={(e) => {
-          setText(e.target.value)
-          setPreview(null)
-        }}
-        placeholder="date,purpose,amount,category,paid_by,note"
-        className="font-mono text-xs"
-      />
-
-      <div className="flex gap-2 mt-3">
-        <Button
-          disabled={
-            !spaceId || text.trim().length === 0 || runPreview.isPending
-          }
-          onClick={() => runPreview.mutate()}
-        >
-          {runPreview.isPending ? 'Checking…' : 'Preview'}
-        </Button>
-        {preview?.ok && (
-          <Button
-            disabled={!preview.importable || commit.isPending}
-            onClick={() => commit.mutate()}
-          >
-            {commit.isPending
-              ? 'Importing…'
-              : `Import ${preview.importable} row(s)`}
-          </Button>
-        )}
-      </div>
-
-      {preview && (
-        <div className="mt-3 text-sm">
-          {preview.ok ? (
-            <p className="text-sage">
-              {preview.importable} row(s) ready to import.
-              {preview.skippedDuplicates > 0 &&
-                ` ${preview.skippedDuplicates} already present and will be skipped.`}
-              {preview.createdCategories.length > 0 &&
-                ` New categories to create: ${preview.createdCategories
-                  .map((c) => c.name)
-                  .join(', ')}.`}
-            </p>
-          ) : (
-            <>
-              <p className="text-oxblood-ink">
-                {preview.problems.length} problem(s) — nothing will be imported.
-              </p>
-              <ul className="mt-1 space-y-0.5 text-xs text-ink-muted">
-                {preview.problems.slice(0, 10).map((p, i) => (
-                  <li key={i}>
-                    Line {p.line}: {p.message}
-                  </li>
-                ))}
-                {preview.problems.length > 10 && (
-                  <li>…and {preview.problems.length - 10} more.</li>
-                )}
-              </ul>
-            </>
-          )}
-        </div>
-      )}
-    </Card>
-  )
-}
 
 export const Route = createFileRoute('/_protected/settings')({
   validateSearch: (s: Record<string, unknown>) => ({
     space: typeof s.space === 'string' ? s.space : undefined,
     period: (typeof s.period === 'string' ? s.period : 'all') as PeriodPreset,
   }),
+  // Warm the roster and the categories so both lists are there on the first
+  // paint. This screen shows them rather than counting them, so a slow roster
+  // means a visibly half-empty page.
   loaderDeps: ({ search }) => search,
   loader: async ({ context, deps }) => {
     const qc = context.queryClient
@@ -197,39 +93,53 @@ export const Route = createFileRoute('/_protected/settings')({
     if (!spaceId) return
 
     await Promise.all([
-      context.queryClient.ensureQueryData(membersQuery(spaceId)),
-      context.queryClient.ensureQueryData(categoriesQuery(spaceId)),
+      qc.ensureQueryData(membersQuery(spaceId)),
+      qc.ensureQueryData(categoriesQuery(spaceId)),
     ])
   },
   component: SettingsRoute,
 })
 
+/** Which inline form, if any, is open. One at a time: two open is just clutter. */
+type Open = null | 'member' | 'category'
+
 function SettingsRoute() {
   const search = useSearch({ from: '/_protected/settings' })
-  const { space, spaceId, spaces, isLoading } = useCurrentSpace(search.space)
+  const { space, spaceId } = useCurrentSpace(search.space)
   const queryClient = useQueryClient()
+
+  const [signingOut, setSigningOut] = useState(false)
+  const [open, setOpen] = useState<Open>(null)
+  const [avatarSheet, setAvatarSheet] = useState(false)
+  const [importSheet, setImportSheet] = useState(false)
+  const [inviteSheet, setInviteSheet] = useState(false)
+  const [removing, setRemoving] = useState<{
+    kind: RemovalKind
+    id: string
+    name: string
+  } | null>(null)
 
   const [memberName, setMemberName] = useState('')
   const [memberColor, setMemberColor] = useState('sage')
   const [categoryName, setCategoryName] = useState('')
   const [categoryColor, setCategoryColor] = useState('indigo')
   const [categoryIcon, setCategoryIcon] = useState<CategoryIconName>('receipt')
-  const [personalOwner, setPersonalOwner] = useState('')
   const [personal, setPersonal] = useState(false)
-  const [signingOut, setSigningOut] = useState(false)
+  const [personalOwner, setPersonalOwner] = useState('')
 
+  const me = useQuery({ queryKey: ['session'], queryFn: () => getSession() })
   const members = useQuery({
     ...membersQuery(spaceId ?? ''),
     enabled: Boolean(spaceId),
   })
-
-  const me = useQuery({ queryKey: ['session'], queryFn: () => getSession() })
-
   const categories = useQuery({
     ...categoriesQuery(spaceId ?? ''),
     enabled: Boolean(spaceId),
   })
 
+  // Members, categories and everything derived from them. One key rather than
+  // three: an archived member still appears on old expenses, so a stale name or
+  // colour anywhere in the app is wrong, not just in this list.
   const invalidate = () =>
     queryClient.invalidateQueries({ queryKey: ['spaces', spaceId] })
 
@@ -246,10 +156,9 @@ function SettingsRoute() {
   const saveAvatar = useMutation({
     mutationFn: (avatar: string | null) => updateProfile({ data: { avatar } }),
     onSuccess: () => {
-      // The session payload is what every avatar in the chrome reads, so it has
-      // to be refetched — this is not one of the space-scoped keys.
       void queryClient.invalidateQueries({ queryKey: ['session'] })
       toast.success('Avatar updated')
+      setAvatarSheet(false)
     },
     onError: (err) =>
       toast.error(err instanceof Error ? err.message : 'Could not save'),
@@ -268,9 +177,24 @@ function SettingsRoute() {
     onSuccess: async () => {
       toast.success('Member added')
       setMemberName('')
+      setOpen(null)
       await invalidate()
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : 'Failed'),
+  })
+
+  const removeMember = useMutation({
+    mutationFn: (memberId: string) =>
+      archiveMember({ data: { spaceId: spaceId!, memberId } }),
+    onSuccess: async () => {
+      toast.success('Member removed')
+      setRemoving(null)
+      await invalidate()
+    },
+    onError: (e) => {
+      toast.error(e instanceof Error ? e.message : 'Failed')
+      setRemoving(null)
+    },
   })
 
   const addCategory = useMutation({
@@ -289,6 +213,7 @@ function SettingsRoute() {
     onSuccess: async () => {
       toast.success('Category added')
       setCategoryName('')
+      setOpen(null)
       await invalidate()
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : 'Failed'),
@@ -297,53 +222,271 @@ function SettingsRoute() {
   const removeCategory = useMutation({
     mutationFn: (categoryId: string) =>
       archiveCategory({ data: { spaceId: spaceId!, categoryId } }),
-    onSuccess: invalidate,
-    onError: (e) => toast.error(e instanceof Error ? e.message : 'Failed'),
+    onSuccess: () => {
+      setRemoving(null)
+      void invalidate()
+    },
+    onError: (e) => {
+      toast.error(e instanceof Error ? e.message : 'Failed')
+      setRemoving(null)
+    },
   })
 
-  if (isLoading) {
-    return (
-      <AppShell>
-        <main id="main" className="p-6">
-          <p className="text-sm text-ink-muted">Loading…</p>
-        </main>
-      </AppShell>
-    )
-  }
+  const ownerName = (memberId: string | null) =>
+    members.data?.find((m) => m.id === memberId)?.displayName
+
+  /**
+   * Whether *this* member can be removed.
+   *
+   * Per row, not per household. The server's rule concerns owners only: it
+   * refuses to archive the last remaining owner, because a household with no
+   * owner cannot be managed. Archiving anyone else is safe even with a single
+   * owner, which is the ordinary case: one person owns the ledger and everybody
+   * else is on it.
+   *
+   * This was one flag for the whole list, "are there more than one owner", used
+   * to decide whether anybody got a button. So a household with one owner and
+   * three members had a roster with no way to remove anyone at all, including the
+   * three for whom it is perfectly safe. The delete button could not be found
+   * because there was not one.
+   */
+  const ownerCount = members.data?.filter((m) => m.role === 'owner').length ?? 0
+  const canRemove = (m: { role: string }) =>
+    m.role !== 'owner' || ownerCount > 1
 
   return (
     <AppShell>
       <main id="main" className="mx-auto w-full max-w-5xl px-4 py-4 sm:px-6">
-        <h1 className="text-2xl sm:text-3xl mb-4 tracking-tight">Settings</h1>
+        <h1 className="text-2xl sm:text-3xl mb-6 tracking-tight">Settings</h1>
 
-        {/* The account, first.
-         *
-         * Signing out used to live in an avatar menu in the mobile top bar, and
-         * in the foot of the desktop sidebar. Both are poor places for it: one
-         * is a 30px target you have to guess at, and the other is a scroll
-         * away on a settings screen that is otherwise entirely about the
-         * household rather than about you. A phone had no top bar at all after
-         * it was removed, so this is now the only way out.
-         *
-         * It sits above the space and member sections because none of them are
-         * about the reader. */}
-        <Card className="mb-4">
-          <div className="flex items-center gap-3">
-            <Avatar
-              avatarKey={me.data?.user.avatar ?? null}
-              // The id, not the name: renaming yourself should not change your face.
-              seed={me.data?.user.id ?? 'anonymous'}
-              name={me.data?.user.name}
-              size={38}
+        <SettingsGroup
+          title="Household"
+          hint={space ? `${space.name} · ${space.currency}` : undefined}
+        >
+          {(members.data ?? []).map((m) => (
+            <SettingsRow
+              key={m.id}
+              label={
+                <span className="flex items-center gap-2.5">
+                  <span
+                    aria-hidden
+                    className="h-3 w-3 rounded-full shrink-0"
+                    style={{ background: swatchColor(m.color) }}
+                  />
+                  <span className="truncate">{m.displayName}</span>
+                </span>
+              }
+              value={`${m.userId ? 'registered' : 'virtual'} · ${m.role}`}
+            >
+              {canRemove(m) && (
+                <RemoveButton
+                  label={`Remove ${m.displayName}`}
+                  onClick={() =>
+                    setRemoving({
+                      kind: 'member',
+                      id: m.id,
+                      name: m.displayName,
+                    })
+                  }
+                />
+              )}
+            </SettingsRow>
+          ))}
+          {(members.data ?? []).length === 0 && (
+            <SettingsRow label="Nobody in this household yet" />
+          )}
+
+          {open === 'member' ? (
+            <InlineForm>
+              <div>
+                <Label htmlFor="member-name">Name</Label>
+                <Input
+                  id="member-name"
+                  required
+                  autoFocus
+                  value={memberName}
+                  onChange={(e) => setMemberName(e.target.value)}
+                  placeholder="Vater"
+                />
+              </div>
+              <SwatchField
+                value={memberColor}
+                onChange={setMemberColor}
+                label="Colour"
+              />
+              <Submit
+                label="Add member"
+                busy={addMember.isPending}
+                disabled={!memberName.trim()}
+                onSubmit={() => addMember.mutate()}
+                onCancel={() => setOpen(null)}
+              />
+            </InlineForm>
+          ) : (
+            <AddRow
+              label="Add a virtual member"
+              hint="No account needed"
+              onClick={() => setOpen('member')}
             />
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium truncate">
-                {me.data?.user.name}
-              </p>
-              <p className="text-xs text-ink-faint truncate">
-                {me.data?.user.email}
-              </p>
-            </div>
+          )}
+
+          {space?.role === 'owner' && (
+            <SettingsRow
+              icon={UserPlus}
+              label="Invite people"
+              hint="Via a link"
+              onClick={() => setInviteSheet(true)}
+            />
+          )}
+        </SettingsGroup>
+
+        <SettingsGroup
+          title="Categories"
+          hint={space ? `${space.name}'s categories` : undefined}
+        >
+          {(categories.data ?? []).map((c) => {
+            const Glyph = iconFor(c.icon)
+            const owner = ownerName(c.ownerMemberId)
+            return (
+              <SettingsRow
+                key={c.id}
+                label={
+                  <span className="flex items-center gap-2.5">
+                    <span
+                      aria-hidden
+                      className="grid place-items-center size-7 shrink-0 rounded-[7px]"
+                      style={{
+                        background: `color-mix(in oklab, ${swatchColor(c.color)} 18%, transparent)`,
+                      }}
+                    >
+                      <Glyph size={15} />
+                    </span>
+                    <span className="truncate">{c.name}</span>
+                  </span>
+                }
+                value={
+                  c.scope === 'personal'
+                    ? owner
+                      ? `personal · ${owner}`
+                      : 'personal'
+                    : 'shared'
+                }
+              >
+                <RemoveButton
+                  label={`Archive ${c.name}`}
+                  onClick={() =>
+                    setRemoving({ kind: 'category', id: c.id, name: c.name })
+                  }
+                />
+              </SettingsRow>
+            )
+          })}
+          {(categories.data ?? []).length === 0 && (
+            <SettingsRow label="No categories yet" />
+          )}
+
+          {open === 'category' ? (
+            <InlineForm>
+              <div>
+                <Label htmlFor="category-name">Name</Label>
+                <div className="flex gap-2">
+                  <IconPicker value={categoryIcon} onChange={setCategoryIcon} />
+                  <Input
+                    id="category-name"
+                    required
+                    autoFocus
+                    value={categoryName}
+                    onChange={(e) => setCategoryName(e.target.value)}
+                    placeholder="Health"
+                  />
+                </div>
+              </div>
+              <Switch
+                checked={personal}
+                onChange={setPersonal}
+                label="Personal, counted only in one member's totals"
+              />
+              {personal && (
+                <div>
+                  <Label htmlFor="personal-owner">Owner</Label>
+                  <Select
+                    id="personal-owner"
+                    aria-label="Owner"
+                    value={personalOwner}
+                    onChange={(e) => setPersonalOwner(e.target.value)}
+                  >
+                    <option value="">Choose...</option>
+                    {(members.data ?? []).map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.displayName}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+              )}
+              <SwatchField
+                value={categoryColor}
+                onChange={setCategoryColor}
+                label="Colour"
+              />
+              <Submit
+                label="Add category"
+                busy={addCategory.isPending}
+                disabled={!categoryName.trim()}
+                onSubmit={() => addCategory.mutate()}
+                onCancel={() => setOpen(null)}
+              />
+            </InlineForm>
+          ) : (
+            <AddRow
+              label="Add a category"
+              onClick={() => setOpen('category')}
+            />
+          )}
+        </SettingsGroup>
+
+        <SettingsGroup title="Data">
+          <SettingsRow
+            // Down for import, up for export: the arrows point the way the file
+            // travels. Import brings data *into* the app, export takes it out,
+            // and FileUp on the import row had it exactly backwards.
+            icon={FileDown}
+            label="Import from a spreadsheet"
+            hint="CSV"
+            onClick={() => setImportSheet(true)}
+          />
+          <SettingsRow
+            icon={FileUp}
+            label="Export"
+            hint="All expenses"
+            onClick={() => void runExport(spaceId, space?.name ?? null)}
+          />
+        </SettingsGroup>
+
+        <SettingsGroup title="Account">
+          <SettingsRow
+            label={
+              <span className="flex items-center gap-2.5">
+                <Avatar
+                  avatarKey={me.data?.user.avatar ?? null}
+                  // The id, not the name: renaming yourself should not change your face.
+                  seed={me.data?.user.id ?? 'anonymous'}
+                  name={me.data?.user.name}
+                  size={26}
+                />
+                <span className="truncate">{me.data?.user.name}</span>
+              </span>
+            }
+            value={me.data?.user.email}
+            onClick={() => setAvatarSheet(true)}
+          />
+          <SettingsRow label="Appearance">
+            <ThemePicker heading={false} />
+          </SettingsRow>
+          <SettingsRow
+            label="Sign out"
+            hint={signingOut ? 'Signing you out…' : undefined}
+          >
             <Button
               variant="secondary"
               size="sm"
@@ -352,264 +495,194 @@ function SettingsRoute() {
               className="shrink-0"
             >
               <LogOut size={15} aria-hidden />
-              {signingOut ? 'Signing out…' : 'Sign out'}
+              Sign out
             </Button>
-          </div>
-        </Card>
-
-        {spaces.length > 1 && (
-          <Card className="mb-4">
-            <SectionTitle>Your spaces</SectionTitle>
-            <ul className="mt-2 space-y-1 text-sm">
-              {spaces.map((s) => (
-                <li key={s.id}>
-                  {s.id === spaceId ? (
-                    <span className="font-medium">
-                      {s.name} · {s.currency} · {s.role}
-                    </span>
-                  ) : (
-                    <Link
-                      to="/dashboard"
-                      search={{
-                        space: s.id,
-                        period: 'thisMonth',
-                        cats: undefined,
-                        from: undefined,
-                        to: undefined,
-                      }}
-                      className="text-ink-muted hover:text-ink underline underline-offset-4"
-                    >
-                      {s.name} · {s.currency} · {s.role}
-                    </Link>
-                  )}
-                </li>
-              ))}
-            </ul>
-            <Link
-              to="/spaces/new"
-              className="mt-3 inline-block text-sm text-terracotta-ink underline underline-offset-4"
-            >
-              New space
-            </Link>
-          </Card>
-        )}
-
-        {spaceId && space?.role === 'owner' && (
-          <InvitePanel spaceId={spaceId} />
-        )}
-
-        <Card className="mb-4">
-          <CardHeader>
-            <CardTitle>Members</CardTitle>
-          </CardHeader>
-          <p className="text-xs text-ink-faint mb-3">
-            A member with no login is a <strong>virtual member</strong> — they
-            carry a share without ever registering.
-          </p>
-
-          {(members.data ?? []).map((m) => (
-            <Row key={m.id}>
-              <span
-                aria-hidden
-                className="h-3 w-3 rounded-full shrink-0"
-                style={{ background: swatchColor(m.color) }}
-              />
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium truncate">{m.displayName}</p>
-                <p className="text-xs text-ink-faint">
-                  {m.userId ? 'registered' : 'virtual'} · {m.role}
-                  {m.defaultWeightBp > 0 &&
-                    ` · default ${m.defaultWeightBp / 100}%`}
-                </p>
-              </div>
-            </Row>
-          ))}
-
-          <form
-            onSubmit={(e) => {
-              e.preventDefault()
-              addMember.mutate()
-            }}
-            className="mt-4 space-y-3"
-          >
-            <div>
-              <Label htmlFor="member-name">Add a member</Label>
-              <Input
-                id="member-name"
-                required
-                value={memberName}
-                onChange={(e) => setMemberName(e.target.value)}
-                placeholder="Vater"
-              />
-            </div>
-            <SwatchRow
-              value={memberColor}
-              onChange={setMemberColor}
-              label="Member colour"
-            />
-            <Button type="submit" disabled={addMember.isPending}>
-              Add member
-            </Button>
-          </form>
-        </Card>
-
-        <Card className="mb-4">
-          <CardHeader>
-            <CardTitle>Categories</CardTitle>
-          </CardHeader>
-          {(categories.data ?? []).map((c) => {
-            const Icon = iconFor(c.icon)
-            return (
-              <Row key={c.id}>
-                <span
-                  aria-hidden
-                  className="grid place-items-center size-7 shrink-0 rounded-[7px]"
-                  style={{
-                    background: `color-mix(in oklab, ${swatchColor(c.color)} 18%, transparent)`,
-                  }}
-                >
-                  <Icon size={15} />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium truncate">{c.name}</p>
-                  <p className="text-xs text-ink-faint">
-                    {c.scope === 'personal'
-                      ? `personal${
-                          members.data?.find((m) => m.id === c.ownerMemberId)
-                            ?.displayName
-                            ? ` · ${members.data.find((m) => m.id === c.ownerMemberId)!.displayName}`
-                            : ''
-                        }`
-                      : 'shared'}
-                  </p>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => removeCategory.mutate(c.id)}
-                  aria-label={`Archive ${c.name}`}
-                >
-                  Archive
-                </Button>
-              </Row>
-            )
-          })}
-
-          <form
-            onSubmit={(e) => {
-              e.preventDefault()
-              addCategory.mutate()
-            }}
-            className="mt-4 space-y-3"
-          >
-            <div>
-              <Label htmlFor="category-name">Add a category</Label>
-              <div className="flex gap-2">
-                <IconPicker value={categoryIcon} onChange={setCategoryIcon} />
-                <Input
-                  id="category-name"
-                  required
-                  value={categoryName}
-                  onChange={(e) => setCategoryName(e.target.value)}
-                  placeholder="Health"
-                />
-              </div>
-            </div>
-
-            <Switch
-              checked={personal}
-              onChange={setPersonal}
-              label="Personal category (only in this member’s totals)"
-            />
-
-            {personal && (
-              <div>
-                <Label htmlFor="personal-owner">Owner</Label>
-                <Select
-                  id="personal-owner"
-                  aria-label="Owner"
-                  value={personalOwner}
-                  onChange={(e) => setPersonalOwner(e.target.value)}
-                >
-                  <option value="">Choose…</option>
-                  {(members.data ?? []).map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.displayName}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-            )}
-
-            <SwatchRow
-              value={categoryColor}
-              onChange={setCategoryColor}
-              label="Category colour"
-            />
-            <Button type="submit" disabled={addCategory.isPending}>
-              Add category
-            </Button>
-          </form>
-        </Card>
-
-        <Card className="mb-4">
-          <CardHeader>
-            <CardTitle>Your profile</CardTitle>
-          </CardHeader>
-          <p className="text-xs text-ink-faint mb-3">
-            How you appear in this app. There is no upload — pick a mark, or
-            keep the one generated from your account.
-          </p>
-          <AvatarPicker
-            value={me.data?.user.avatar ?? null}
-            // The id, not the name: renaming yourself should not change your face.
-            seed={me.data?.user.id ?? 'anonymous'}
-            name={me.data?.user.name}
-            onChange={(next) => saveAvatar.mutate(next)}
-            label="Your avatar"
-          />
-        </Card>
-
-        <Card className="mb-4">
-          <CardHeader>
-            <CardTitle>Appearance</CardTitle>
-          </CardHeader>
-          <ThemePicker />
-        </Card>
-
-        <ImportCard spaceId={spaceId} />
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Export</CardTitle>
-          </CardHeader>
-          <p className="text-xs text-ink-faint mb-3">
-            {space?.name} is denominated in {space?.currency}.
-          </p>
-          <Button
-            variant="secondary"
-            disabled={!spaceId}
-            onClick={async () => {
-              if (!spaceId) return
-              const csv = await exportCsv({ data: { spaceId } })
-              const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
-              const url = URL.createObjectURL(blob)
-              const a = document.createElement('a')
-              a.href = url
-              a.download = `${space?.name ?? 'ledger'}-export.csv`
-              a.click()
-              URL.revokeObjectURL(url)
-            }}
-          >
-            Export CSV
-          </Button>
-        </Card>
+          </SettingsRow>
+        </SettingsGroup>
       </main>
+
+      {avatarSheet && (
+        <Sheet open onClose={() => setAvatarSheet(false)} title="Your avatar">
+          <div className="pb-4">
+            <p className="text-xs text-ink-faint mb-3 leading-relaxed">
+              Pick one, or keep the generated mark.
+            </p>
+            <AvatarPicker
+              value={me.data?.user.avatar ?? null}
+              seed={me.data?.user.id ?? 'anonymous'}
+              name={me.data?.user.name}
+              onChange={(next) => saveAvatar.mutate(next)}
+              label="Your avatar"
+            />
+          </div>
+        </Sheet>
+      )}
+
+      {importSheet && (
+        <Sheet
+          open
+          onClose={() => setImportSheet(false)}
+          title="Import from a spreadsheet"
+        >
+          <p className="text-xs text-ink-faint mb-3 leading-relaxed">
+            Paste CSV contents.
+          </p>
+          <ImportCard spaceId={spaceId} />
+        </Sheet>
+      )}
+
+      {removing && (
+        <ConfirmRemoval
+          kind={removing.kind}
+          name={removing.name}
+          busy={
+            removing.kind === 'member'
+              ? removeMember.isPending
+              : removeCategory.isPending
+          }
+          onCancel={() => setRemoving(null)}
+          onConfirm={() =>
+            removing.kind === 'member'
+              ? removeMember.mutate(removing.id)
+              : removeCategory.mutate(removing.id)
+          }
+        />
+      )}
+
+      {inviteSheet && spaceId && (
+        <Sheet open onClose={() => setInviteSheet(false)} title="Invite people">
+          <InvitePanel spaceId={spaceId} />
+        </Sheet>
+      )}
     </AppShell>
   )
 }
 
-function SwatchRow({
+/** Download the ledger as CSV. Errors are reported rather than swallowed. */
+async function runExport(spaceId: string | null, name: string | null) {
+  if (!spaceId) return
+  try {
+    const csv = await exportCsv({ data: { spaceId } })
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${name ?? 'ledger'}-export.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  } catch (err) {
+    toast.error(err instanceof Error ? err.message : 'Could not export')
+  }
+}
+
+/** A row that opens something, distinguished from one that navigates. */
+function AddRow({
+  label,
+  hint,
+  onClick,
+}: {
+  label: string
+  hint?: string
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex w-full items-center gap-3 px-4 py-2.5 text-left
+        transition-colors duration-150
+        hover:bg-[var(--color-paper-sunk)]"
+    >
+      <Plus size={15} aria-hidden className="shrink-0 text-ink-muted" />
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm text-ink-muted">{label}</span>
+        {hint && (
+          <span className="block text-xs text-ink-faint mt-0.5 leading-snug">
+            {hint}
+          </span>
+        )}
+      </span>
+    </button>
+  )
+}
+
+/**
+ * Removing a person or a category.
+ *
+ * A small X with the name in its accessible label, rather than the word
+ * "Remove" beside every row: on a list of eight people, eight identical buttons
+ * is a wall of text and the reader has to match each one to its row by eye. The
+ * X sits inside the row it belongs to, so position says what the label cannot.
+ *
+ * Archive, not delete, for both. An expense that names someone keeps that
+ * person's name on it after they leave, which is the point: the ledger records
+ * what happened, and a household that dissolved and a flat that was sold are
+ * different facts.
+ */
+function RemoveButton({
+  label,
+  onClick,
+}: {
+  label: string
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      className="shrink-0 grid place-items-center size-8 rounded-full
+        text-ink-faint transition-[color,background-color] duration-150
+        hover:text-ink hover:bg-[var(--color-paper-raised)]"
+    >
+      <X size={15} aria-hidden />
+    </button>
+  )
+}
+
+/**
+ * The open add-form, padded and inset from the rows it interrupts.
+ *
+ * Padded further than a row is, so it reads as a different kind of thing rather
+ * than as two more rows: this one is a form, and a form crammed to the same left
+ * edge as a roster would look like two more people.
+ */
+function InlineForm({ children }: { children: React.ReactNode }) {
+  return <div className="px-4 py-4 space-y-4">{children}</div>
+}
+
+function Submit({
+  label,
+  busy,
+  disabled,
+  onSubmit,
+  onCancel,
+}: {
+  label: string
+  busy: boolean
+  disabled: boolean
+  onSubmit: () => void
+  onCancel: () => void
+}) {
+  return (
+    <div className="flex gap-2">
+      <Button
+        type="button"
+        onClick={onSubmit}
+        disabled={busy || disabled}
+        className="flex-1"
+      >
+        {label}
+      </Button>
+      <Button type="button" variant="ghost" onClick={onCancel}>
+        Cancel
+      </Button>
+    </div>
+  )
+}
+
+function SwatchField({
   value,
   onChange,
   label,
@@ -635,6 +708,8 @@ function SwatchRow({
               hover:scale-105"
             style={{
               background: swatchColor(s.key),
+              // Never selection by colour alone: the tick and the ring weight
+              // both carry it.
               boxShadow:
                 value === s.key
                   ? '0 0 0 2px var(--color-paper), 0 0 0 4px var(--color-ink)'

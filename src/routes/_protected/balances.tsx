@@ -179,7 +179,7 @@ function BalancesRoute() {
               </CardHeader>
               {data.settlements.length === 0 ? (
                 <p className="text-sm text-ink-faint py-2">
-                  Everyone is square — no payments needed.
+                  Everyone is square. No payments needed.
                 </p>
               ) : (
                 <ul className="space-y-1.5">

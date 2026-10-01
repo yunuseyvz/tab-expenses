@@ -25,6 +25,18 @@ services:
     ports:
       - '${DB_PORT:-5433}:5432'
 
+  app:
+    # The base file publishes nothing, which is right for a deploy: the reverse
+    # proxy routes to the container directly, and a published port would send
+    # traffic around the proxy and past TLS.
+    #
+    # Locally there is no proxy, so something has to bind 3000 on the host or
+    # there is nothing to open. That is what this override is for, which keeps
+    # the two shapes separated: base file for a deploy, both files for
+    # development.
+    ports:
+      - '${APP_PORT:-3000}:3000'
+
   # With Postgres on the host-visible port, run the app outside a container for
   # fast reload. Uncomment to use this compose purely as the database.
   # app:

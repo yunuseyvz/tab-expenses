@@ -22,6 +22,7 @@
  * list, and a click-outside handler.
  */
 import { useEffect, useId, useRef, useState } from 'react'
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { Check, ChevronDown, Pencil, Plus } from 'lucide-react'
@@ -166,7 +167,7 @@ export function SpaceSwitcher({
           onToggle={() => setOpen((o) => !o)}
         />
       )}
-      {open && menu}
+      <AnimatePresence>{open && menu}</AnimatePresence>
       {editor}
     </div>
   )
@@ -303,11 +304,24 @@ function SpaceMenu({
   onEdit: (space: EditableSpace) => void
 }) {
   const menuId = useId()
+  // `prefers-reduced-motion` gets the menu with no transition at all. An
+  // appearance animation is exactly the thing that setting is about, and it is
+  // the one animation in the app that is pure decoration: it conveys no state
+  // change, it only says "here is the thing you just clicked".
+  const reduce = useReducedMotion()
+
   return (
-    <div
+    <motion.div
       id={menuId}
       role="listbox"
       aria-label="Switch space"
+      initial={{ opacity: 0, scale: 0.97 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.97 }}
+      style={{ originY: menuSide === 'above' ? 1 : 0 }}
+      transition={
+        reduce ? { duration: 0 } : { duration: 0.16, ease: [0.16, 1, 0.3, 1] }
+      }
       className={cn(
         'absolute z-50 min-w-[15rem]',
         // `top-full`/`bottom-full` rather than a margin alone, and this is a real
@@ -415,6 +429,6 @@ function SpaceMenu({
           New space
         </button>
       </div>
-    </div>
+    </motion.div>
   )
 }
