@@ -79,7 +79,8 @@ export function SpaceEditor({
           e.preventDefault()
           save.mutate()
         }}
-        className="space-y-4"
+        // pb-4 because this sheet has no sticky footer to supply it.
+        className="space-y-4 pb-4"
       >
         <div>
           <Label htmlFor="space-edit-name">Name</Label>

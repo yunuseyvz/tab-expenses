@@ -9,7 +9,7 @@ import { AppShell } from '#/components/AppShell'
 import { NewExpenseButton } from '#/components/NewExpenseButton'
 import { Dashboard } from '#/components/dashboard/Dashboard'
 import { ExpenseSheet } from '#/components/expense/ExpenseSheet'
-import { InlinePeriod } from '#/components/InlinePeriod'
+import { PeriodFilter } from '#/components/PeriodFilter'
 import { listMySpaces } from '#/lib/auth.functions'
 import {
   balancesQuery,
@@ -20,7 +20,7 @@ import {
   spaceKeys,
   totalsQuery,
 } from '#/lib/session'
-import { periodLabel, presetToPeriod } from '#/lib/period'
+import { periodLabel, resolvePeriod } from '#/lib/period'
 import { resolveSpaceId } from '#/lib/space-preference'
 import { useCurrentSpace } from '#/hooks/useCurrentSpace'
 
@@ -54,10 +54,7 @@ export const Route = createFileRoute('/_protected/dashboard')({
 
     // A custom range wins over the preset; the two coexist in the URL so
     // switching back to a preset does not discard the custom dates.
-    const period =
-      deps.period === 'custom'
-        ? { from: deps.from ?? null, to: deps.to ?? null }
-        : presetToPeriod(deps.period)
+    const period = resolvePeriod(deps.period, deps.from, deps.to)
 
     const categories = await qc.ensureQueryData(categoriesQuery(spaceId))
     const allIds = categories.map((c: { id: string }) => c.id)
@@ -99,10 +96,7 @@ function DashboardRoute() {
   }
 
   const period = useMemo(
-    () =>
-      search.period === 'custom'
-        ? { from: search.from ?? null, to: search.to ?? null }
-        : presetToPeriod(search.period),
+    () => resolvePeriod(search.period, search.from, search.to),
     [search.period, search.from, search.to],
   )
 
@@ -147,13 +141,12 @@ function DashboardRoute() {
           <NewExpenseButton onClick={openNew} disabled={!spaceId} />
         </div>
 
-        <InlinePeriod
+        <PeriodFilter
           current={search.period}
-          onChange={(nextPeriod) =>
-            navigate({
-              to: '/dashboard',
-              search: { ...search, period: nextPeriod },
-            })
+          from={search.from}
+          to={search.to}
+          onChange={(patch) =>
+            navigate({ to: '/dashboard', search: { ...search, ...patch } })
           }
         />
 

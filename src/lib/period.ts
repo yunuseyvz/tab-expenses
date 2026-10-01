@@ -59,6 +59,27 @@ export function presetToPeriod(preset: PeriodPreset): Period {
   }
 }
 
+/**
+ * The period a screen should actually query.
+ *
+ * `presetToPeriod` maps a preset to dates, and 'custom' deliberately falls
+ * through to "no bounds" — so it must never be called on its own with a custom
+ * range. The expenses screen was doing exactly that: it accepted `from` and
+ * `to`, then computed its filter from `presetToPeriod(deps.period)` and threw
+ * them away, so choosing Custom silently showed all time. One function so a
+ * loader and its component cannot disagree about which dates a screen shows.
+ */
+export function resolvePeriod(
+  preset: PeriodPreset,
+  from?: string,
+  to?: string,
+): Period {
+  if (preset === 'custom') {
+    return { from: from ?? null, to: to ?? null }
+  }
+  return presetToPeriod(preset)
+}
+
 export function periodLabel(period: Period, locale = 'en'): string {
   const fmt = (s: string) =>
     fromISODate(s).toLocaleDateString(locale, {

@@ -20,11 +20,11 @@ import {
   spaceKeys,
 } from '#/lib/session'
 import { formatMoney } from '#/lib/money'
-import { fromISODate, groupByDay, presetToPeriod } from '#/lib/period'
+import { fromISODate, groupByDay, resolvePeriod } from '#/lib/period'
 import { swatchColor } from '#/lib/swatches'
 import { useCurrentSpace } from '#/hooks/useCurrentSpace'
 import { resolveSpaceId } from '#/lib/space-preference'
-import { PeriodSelector } from '#/components/dashboard/PeriodSelector'
+import { PeriodFilter } from '#/components/PeriodFilter'
 
 export const Route = createFileRoute('/_protected/expenses')({
   validateSearch: (s: Record<string, unknown>) => ({
@@ -51,7 +51,7 @@ export const Route = createFileRoute('/_protected/expenses')({
     )
     if (!spaceId) return
 
-    const period = presetToPeriod(deps.period)
+    const period = resolvePeriod(deps.period, deps.from, deps.to)
     const categories = await qc.ensureQueryData(categoriesQuery(spaceId))
     const allIds = categories.map((c: { id: string }) => c.id)
 
@@ -76,7 +76,10 @@ function ExpensesRoute() {
   const navigate = useNavigate()
   const { space, spaceId } = useCurrentSpace(search.space)
 
-  const period = useMemo(() => presetToPeriod(search.period), [search.period])
+  const period = useMemo(
+    () => resolvePeriod(search.period, search.from, search.to),
+    [search.period, search.from, search.to],
+  )
 
   const categories = useQuery({
     ...categoriesQuery(spaceId ?? ''),
@@ -154,7 +157,7 @@ function ExpensesRoute() {
           <NewExpenseButton onClick={openNew} disabled={!spaceId} />
         </div>
 
-        <PeriodSelector
+        <PeriodFilter
           current={search.period}
           from={search.from}
           to={search.to}

@@ -471,9 +471,11 @@ export function Sheet({
                 Close
               </button>
             </div>
-            <div className="px-5 pt-2 pb-4 overflow-y-auto flex-1">
-              {children}
-            </div>
+            {/* No bottom padding here. A sticky footer pins to the bottom of
+                this box, so padding on it becomes a visible gap between the
+                footer and the panel edge. Sheets that want breathing room put it
+                on their own last child instead. */}
+            <div className="px-5 pt-2 overflow-y-auto flex-1">{children}</div>
           </motion.div>
         </>
       )}

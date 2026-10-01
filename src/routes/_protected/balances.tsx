@@ -14,16 +14,20 @@ import {
 import { balancesQuery, rememberedSpaceQuery, spaceKeys } from '#/lib/session'
 import { listMySpaces } from '#/lib/auth.functions'
 import { formatMoney } from '#/lib/money'
-import { presetToPeriod } from '#/lib/period'
+import { resolvePeriod } from '#/lib/period'
 import { swatchColor } from '#/lib/swatches'
 import { useCurrentSpace } from '#/hooks/useCurrentSpace'
 import { resolveSpaceId } from '#/lib/space-preference'
-import { InlinePeriod } from '#/components/InlinePeriod'
+import { PeriodFilter } from '#/components/PeriodFilter'
 
 export const Route = createFileRoute('/_protected/balances')({
   validateSearch: (s: Record<string, unknown>) => ({
     space: typeof s.space === 'string' ? s.space : undefined,
     period: (typeof s.period === 'string' ? s.period : 'all') as PeriodPreset,
+    // Balances had no custom range at all: two screens offered it and one did
+    // not, so the same control meant different things per page.
+    from: typeof s.from === 'string' ? s.from : undefined,
+    to: typeof s.to === 'string' ? s.to : undefined,
   }),
   loaderDeps: ({ search }) => search,
   loader: async ({ context, deps }) => {
@@ -41,7 +45,7 @@ export const Route = createFileRoute('/_protected/balances')({
     if (!spaceId) return
 
     await qc.ensureQueryData(
-      balancesQuery(spaceId, presetToPeriod(deps.period)),
+      balancesQuery(spaceId, resolvePeriod(deps.period, deps.from, deps.to)),
     )
   },
   component: BalancesRoute,
@@ -52,7 +56,21 @@ function BalancesRoute() {
   const navigate = useNavigate()
   const { space, spaceId } = useCurrentSpace(search.space)
 
-  const period = useMemo(() => presetToPeriod(search.period), [search.period])
+  const go = (
+    patch: Partial<{
+      space: string | undefined
+      period: PeriodPreset
+      from: string | undefined
+      to: string | undefined
+    }>,
+  ) => {
+    void navigate({ to: '/balances', search: { ...search, ...patch } })
+  }
+
+  const period = useMemo(
+    () => resolvePeriod(search.period, search.from, search.to),
+    [search.period, search.from, search.to],
+  )
 
   const balances = useQuery({
     ...balancesQuery(spaceId ?? '', period),
@@ -71,14 +89,11 @@ function BalancesRoute() {
           paid − share. Positive means the household owes them.
         </p>
 
-        <InlinePeriod
+        <PeriodFilter
           current={search.period}
-          onChange={(nextPeriod) => {
-            void navigate({
-              to: '/balances',
-              search: { ...search, period: nextPeriod },
-            })
-          }}
+          from={search.from}
+          to={search.to}
+          onChange={(patch) => go(patch)}
         />
 
         {balances.isPending ? (
