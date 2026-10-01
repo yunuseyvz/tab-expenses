@@ -1,10 +1,15 @@
-import { useEffect, useId, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Check } from 'lucide-react'
 
 import type { AvatarKind } from '#/lib/avatars'
 import { AVATAR_ICONS, avatarLabel, isAvatarIcon } from '#/lib/avatars'
+import { usePopoverPlacement } from '#/hooks/usePopoverPlacement'
 import { Avatar } from '#/components/Avatar'
 import { cn } from '#/lib/cn'
+
+/** Wide enough for eight icon columns plus their gaps. */
+const PANEL_WIDTH = 384
 
 /**
  * Choose an avatar.
@@ -16,6 +21,14 @@ import { cn } from '#/lib/cn'
  * No upload, deliberately. There is no storage, no size limit, no moderation and
  * nothing to serve; and the alternative would mean either hosting images the app
  * never asked for or fetching them from someone else's server on every render.
+ *
+ * PORTALLED TO THE BODY, and that is a fix rather than a flourish. This picker
+ * is used inside the space editor's sheet, whose body scrolls and whose frame is
+ * `overflow-hidden`. A panel positioned `absolute` inside that is clipped by the
+ * scroller — so the bottom two rows of icons were unreachable — and it is also
+ * the reason the panel appeared to be *inside* the form, pushing the save button
+ * down. Portalled to <body> as `fixed`, it is over everything: the sheet, the
+ * backdrop, and the fields it was opened from.
  */
 export function AvatarPicker({
   value,
@@ -38,12 +51,33 @@ export function AvatarPicker({
 }) {
   const [open, setOpen] = useState(false)
   const root = useRef<HTMLDivElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
   const panelId = useId()
+  const { anchor, panel, floating } = usePopoverPlacement<HTMLButtonElement>({
+    open,
+    width: PANEL_WIDTH,
+  })
+
+  // The hook needs the panel element to measure it; the outside-click handler
+  // needs it to know a click landed inside it. One callback, both jobs.
+  const setPanel = useCallback(
+    (el: HTMLDivElement | null) => {
+      panelRef.current = el
+      panel(el)
+    },
+    [panel],
+  )
 
   useEffect(() => {
     if (!open) return
     const onPointerDown = (e: PointerEvent) => {
-      if (!root.current?.contains(e.target as Node)) setOpen(false)
+      const t = e.target as Node
+      // Both, because the panel is no longer inside `root` — it is on <body>.
+      // Checking only the trigger would close the picker on every click inside
+      // it, so no icon could ever be chosen.
+      if (!root.current?.contains(t) && !panelRef.current?.contains(t)) {
+        setOpen(false)
+      }
     }
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setOpen(false)
@@ -63,6 +97,7 @@ export function AvatarPicker({
     <div ref={root} className="relative">
       <button
         id={id}
+        ref={anchor}
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
@@ -91,70 +126,86 @@ export function AvatarPicker({
         <span className="text-xs text-ink-muted shrink-0">Change</span>
       </button>
 
-      {open && (
-        <div
-          id={panelId}
-          role="listbox"
-          aria-label={label}
-          className="absolute z-50 mt-1.5 left-0 right-0 z-50
-            max-h-72 overflow-y-auto overscroll-contain
-            rounded-[var(--radius-md)] border border-rule
-            bg-[var(--color-paper-raised)] p-2
-            shadow-[var(--shadow-float)]"
-        >
-          <div className="flex items-center gap-2 px-1 pb-2">
-            <GeneratedOption
-              active={current === null}
-              seed={seed}
-              kind={kind}
-              onPick={() => {
-                onChange(null)
-                setOpen(false)
-              }}
-            />
-            <span className="text-[11px] text-ink-faint">
-              Pick one, or keep the generated mark
-            </span>
-          </div>
+      {/* On <body>, not here. See the note on the component: inside the space
+          editor's sheet this panel was clipped by the scroller, so the last rows
+          of icons could not be reached at all. `z-[60]` clears the sheet's own
+          z-50 and its z-40 backdrop. Positioned from `floating`, which is
+          viewport coordinates — it flips above the trigger when there is not
+          room below, and it is only rendered once measured so it never paints
+          in the wrong place first. */}
+      {open &&
+        floating &&
+        createPortal(
+          <div
+            ref={setPanel}
+            id={panelId}
+            role="listbox"
+            aria-label={label}
+            style={{
+              left: floating.left,
+              top: floating.top,
+              width: floating.width,
+            }}
+            className="fixed z-[60] max-h-[min(22rem,70dvh)] overflow-y-auto
+              overscroll-contain rounded-[var(--radius-md)] border border-rule
+              bg-[var(--color-paper-raised)] p-2 shadow-[var(--shadow-float)]"
+          >
+            <div className="flex items-center gap-2 px-1 pb-2">
+              <GeneratedOption
+                active={current === null}
+                seed={seed}
+                kind={kind}
+                onPick={() => {
+                  onChange(null)
+                  setOpen(false)
+                }}
+              />
+              <span className="text-[11px] text-ink-faint">
+                Pick one, or keep the generated mark
+              </span>
+            </div>
 
-          <ul className="grid grid-cols-8 gap-1 border-t border-rule pt-2">
-            {AVATAR_ICONS.map(({ name: key, label: iconLabel, icon: Icon }) => {
-              const selected = current === key
-              return (
-                <li key={key}>
-                  <button
-                    type="button"
-                    role="option"
-                    aria-selected={selected}
-                    aria-label={iconLabel}
-                    title={iconLabel}
-                    onClick={() => {
-                      onChange(key)
-                      setOpen(false)
-                    }}
-                    className={cn(
-                      'relative grid place-items-center size-9 rounded-[var(--radius-sm)]',
-                      'text-ink-muted transition-[background-color,color] duration-150',
-                      'hover:bg-[var(--color-paper-sunk)] hover:text-ink',
-                      selected &&
-                        'bg-[var(--color-terracotta)] text-[var(--color-ink)]',
-                    )}
-                  >
-                    <Icon size={17} aria-hidden />
-                    {selected && (
-                      <Check
-                        size={10}
-                        aria-hidden
-                        className="absolute -right-0.5 -bottom-0.5 rounded-full bg-[var(--color-paper-raised)] p-[1px]"
-                      />
-                    )}
-                  </button>
-                </li>
-              )
-            })}
-          </ul>
-        </div>
-      )}
+            <ul className="grid grid-cols-8 gap-1 border-t border-rule pt-2">
+              {AVATAR_ICONS.map(
+                ({ name: key, label: iconLabel, icon: Icon }) => {
+                  const selected = current === key
+                  return (
+                    <li key={key}>
+                      <button
+                        type="button"
+                        role="option"
+                        aria-selected={selected}
+                        aria-label={iconLabel}
+                        title={iconLabel}
+                        onClick={() => {
+                          onChange(key)
+                          setOpen(false)
+                        }}
+                        className={cn(
+                          'relative grid place-items-center size-9 rounded-[var(--radius-sm)]',
+                          'text-ink-muted transition-[background-color,color] duration-150',
+                          'hover:bg-[var(--color-paper-sunk)] hover:text-ink',
+                          selected &&
+                            'bg-[var(--color-terracotta)] text-[var(--color-ink)]',
+                        )}
+                      >
+                        <Icon size={17} aria-hidden />
+                        {selected && (
+                          <Check
+                            size={10}
+                            aria-hidden
+                            className="absolute -right-0.5 -bottom-0.5 rounded-full bg-[var(--color-paper-raised)] p-[1px]"
+                          />
+                        )}
+                      </button>
+                    </li>
+                  )
+                },
+              )}
+            </ul>
+          </div>,
+          document.body,
+        )}
     </div>
   )
 }

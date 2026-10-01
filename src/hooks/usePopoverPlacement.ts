@@ -1,4 +1,10 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react'
 
 /**
  * Keep a popover inside the viewport, relative to the thing it hangs off.
@@ -40,6 +46,16 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
  * Recomputed on resize, and on scroll from *any* ancestor (capture phase), so a
  * popover inside the expense sheet's scroller stays against its trigger instead
  * of drifting as the sheet scrolls underneath it.
+ *
+ * TWO PLACEMENTS, because there are two kinds of popover
+ * `placement` is an *offset* from the anchor, for a panel that is `absolute`
+ * inside a positioned wrapper. `floating` is in *viewport* coordinates, for a
+ * panel portalled to `<body>` as `fixed` — which is what a popover inside a
+ * scrolling sheet has to be, because `absolute` there is clipped by the
+ * scroller and `overflow: hidden` on the sheet clips it outright. The vertical
+ * half is only in `floating`: it needs the panel's own height to decide whether
+ * to open downwards or flip up, and a panel whose height is needed cannot be
+ * placed by an offset alone.
  */
 
 // React warns when a layout effect is used during server rendering, and this
@@ -52,21 +68,37 @@ export function usePopoverPlacement<T extends HTMLElement>({
   open,
   width,
   margin = 8,
+  gap = 6,
 }: {
   open: boolean
   /** The width you want, in px. Narrowed to fit if the viewport is smaller. */
   width: number
   margin?: number
+  /** Space between the anchor and the panel, in px. */
+  gap?: number
 }) {
   const anchor = useRef<T>(null)
+  // A callback ref rather than another useRef, because the panel has to be
+  // *measurable* before it can be placed and a plain ref is null on the layout
+  // pass that would do the measuring. Re-running the effect when the element
+  // arrives is what lets the flip decision see a real height.
+  const [panelEl, setPanelEl] = useState<HTMLDivElement | null>(null)
+  const panel = useCallback((el: HTMLDivElement | null) => setPanelEl(el), [])
   const [placement, setPlacement] = useState<{
     left: number
     width: number
+  } | null>(null)
+  const [floating, setFloating] = useState<{
+    left: number
+    top: number
+    width: number
+    side: 'above' | 'below'
   } | null>(null)
 
   useIsomorphicLayoutEffect(() => {
     if (!open) {
       setPlacement(null)
+      setFloating(null)
       return
     }
 
@@ -81,7 +113,34 @@ export function usePopoverPlacement<T extends HTMLElement>({
       const w = Math.min(width, viewport - margin * 2)
       const maxLeft = viewport - margin - w - rect.left
       const minLeft = margin - rect.left
-      setPlacement({ left: Math.max(minLeft, Math.min(0, maxLeft)), width: w })
+      const left = Math.max(minLeft, Math.min(0, maxLeft))
+      setPlacement({ left, width: w })
+
+      // The fixed-coordinate form, for a panel portalled to <body>. Measured
+      // against the visible viewport height for the same reason the width is:
+      // innerHeight lies the moment the document overflows on a phone.
+      const panelHeight = panelEl?.getBoundingClientRect().height ?? 0
+      const vh = Math.min(
+        document.documentElement.clientHeight || window.innerHeight,
+        window.innerHeight,
+      )
+      const roomBelow = vh - rect.bottom - gap
+      const roomAbove = rect.top - gap - margin
+      // Flip only when it actually helps: a panel that fits above but not below
+      // goes above, and a panel that fits in neither keeps the default, because
+      // opening upward off the top edge hides the trigger that opened it.
+      const side =
+        panelHeight > roomBelow && panelHeight <= roomAbove ? 'above' : 'below'
+      const top =
+        side === 'above' ? rect.top - gap - panelHeight : rect.bottom + gap
+      setFloating({
+        left: Math.round(rect.left + left),
+        // Never above the top margin, even when `above` did not fit — a
+        // negative top is a panel hanging off the top of the screen.
+        top: Math.round(Math.max(margin, top)),
+        width: w,
+        side,
+      })
     }
 
     place()
@@ -93,7 +152,7 @@ export function usePopoverPlacement<T extends HTMLElement>({
       window.removeEventListener('resize', place)
       window.removeEventListener('scroll', place, true)
     }
-  }, [open, width, margin])
+  }, [open, width, margin, gap, panelEl])
 
-  return { anchor, placement }
+  return { anchor, panel, placement, floating }
 }
