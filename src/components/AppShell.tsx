@@ -8,6 +8,7 @@ import { Link, useRouterState } from '@tanstack/react-router'
 import { AnimatePresence, motion } from 'motion/react'
 import { LayoutGrid, List, Scale, Settings as SettingsIcon } from 'lucide-react'
 
+import { SpaceSwitcher } from '#/components/SpaceSwitcher'
 import { authClient } from '#/lib/auth-client'
 import { cn } from '#/lib/cn'
 
@@ -48,13 +49,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-dvh flex flex-col">
       <header className="hidden md:flex items-center justify-between px-6 py-4 border-b border-rule">
-        <Link
-          to="/dashboard"
-          search={NAV_SEARCH['/dashboard']}
-          className="font-serif text-lg tracking-tight"
-        >
-          Splitwise
-        </Link>
+        <div className="flex items-center gap-3">
+          <Link
+            to="/dashboard"
+            search={NAV_SEARCH['/dashboard']}
+            className="font-serif text-lg tracking-tight"
+          >
+            Splitwise
+          </Link>
+          <span aria-hidden className="text-ink-faint">
+            /
+          </span>
+          <SpaceSwitcher />
+        </div>
         <nav aria-label="Main" className="flex items-center gap-1">
           {NAV.map((item) => (
             <NavLink key={item.to} {...item} active={pathname === item.to} />
@@ -73,6 +80,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           {signingOut ? 'Signing out…' : 'Sign out'}
         </button>
       </header>
+
+      {/* Mobile has no top bar at all, so the household name would otherwise be
+          invisible — and with more than one space there is no telling which one
+          you are editing. */}
+      <div
+        className="md:hidden sticky top-0 z-30 flex items-center justify-between
+        px-4 h-12 border-b border-rule
+        bg-[var(--color-paper-raised)]/88 backdrop-blur-md"
+      >
+        <SpaceSwitcher compact />
+        <Link
+          to="/settings"
+          search={NAV_SEARCH['/settings']}
+          aria-label="Settings"
+          className="text-ink-muted p-1.5 -mr-1.5"
+        >
+          <SettingsIcon size={18} aria-hidden />
+        </Link>
+      </div>
 
       <div className="flex-1 pb-16 md:pb-0">{children}</div>
 

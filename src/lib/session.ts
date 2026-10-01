@@ -13,6 +13,7 @@
  */
 import { queryOptions } from '@tanstack/react-query'
 
+import { getRememberedSpaceId } from './auth.functions'
 import { getBalances, getTotals, listExpenses } from './expense.functions'
 import { listCategories, listMembers } from './space.functions'
 import type { QueryClient } from '@tanstack/react-query'
@@ -21,6 +22,9 @@ import type { Period } from './period'
 export const spaceKeys = {
   all: ['spaces'] as const,
   mySpaces: ['my-spaces'] as const,
+  // Which space this browser last used. Global rather than per-space because it
+  // is a preference about the account, not about any one household.
+  rememberedSpace: ['remembered-space'] as const,
   members: (spaceId: string) => ['spaces', spaceId, 'members'] as const,
   categories: (spaceId: string) => ['spaces', spaceId, 'categories'] as const,
   expenses: (spaceId: string, filter: unknown) =>
@@ -95,6 +99,22 @@ export function totalsQuery(spaceId: string, filter: ListFilter) {
   return queryOptions({
     queryKey: spaceKeys.totals(spaceId, filter),
     queryFn: () => fetchTotals(spaceId, filter),
+  })
+}
+
+/**
+ * The last space this browser opened.
+ *
+ * In the query cache rather than router context on purpose: a child route's
+ * loader `context` only carries its ancestors' *beforeLoad* results, not their
+ * loader returns, so a value stashed in the protected layout's loader would be
+ * invisible to the four screens that need it. This is also already warm after
+ * SSR, so no screen pays an extra round trip for it.
+ */
+export function rememberedSpaceQuery() {
+  return queryOptions({
+    queryKey: spaceKeys.rememberedSpace,
+    queryFn: () => getRememberedSpaceId(),
   })
 }
 

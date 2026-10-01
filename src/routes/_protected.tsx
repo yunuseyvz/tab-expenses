@@ -11,7 +11,11 @@
  */
 import { Outlet, createFileRoute, redirect } from '@tanstack/react-router'
 
-import { getSession, listMySpaces } from '#/lib/auth.functions'
+import {
+  getRememberedSpaceId,
+  getSession,
+  listMySpaces,
+} from '#/lib/auth.functions'
 import { spaceKeys } from '#/lib/session'
 
 export const Route = createFileRoute('/_protected')({
@@ -29,17 +33,20 @@ export const Route = createFileRoute('/_protected')({
   // is an empty shell, because every screen needs to know which space it is
   // showing before it can render anything.
   loader: async ({ context }) => {
-    const spaces = await context.queryClient.ensureQueryData({
-      queryKey: spaceKeys.mySpaces,
-      queryFn: () => listMySpaces(),
-    })
+    const [spaces, rememberedSpaceId] = await Promise.all([
+      context.queryClient.ensureQueryData({
+        queryKey: spaceKeys.mySpaces,
+        queryFn: () => listMySpaces(),
+      }),
+      getRememberedSpaceId(),
+    ])
 
     // No space yet: onboard rather than into an empty dashboard.
     if (spaces.length === 0) {
       throw redirect({ to: '/setup' })
     }
 
-    return { spaces }
+    return { spaces, rememberedSpaceId }
   },
   component: ProtectedLayout,
 })

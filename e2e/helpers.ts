@@ -85,6 +85,74 @@ export async function requestOtp(email: string): Promise<string> {
   return waitForOtp(email)
 }
 
+/**
+ * Create an account through the real registration form.
+ *
+ * Sign-in cannot create a user, so any test needing a *second* identity has to
+ * come through here. Same rate-limit dance as signIn: three attempts, waiting
+ * out a 429 between them.
+ */
+export async function registerUser(page: Page, name: string, email: string) {
+  await page.goto('/register')
+  await page.getByLabel('Your name').fill(name)
+  await page.getByLabel('Email').fill(email)
+
+  const digit1 = page.getByLabel('Digit 1')
+  const submit = page.getByRole('button', { name: 'Create account' })
+
+  for (let attempt = 0; attempt < 5; attempt++) {
+    if (!(await digit1.isVisible().catch(() => false))) {
+      await page.getByRole('button', { name: 'Send code' }).click()
+      await digit1
+        .waitFor({ state: 'visible', timeout: 20_000 })
+        .catch(() => {})
+    }
+    if (await digit1.isVisible().catch(() => false)) break
+    await page.waitForTimeout(RATE_LIMIT_WAIT)
+  }
+  await expect(digit1).toBeVisible({ timeout: 30_000 })
+
+  await digit1.fill(await waitForOtp(email))
+  await submit.click()
+
+  // The verify endpoint is rate-limited too, and this test may be the third
+  // sign-in of the run. A refused verify leaves the boxes cleared and the page
+  // on /register, so refill and retry — the same loop signIn uses. Without it
+  // this helper fails on timing rather than on anything it is testing.
+  for (let attempt = 0; attempt < 5; attempt++) {
+    if (!(await page.url().includes('/register'))) return
+    if (!(await rateLimited(page))) break
+    await page.waitForTimeout(RATE_LIMIT_WAIT)
+    await digit1.fill(await waitForOtp(email))
+    await submit.click()
+  }
+
+  await expect(page).not.toHaveURL(/\/register/, { timeout: 30_000 })
+}
+
+/** Read an invitation link out of the mail sent to `email`. */
+export async function readInviteLink(email: string): Promise<string> {
+  for (let i = 0; i < 60; i++) {
+    const messages = (await (
+      await fetch(`${MAILPIT}/api/v1/messages?limit=10`)
+    ).json()) as {
+      messages: Array<{ ID: string; To: Array<{ Address: string }> }>
+    }
+    const mine = messages.messages.find((m) =>
+      m.To.some((t) => t.Address === email),
+    )
+    if (mine) {
+      const full = (await (
+        await fetch(`${MAILPIT}/api/v1/message/${mine.ID}`)
+      ).json()) as { Text: string }
+      const link = full.Text.match(/https?:\/\/\S*\/invite\/\S+/)?.[0]
+      if (link) return link
+    }
+    await new Promise((r) => setTimeout(r, 500))
+  }
+  throw new Error(`no invitation email arrived in Mailpit for ${email}`)
+}
+
 const rateLimited = (page: Page) =>
   page
     .getByRole('alert')

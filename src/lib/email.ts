@@ -1,16 +1,18 @@
 /**
- * OTP delivery.
+ * Outbound mail.
  *
  * Two transports behind one function, selected by whether RESEND_API_KEY is
  * set: Resend over HTTPS in prod, Mailpit over SMTP in dev. One env var flips
  * between them.
  *
- * Plain text on purpose — the code has to be readable in any mail client, and
- * an HTML template is not worth the dependency surface for a 6-digit code.
+ * Plain text on purpose — both the OTP and the invitation have to be readable
+ * in any mail client, and an HTML template is not worth the dependency surface
+ * for a 6-digit code and a link.
  */
 import { createServerOnlyFn } from '@tanstack/react-start'
 import { Resend } from 'resend'
 import { env, usesMailpit } from './db/env'
+import type { ServerEnv } from './db/env'
 
 /**
  * Split an RFC 5322 address ("Name <email@example.com>") into Mailpit's
@@ -67,15 +69,18 @@ function bodyFor(type: OtpType, otp: string): string {
   ].join('\n')
 }
 
-export const sendOtpEmail = createServerOnlyFn(async function ({
-  to,
-  otp,
-  type,
-}: SendOtpArgs) {
-  const e = env()
-  const subject = subjectFor(type)
-  const text = bodyFor(type, otp)
-
+/**
+ * Send one plain-text message through whichever transport is configured.
+ *
+ * Shared by the OTP and invite mail so there is exactly one place that knows
+ * about Mailpit's REST quirks, and one place that can fail loudly.
+ */
+async function deliver(
+  e: ServerEnv,
+  to: string,
+  subject: string,
+  text: string,
+) {
   if (usesMailpit(e)) {
     // Dev: hand the message to Mailpit's HTTP API so it shows up in the
     // Mailpit UI. Note this is the REST port (8025), not the SMTP one, and
@@ -110,4 +115,60 @@ export const sendOtpEmail = createServerOnlyFn(async function ({
     text,
   })
   if (error) throw new Error(`Resend send failed: ${error.message}`)
+}
+
+export const sendOtpEmail = createServerOnlyFn(async function ({
+  to,
+  otp,
+  type,
+}: SendOtpArgs) {
+  const e = env()
+  await deliver(e, to, subjectFor(type), bodyFor(type, otp))
+})
+
+export interface SendInviteArgs {
+  to: string
+  /** The household being joined. */
+  spaceName: string
+  /** Who sent the invite, for the recipient to recognise. */
+  inviterName: string
+  /** Absolute link to the accept page, token included. */
+  acceptUrl: string
+  expiresAt: Date
+}
+
+/**
+ * The invitation mail.
+ *
+ * Plain text, like the OTP mail. This app has no HTML mail anywhere, and a
+ * household ledger does not justify the extra path — plus a text body is the one
+ * that cannot be mangled by a mail client.
+ */
+export const sendInviteEmail = createServerOnlyFn(async function ({
+  to,
+  spaceName,
+  inviterName,
+  acceptUrl,
+  expiresAt,
+}: SendInviteArgs) {
+  const e = env()
+  const days = Math.max(
+    1,
+    Math.round((expiresAt.getTime() - Date.now()) / 86_400_000),
+  )
+
+  const text = [
+    `${inviterName} invited you to join "${spaceName}" on Splitwise.`,
+    '',
+    'Accept the invitation:',
+    '',
+    `    ${acceptUrl}`,
+    '',
+    `The link works for anyone signed in as ${to}, and expires in ${days} day${days === 1 ? '' : 's'}.`,
+    'If you were not expecting this, ignore this message — nothing has changed.',
+    '',
+    '— Splitwise',
+  ].join('\n')
+
+  await deliver(e, to, `${inviterName} invited you to ${spaceName}`, text)
 })

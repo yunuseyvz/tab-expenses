@@ -1,29 +1,39 @@
 import { useQuery } from '@tanstack/react-query'
 
+import { resolveSpaceId } from '#/lib/space-preference'
+import { rememberedSpaceQuery, spaceKeys } from '#/lib/session'
 import { listMySpaces } from '#/lib/auth.functions'
 
 /**
  * Resolve which space the UI is currently showing.
  *
- * Preference order: an explicit `?space=` in the URL, then the user's first
- * space. Every screen needs this, and getting it in one hook means the
- * spaceId is never undefined-but-truthy by accident.
+ * Preference order lives in resolveSpaceId — `?space=`, then the last space this
+ * browser used, then the first one. Every screen needs this, and getting it in
+ * one hook means the spaceId is never undefined-but-truthy by accident.
+ *
+ * Both inputs come from the query cache, which the protected layout has already
+ * filled during SSR. Reading the cookie in an effect instead would settle on
+ * the right space but leave the first client render showing the wrong
+ * household's name and totals.
  */
 export function useCurrentSpace(requestedSpaceId?: string) {
   const spaces = useQuery({
-    queryKey: ['my-spaces'],
+    queryKey: spaceKeys.mySpaces,
     queryFn: () => listMySpaces(),
   })
+  const remembered = useQuery(rememberedSpaceQuery())
 
   const list = spaces.data ?? []
-  const space = requestedSpaceId
-    ? list.find((s) => s.id === requestedSpaceId)
-    : list[0]
+  const spaceId = resolveSpaceId(
+    list,
+    requestedSpaceId,
+    remembered.data ?? null,
+  )
 
   return {
     spaces: list,
-    space: space ?? null,
-    spaceId: space?.id ?? null,
+    space: list.find((s) => s.id === spaceId) ?? null,
+    spaceId,
     isLoading: spaces.isPending,
   }
 }

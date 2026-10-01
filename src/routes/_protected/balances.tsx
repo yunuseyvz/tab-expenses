@@ -11,12 +11,13 @@ import {
   Row,
   SectionTitle,
 } from '#/components/ui/Card'
-import { balancesQuery, spaceKeys } from '#/lib/session'
+import { balancesQuery, rememberedSpaceQuery, spaceKeys } from '#/lib/session'
 import { listMySpaces } from '#/lib/auth.functions'
 import { formatMoney } from '#/lib/money'
 import { presetToPeriod } from '#/lib/period'
 import { swatchColor } from '#/lib/swatches'
 import { useCurrentSpace } from '#/hooks/useCurrentSpace'
+import { resolveSpaceId } from '#/lib/space-preference'
 import { InlinePeriod } from '#/components/InlinePeriod'
 
 export const Route = createFileRoute('/_protected/balances')({
@@ -32,9 +33,11 @@ export const Route = createFileRoute('/_protected/balances')({
       queryKey: spaceKeys.mySpaces,
       queryFn: () => listMySpaces(),
     })
-    const spaceId =
-      (deps.space ? spaces.find((s) => s.id === deps.space) : spaces[0])?.id ??
-      null
+    const spaceId = resolveSpaceId(
+      spaces,
+      deps.space,
+      await qc.ensureQueryData(rememberedSpaceQuery()),
+    )
     if (!spaceId) return
 
     await qc.ensureQueryData(

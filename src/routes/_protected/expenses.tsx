@@ -13,12 +13,14 @@ import {
   categoriesQuery,
   expensesQuery,
   membersQuery,
+  rememberedSpaceQuery,
   spaceKeys,
 } from '#/lib/session'
 import { formatMoney } from '#/lib/money'
 import { fromISODate, groupByDay, presetToPeriod } from '#/lib/period'
 import { swatchColor } from '#/lib/swatches'
 import { useCurrentSpace } from '#/hooks/useCurrentSpace'
+import { resolveSpaceId } from '#/lib/space-preference'
 import { InlinePeriod } from '#/components/InlinePeriod'
 
 export const Route = createFileRoute('/_protected/expenses')({
@@ -37,9 +39,11 @@ export const Route = createFileRoute('/_protected/expenses')({
       queryKey: spaceKeys.mySpaces,
       queryFn: () => listMySpaces(),
     })
-    const spaceId =
-      (deps.space ? spaces.find((s) => s.id === deps.space) : spaces[0])?.id ??
-      null
+    const spaceId = resolveSpaceId(
+      spaces,
+      deps.space,
+      await qc.ensureQueryData(rememberedSpaceQuery()),
+    )
     if (!spaceId) return
 
     const period = presetToPeriod(deps.period)

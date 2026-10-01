@@ -10,12 +10,17 @@
  * `requireSpaceMember`. A single missing call is a cross-household data leak.
  */
 import { createServerFn } from '@tanstack/react-start'
-import { getRequestHeaders } from '@tanstack/react-start/server'
+import {
+  getCookie,
+  getRequestHeaders,
+  setCookie,
+} from '@tanstack/react-start/server'
 import { and, eq, isNull } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { auth } from './auth'
 import { getDb } from './db'
+import { env } from './db/env'
 import { space, spaceMember } from './db/schema'
 
 /**
@@ -170,3 +175,58 @@ export const startRegistration = createServerFn({ method: 'POST' })
 
     return { status: 'sent' as const }
   })
+
+// ── which space this browser is looking at ───────────────────────────────
+
+/** Cookie name for the last space this browser used. Not a secret. */
+export const SPACE_COOKIE = 'swl-space'
+
+/**
+ * Remember which space to open by default.
+ *
+ * The URL's `?space=` wins when present, so this only decides what happens on a
+ * bare /dashboard — which is the common case, because the nav links deliberately
+ * do not carry a space and so must not pin one.
+ *
+ * Membership is checked before the cookie is written. Without that, the cookie
+ * would be an unchecked pointer into someone else's household that survives for
+ * a year; resolveSpaceId would reject it on the way back in, but there is no
+ * reason to store it in the first place.
+ */
+export const rememberSpace = createServerFn({ method: 'POST' })
+  .inputValidator(z.object({ spaceId: z.uuid() }))
+  .handler(async ({ data: { spaceId } }) => {
+    const session = await ensureSession()
+    await requireSpaceMember(session.user.id, spaceId)
+
+    setCookie(SPACE_COOKIE, spaceId, {
+      // Not httpOnly: it is a UI preference, not a credential, and letting the
+      // client read it keeps the switcher honest without an extra round trip.
+      // It is still only ever *hinted* at — resolveSpaceId re-checks it.
+      httpOnly: false,
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 60 * 60 * 24 * 365,
+      secure: env().NODE_ENV === 'production',
+    })
+
+    return { ok: true as const }
+  })
+
+/**
+ * The remembered space id, or null. Unauthenticated callers get null rather than
+ * an error: the protected layout already redirects them, and this is only a
+ * display preference.
+ *
+ * The value is returned raw. resolveSpaceId intersects it with the spaces the
+ * user actually belongs to, which is the check that matters — a stale cookie
+ * pointing at a household you left cannot open it.
+ */
+export const getRememberedSpaceId = createServerFn({ method: 'GET' }).handler(
+  async () => {
+    const session = await ensureSession().catch(() => null)
+    if (!session) return null
+
+    return getCookie(SPACE_COOKIE) ?? null
+  },
+)

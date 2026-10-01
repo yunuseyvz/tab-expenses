@@ -1,11 +1,12 @@
 import { useState } from 'react'
-import { createFileRoute, useSearch } from '@tanstack/react-router'
+import { Link, createFileRoute, useSearch } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
 import type { PeriodPreset } from '#/lib/period'
 import { listMySpaces } from '#/lib/auth.functions'
 import { AppShell } from '#/components/AppShell'
+import { InvitePanel } from '#/components/InvitePanel'
 import { Button } from '#/components/ui/Button'
 import {
   Card,
@@ -17,12 +18,18 @@ import {
 import { Input, Label, Textarea } from '#/components/ui/Input'
 import { SWATCHES, swatchColor } from '#/lib/swatches'
 import { useCurrentSpace } from '#/hooks/useCurrentSpace'
+import { resolveSpaceId } from '#/lib/space-preference'
 import {
   archiveCategory,
   createCategory,
   createMember,
 } from '#/lib/space.functions'
-import { categoriesQuery, membersQuery, spaceKeys } from '#/lib/session'
+import {
+  categoriesQuery,
+  membersQuery,
+  rememberedSpaceQuery,
+  spaceKeys,
+} from '#/lib/session'
 import { ThemePicker } from '#/components/ThemePicker'
 import { exportCsv } from '#/lib/csv.functions'
 import { commitImport, previewImport } from '#/lib/csv-import.functions'
@@ -169,13 +176,16 @@ export const Route = createFileRoute('/_protected/settings')({
   }),
   loaderDeps: ({ search }) => search,
   loader: async ({ context, deps }) => {
-    const spaces = await context.queryClient.ensureQueryData({
+    const qc = context.queryClient
+    const spaces = await qc.ensureQueryData({
       queryKey: spaceKeys.mySpaces,
       queryFn: () => listMySpaces(),
     })
-    const spaceId =
-      (deps.space ? spaces.find((s) => s.id === deps.space) : spaces[0])?.id ??
-      null
+    const spaceId = resolveSpaceId(
+      spaces,
+      deps.space,
+      await qc.ensureQueryData(rememberedSpaceQuery()),
+    )
     if (!spaceId) return
 
     await Promise.all([
@@ -277,17 +287,40 @@ function SettingsRoute() {
             <SectionTitle>Your spaces</SectionTitle>
             <ul className="mt-2 space-y-1 text-sm">
               {spaces.map((s) => (
-                <li
-                  key={s.id}
-                  className={
-                    s.id === spaceId ? 'font-medium' : 'text-ink-muted'
-                  }
-                >
-                  {s.name} · {s.currency} · {s.role}
+                <li key={s.id}>
+                  {s.id === spaceId ? (
+                    <span className="font-medium">
+                      {s.name} · {s.currency} · {s.role}
+                    </span>
+                  ) : (
+                    <Link
+                      to="/dashboard"
+                      search={{
+                        space: s.id,
+                        period: 'thisMonth',
+                        cats: undefined,
+                        from: undefined,
+                        to: undefined,
+                      }}
+                      className="text-ink-muted hover:text-ink underline underline-offset-4"
+                    >
+                      {s.name} · {s.currency} · {s.role}
+                    </Link>
+                  )}
                 </li>
               ))}
             </ul>
+            <Link
+              to="/spaces/new"
+              className="mt-3 inline-block text-sm text-terracotta-ink underline underline-offset-4"
+            >
+              New space
+            </Link>
           </Card>
+        )}
+
+        {spaceId && space?.role === 'owner' && (
+          <InvitePanel spaceId={spaceId} />
         )}
 
         <Card className="mb-4">

@@ -20,6 +20,8 @@ import { Route as ProtectedBalancesRouteImport } from './routes/_protected/balan
 import { Route as ProtectedDashboardRouteImport } from './routes/_protected/dashboard'
 import { Route as ProtectedExpensesRouteImport } from './routes/_protected/expenses'
 import { Route as ProtectedSettingsRouteImport } from './routes/_protected/settings'
+import { Route as InviteTokenRouteImport } from './routes/invite.$token'
+import { Route as SpacesNewRouteImport } from './routes/spaces.new'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 
 const IndexRoute = IndexRouteImport.update({
@@ -76,6 +78,16 @@ const ProtectedSettingsRoute = ProtectedSettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => ProtectedRoute,
 } as any)
+const InviteTokenRoute = InviteTokenRouteImport.update({
+  id: '/invite/$token',
+  path: '/invite/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SpacesNewRoute = SpacesNewRouteImport.update({
+  id: '/spaces/new',
+  path: '/spaces/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: '/api/auth/$',
   path: '/api/auth/$',
@@ -93,6 +105,8 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof ProtectedDashboardRoute
   '/expenses': typeof ProtectedExpensesRoute
   '/settings': typeof ProtectedSettingsRoute
+  '/invite/$token': typeof InviteTokenRoute
+  '/spaces/new': typeof SpacesNewRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
 }
 export interface FileRoutesByTo {
@@ -106,6 +120,8 @@ export interface FileRoutesByTo {
   '/dashboard': typeof ProtectedDashboardRoute
   '/expenses': typeof ProtectedExpensesRoute
   '/settings': typeof ProtectedSettingsRoute
+  '/invite/$token': typeof InviteTokenRoute
+  '/spaces/new': typeof SpacesNewRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
 }
 export interface FileRoutesById {
@@ -121,6 +137,8 @@ export interface FileRoutesById {
   '/_protected/dashboard': typeof ProtectedDashboardRoute
   '/_protected/expenses': typeof ProtectedExpensesRoute
   '/_protected/settings': typeof ProtectedSettingsRoute
+  '/invite/$token': typeof InviteTokenRoute
+  '/spaces/new': typeof SpacesNewRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
 }
 export interface FileRouteTypes {
@@ -136,6 +154,8 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/expenses'
     | '/settings'
+    | '/invite/$token'
+    | '/spaces/new'
     | '/api/auth/$'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -149,6 +169,8 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/expenses'
     | '/settings'
+    | '/invite/$token'
+    | '/spaces/new'
     | '/api/auth/$'
   id:
     | '__root__'
@@ -163,6 +185,8 @@ export interface FileRouteTypes {
     | '/_protected/dashboard'
     | '/_protected/expenses'
     | '/_protected/settings'
+    | '/invite/$token'
+    | '/spaces/new'
     | '/api/auth/$'
   fileRoutesById: FileRoutesById
 }
@@ -174,6 +198,8 @@ export interface RootRouteChildren {
   PingRoute: typeof PingRoute
   RegisterRoute: typeof RegisterRoute
   SetupRoute: typeof SetupRoute
+  InviteTokenRoute: typeof InviteTokenRoute
+  SpacesNewRoute: typeof SpacesNewRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
 }
 
@@ -256,6 +282,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProtectedSettingsRouteImport
       parentRoute: typeof ProtectedRoute
     }
+    '/invite/$token': {
+      id: '/invite/$token'
+      path: '/invite/$token'
+      fullPath: '/invite/$token'
+      preLoaderRoute: typeof InviteTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/spaces/new': {
+      id: '/spaces/new'
+      path: '/spaces/new'
+      fullPath: '/spaces/new'
+      preLoaderRoute: typeof SpacesNewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/auth/$': {
       id: '/api/auth/$'
       path: '/api/auth/$'
@@ -292,6 +332,8 @@ const rootRouteChildren: RootRouteChildren = {
   PingRoute: PingRoute,
   RegisterRoute: RegisterRoute,
   SetupRoute: SetupRoute,
+  InviteTokenRoute: InviteTokenRoute,
+  SpacesNewRoute: SpacesNewRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
 }
 export const routeTree = rootRouteImport

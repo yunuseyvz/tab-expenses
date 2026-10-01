@@ -16,10 +16,12 @@ import {
   categoriesQuery,
   expensesQuery,
   membersQuery,
+  rememberedSpaceQuery,
   spaceKeys,
   totalsQuery,
 } from '#/lib/session'
 import { periodLabel, presetToPeriod } from '#/lib/period'
+import { resolveSpaceId } from '#/lib/space-preference'
 import { useCurrentSpace } from '#/hooks/useCurrentSpace'
 
 export const Route = createFileRoute('/_protected/dashboard')({
@@ -43,9 +45,11 @@ export const Route = createFileRoute('/_protected/dashboard')({
       queryKey: spaceKeys.mySpaces,
       queryFn: () => listMySpaces(),
     })
-    const spaceId =
-      (deps.space ? spaces.find((s) => s.id === deps.space) : spaces[0])?.id ??
-      null
+    const spaceId = resolveSpaceId(
+      spaces,
+      deps.space,
+      await qc.ensureQueryData(rememberedSpaceQuery()),
+    )
     if (!spaceId) return
 
     // A custom range wins over the preset; the two coexist in the URL so

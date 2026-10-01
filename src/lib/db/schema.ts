@@ -196,11 +196,25 @@ export const spaceInvite = pgTable(
     role: text('role').$type<'owner' | 'member'>().default('member').notNull(),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     acceptedAt: timestamp('accepted_at', { withTimezone: true }),
+    // Who sent it. Set null if that account is ever deleted — an invite is not
+    // worth cascading away, and the email is all that is still needed.
+    invitedByUserId: text('invited_by_user_id').references(() => user.id, {
+      onDelete: 'set null',
+    }),
     createdAt: timestamp('created_at', { withTimezone: true })
       .defaultNow()
       .notNull(),
   },
-  (t) => [index('space_invite_space_idx').on(t.spaceId)],
+  (t) => [
+    index('space_invite_space_idx').on(t.spaceId),
+    index('space_invite_email_idx').on(t.email),
+    // One live invite per address per space. Re-inviting an address that already
+    // has a pending invite rotates it instead of stacking up near-duplicates,
+    // so the recipient cannot hold several valid links for the same household.
+    uniqueIndex('space_invite_live_uq')
+      .on(t.spaceId, t.email)
+      .where(sql`${t.acceptedAt} is null`),
+  ],
 )
 
 // ── relations ─────────────────────────────────────────────────────────────

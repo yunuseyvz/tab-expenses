@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import type { MySpace } from '#/lib/space.types'
 import { Button } from '#/components/ui/Button'
 import { Input, Label } from '#/components/ui/Input'
+import { rememberSpace } from '#/lib/auth.functions'
 import { createSpace } from '#/lib/space.functions'
 import { spaceKeys } from '#/lib/session'
 import { SWATCHES, swatchColor } from '#/lib/swatches'
@@ -13,7 +14,18 @@ import { SWATCHES, swatchColor } from '#/lib/swatches'
 /** A short, common set. Currencies people actually hold a household ledger in. */
 const CURRENCIES = ['EUR', 'USD', 'GBP', 'CHF', 'SEK', 'PLN']
 
-export function SetupForm() {
+/**
+ * @param title heading text, so the same form can introduce either a first
+ *   household or an additional one.
+ * @param blurb supporting line under the heading.
+ */
+export function SetupForm({
+  title = 'Set up your ledger',
+  blurb = "A space holds one household's expenses. You can add more later.",
+}: {
+  title?: string
+  blurb?: string
+}) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
 
@@ -54,6 +66,14 @@ export function SetupForm() {
       // the cache is already correct.
       void queryClient.invalidateQueries({ queryKey: spaceKeys.mySpaces })
 
+      // The URL below pins the space, but the nav links carry none and would
+      // fall back to whichever household was last used. Say which one this is.
+      void rememberSpace({ data: { spaceId: result.space.id } }).then(() =>
+        queryClient.invalidateQueries({
+          queryKey: spaceKeys.rememberedSpace,
+        }),
+      )
+
       toast.success('Space created')
       void navigate({
         to: '/dashboard',
@@ -75,12 +95,10 @@ export function SetupForm() {
     <div className="w-full max-w-md">
       <header className="mb-6">
         <p className="text-xs uppercase tracking-[0.16em] text-ink-faint">
-          Welcome
+          Splitwise
         </p>
-        <h1 className="font-serif text-3xl mt-1">Set up your ledger</h1>
-        <p className="text-sm text-ink-muted mt-1.5">
-          A space holds one household's expenses. You can add more later.
-        </p>
+        <h1 className="font-serif text-3xl mt-1">{title}</h1>
+        <p className="text-sm text-ink-muted mt-1.5">{blurb}</p>
       </header>
 
       <form

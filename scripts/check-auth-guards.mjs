@@ -43,6 +43,28 @@ const MEMBERSHIP_EXEMPT = new Set([
   'listMySpaces',
 ])
 
+/**
+ * Server functions reachable without a session at all.
+ *
+ * A much shorter list than MEMBERSHIP_EXEMPT and a far bigger hole: an entry
+ * here is callable by anyone. Keep it that way — adding a name here is how a
+ * data leak would get in, so each one must be readable as "what exactly is
+ * there to protect?".
+ */
+const UNAUTHENTICATED_EXEMPT = new Set([
+  // What an emailed invitation says, shown on /invite/$token to someone who is
+  // not signed in yet. Returns the household's name, the invited address and the
+  // inviter's display name — nothing from the ledger, and no id that could be
+  // used to reach one. The token is the credential; this only describes it.
+  'getInvitePreview',
+  // Creating an account. There is no session to check because the account does
+  // not exist yet — that is what the caller is asking for. What it grants is
+  // deliberately nothing: it writes one unverified user row and mails a code.
+  // It cannot be logged into until that code is verified, it reads nothing, and
+  // it grants no access to any space.
+  'startRegistration',
+])
+
 function walk(dir) {
   for (const entry of readdirSync(dir)) {
     const path = join(dir, entry)
@@ -83,13 +105,18 @@ function check(path) {
     const name = /export const (\w+)\s*=\s*$/.exec(before)?.[1] ?? `fn${i + 1}`
     const whereNamed = `${path} (${name})`
     const exempt = MEMBERSHIP_EXEMPT.has(name)
+    const publicFn = UNAUTHENTICATED_EXEMPT.has(name)
 
-    // The session helpers themselves are the primitives; everything else must
-    // go through them.
-    const isSessionHelper = /export const (getSession|ensureSession)\b/.test(
-      src.slice(0, starts[i]),
-    )
-    if (!isSessionHelper && !/ensureSession\(|getSession\(/.test(chunk)) {
+    // The session helpers themselves are the primitives; everything else must go
+    // through them. Keyed on the resolved name, not on "does ensureSession
+    // appear somewhere earlier in this file" — the latter is true for every
+    // function declared after it, which silently exempted the rest of the file.
+    const isSessionHelper = name === 'getSession' || name === 'ensureSession'
+    if (
+      !isSessionHelper &&
+      !publicFn &&
+      !/ensureSession\(|getSession\(/.test(chunk)
+    ) {
       violations.push(
         `${whereNamed}: no ensureSession()/getSession() call. Every server function must check the session.`,
       )
@@ -134,7 +161,16 @@ function check(path) {
       )
     }
 
-    // Every exemption must still authenticate.
+    // A public function must also not be space-scoped. That combination is how a
+    // cross-household read happens by accident, so refuse the combination
+    // outright rather than trusting the name list to never contain both.
+    if (publicFn && acceptsSpaceId) {
+      violations.push(
+        `${whereNamed}: is public but takes a spaceId from the caller. A public function must not reach into a household.`,
+      )
+    }
+
+    // Every membership exemption must still authenticate.
     if (exempt && !/ensureSession\(|getSession\(/.test(chunk)) {
       violations.push(
         `${whereNamed}: is on the membership-exemption list but never calls ensureSession().`,
