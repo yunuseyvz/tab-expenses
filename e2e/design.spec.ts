@@ -688,3 +688,150 @@ test.describe('design system', () => {
     expect(failures, failures.join('\n')).toEqual([])
   })
 })
+
+/**
+ * Popovers hang off their trigger, in both directions.
+ *
+ * Two bugs that a screenshot hides and a measurement does not.
+ *
+ * The switcher's menu opened 101px *above* the space it belongs to, covering the
+ * sidebar's own logo. Cause: the switcher's wrapper is `flex items-center`, and an
+ * absolutely-positioned child of a flex container is aligned as if it were the
+ * sole flex item — so with `top` left to its static position the menu was
+ * vertically centred against the trigger and, being taller than it, sat above.
+ * The mobile variant never showed it, because `bottom-full` overrides the
+ * vertical static position outright, so "it works on my phone" was true and
+ * meant nothing.
+ *
+ * And the avatar picker inside the space editor's sheet was positioned
+ * `absolute` inside a scrolling, `overflow-hidden` frame, so its last rows of
+ * icons were clipped away and unreachable — a control that looks complete and
+ * cannot be used. It is on `<body>` as `fixed` now, and this asserts the
+ * property that matters: every option is genuinely hit-testable.
+ */
+test.describe('popover placement', () => {
+  test.use({ storageState: 'test-results/auth.json' })
+
+  test('the switcher menu opens below the trigger and leaves it clickable', async ({
+    page,
+  }) => {
+    // Desktop explicitly. The whole suite runs at Pixel 7, where the switcher is
+    // the mark in the floating bar and its menu opens *upward* on purpose — so a
+    // test written for the sidebar would either be skipped here or, worse, pass
+    // by asserting the mobile behaviour. The sidebar is where the bug was.
+    await page.setViewportSize({ width: 1280, height: 900 })
+
+    await page.goto('/dashboard')
+    // Not scoped to the navigation landmark: in the desktop layout the sidebar's
+    // switcher sits in the <aside> *above* the <nav>, and only the mobile bar's
+    // is inside one. At 1280 exactly one trigger is visible, so :visible is the
+    // honest way to say "whichever one this layout has".
+    const trigger = page
+      .locator('button[aria-haspopup=listbox]:visible')
+      .first()
+    await trigger.click()
+
+    const menu = page.getByRole('listbox', { name: 'Switch space' })
+    await expect(menu).toBeVisible()
+
+    const t = (await trigger.boundingBox())!
+    const m = (await menu.boundingBox())!
+    expect(t, 'the trigger must be on screen').not.toBeNull()
+    expect(m, 'the menu must be on screen').not.toBeNull()
+
+    // Below the trigger, by one gap. `top-full` plus `mt-1.5` is what produces
+    // this; a margin alone leaves `top` on its static position and the menu
+    // centres itself against the trigger.
+    expect(
+      m.y - (t.y + t.height),
+      'the menu must hang below the trigger by its gap, not above it',
+    ).toBeGreaterThanOrEqual(0)
+    expect(m.y - (t.y + t.height)).toBeLessThanOrEqual(16)
+
+    // And the trigger is still the thing under its own centre. The sidebar is
+    // `backdrop-filter`ed, which makes it a stacking context, so a menu wider
+    // than the sidebar overhangs into the page column — where, before it was
+    // given a z-index of its own, `main` painted over it and swallowed clicks.
+    expect(
+      await page.evaluate((box) => {
+        const el = document.elementFromPoint(
+          box.x + box.width / 2,
+          box.y + box.height / 2,
+        )
+        return (
+          el?.closest('button')?.getAttribute('aria-haspopup') === 'listbox'
+        )
+      }, t),
+      'the trigger must still be the topmost element at its own centre',
+    ).toBe(true)
+  })
+
+  test('every avatar option in the space editor is reachable', async ({
+    page,
+  }) => {
+    await page.goto('/dashboard')
+    await page
+      .getByRole('navigation', { name: 'Main' })
+      .locator('button[aria-haspopup=listbox]')
+      .first()
+      .click()
+    await page
+      .getByRole('button', { name: /^Edit / })
+      .first()
+      .click()
+    await expect(page.getByRole('dialog')).toBeVisible()
+
+    await page
+      .getByRole('button', { name: /Change/ })
+      .first()
+      .click()
+    const panel = page.getByRole('listbox', { name: 'Space avatar' })
+    await expect(panel).toBeVisible()
+
+    // Portalled: not a descendant of the form it was opened from.
+    expect(
+      await page.evaluate(() => {
+        const el = document.querySelector(
+          '[role="listbox"][aria-label="Space avatar"]',
+        )
+        return !!el && !el.closest('form')
+      }),
+      'the panel must not live inside the sheet, or the sheet clips it',
+    ).toBe(true)
+
+    // On screen, all of it.
+    const box = (await panel.boundingBox())!
+    const vh = await page.evaluate(() => document.documentElement.clientHeight)
+    expect(box.y, 'the panel must be on screen').toBeGreaterThanOrEqual(0)
+    expect(
+      box.y + box.height,
+      'the panel must not run off the bottom of the viewport',
+    ).toBeLessThanOrEqual(vh)
+
+    // The real assertion: hit-test every option. A clipped panel still *renders*
+    // its full height in the DOM, so counting options proves nothing and
+    // asserting the bounding box proves little — what fails is the click.
+    const options = panel.getByRole('option')
+    const total = await options.count()
+    expect(total).toBeGreaterThanOrEqual(30)
+
+    const unreachable: Array<number> = []
+    for (let i = 0; i < total; i++) {
+      const b = await options.nth(i).boundingBox()
+      if (!b) {
+        unreachable.push(i)
+        continue
+      }
+      const hits = await page.evaluate(
+        (pt: { x: number; y: number }) =>
+          !!document.elementFromPoint(pt.x, pt.y)?.closest('[role="option"]'),
+        { x: b.x + b.width / 2, y: b.y + b.height / 2 },
+      )
+      if (!hits) unreachable.push(i)
+    }
+    expect(
+      unreachable,
+      `options not clickable at their own centre: ${unreachable.join(', ')}`,
+    ).toEqual([])
+  })
+})

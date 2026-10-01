@@ -323,6 +323,7 @@ export function SpaceEditor({
               seed={space.id}
               name={space.name}
               onChange={setIcon}
+              kind="space"
               label="Space avatar"
             />
           </div>

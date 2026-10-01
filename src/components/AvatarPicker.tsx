@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { Check } from 'lucide-react'
 
+import type { AvatarKind } from '#/lib/avatars'
 import { AVATAR_ICONS, avatarLabel, isAvatarIcon } from '#/lib/avatars'
 import { Avatar } from '#/components/Avatar'
 import { cn } from '#/lib/cn'
@@ -23,6 +24,7 @@ export function AvatarPicker({
   onChange,
   label = 'Avatar',
   id,
+  kind = 'person',
 }: {
   value: string | null
   /** Stable id for the generated option — never a display name. */
@@ -31,6 +33,8 @@ export function AvatarPicker({
   onChange: (next: string | null) => void
   label?: string
   id?: string
+  /** Passed through so the preview matches what the app will actually draw. */
+  kind?: AvatarKind
 }) {
   const [open, setOpen] = useState(false)
   const root = useRef<HTMLDivElement>(null)
@@ -71,7 +75,13 @@ export function AvatarPicker({
           'hover:bg-[var(--color-paper-raised)]',
         )}
       >
-        <Avatar avatarKey={current} seed={seed} name={name} size={44} />
+        <Avatar
+          avatarKey={current}
+          seed={seed}
+          name={name}
+          kind={kind}
+          size={44}
+        />
         <span className="min-w-0 flex-1 text-left">
           <span className="block text-sm font-medium truncate">{name}</span>
           <span className="block text-xs text-ink-faint truncate">
@@ -96,6 +106,7 @@ export function AvatarPicker({
             <GeneratedOption
               active={current === null}
               seed={seed}
+              kind={kind}
               onPick={() => {
                 onChange(null)
                 setOpen(false)
@@ -152,10 +163,12 @@ export function AvatarPicker({
 function GeneratedOption({
   active,
   seed,
+  kind,
   onPick,
 }: {
   active: boolean
   seed: string
+  kind: AvatarKind
   onPick: () => void
 }) {
   return (
@@ -172,7 +185,7 @@ function GeneratedOption({
           : 'hover:bg-[var(--color-paper-sunk)]',
       )}
     >
-      <Avatar avatarKey={null} seed={seed} size={30} />
+      <Avatar avatarKey={null} seed={seed} kind={kind} size={30} />
       {active && (
         <Check
           size={10}

@@ -147,8 +147,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <div className="min-h-dvh md:grid md:grid-cols-[auto_1fr]">
       {/* ── desktop: floating sidebar ──────────────────────────────────── */}
       <aside className="hidden md:block">
+        {/* z-30, and it has to be here rather than on the popovers themselves.
+            The sidebar's panel is `backdrop-filter`ed, which makes it a stacking
+            context, so a `z-50` menu inside it is only ever compared against its
+            siblings — not against the page beside it. The switcher's menu is
+            wider than the sidebar and overhangs into the content column, where
+            `main` painted over it and swallowed clicks on the row's own edit
+            button. Raising the container puts the whole sidebar above the page;
+            the sheets are z-40/z-50, so they still cover it. */}
         <div
-          className="sticky top-0 flex h-dvh flex-col gap-1 p-4
+          className="sticky top-0 z-30 flex h-dvh flex-col gap-1 p-4
             w-[15.5rem]"
         >
           <div

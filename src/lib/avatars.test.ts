@@ -76,6 +76,90 @@ describe('identicon', () => {
       }
     }
   })
+
+  it('keeps every mark inside the viewBox for a space too', () => {
+    // Circles carry `cx`/`cy` rather than `x`, so the bounds check above does not
+    // cover them and a pip could hang off the edge without this noticing.
+    for (const seed of ['a', 'bbbb', 'user-42', 'ünïcødé', '']) {
+      const svg = decode(identicon(seed, 'space'))
+      for (const m of svg.matchAll(/c[xy]="(-?[\d.]+)"/g)) {
+        expect(Number(m[1])).toBeGreaterThanOrEqual(0)
+        expect(Number(m[1])).toBeLessThanOrEqual(20)
+      }
+      for (const m of svg.matchAll(/r="([\d.]+)"/g)) {
+        expect(Number(m[1])).toBeGreaterThan(0)
+        expect(Number(m[1])).toBeLessThanOrEqual(2)
+      }
+    }
+  })
+})
+
+describe('generated marks are told apart', () => {
+  const seeds = Array.from({ length: 40 }, (_, i) => `seed-${i}`)
+
+  /** The hue out of the first `oklch(...)` colour in the markup. */
+  function hueOf(svg: string): number {
+    const m = decode(svg).match(/oklch\(([\d.]+) [\d.]+ ([\d.]+)/)
+    if (!m) throw new Error(`no oklch colour in: ${svg.slice(0, 120)}`)
+    return Number(m[2])
+  }
+
+  it('spans the wheel rather than clustering in one family', () => {
+    // The regression this guards: the hue used to be `18 + hash % 78`, a band
+    // covering orange through yellow-green, so a household's generated avatars
+    // came out assorted shades of the same green. Asserting a spread of hues is
+    // the only way that stays fixed — nothing about a single avatar fails when
+    // every avatar is the same colour.
+    for (const kind of ['person', 'space'] as const) {
+      const hues = seeds.map((s) => hueOf(identicon(s, kind)))
+      const min = Math.min(...hues)
+      const max = Math.max(...hues)
+      expect(max - min).toBeGreaterThan(200)
+      // And not just two anchors either: more than a quarter of the samples must
+      // land in distinct 30-degree buckets, or it is "green plus one other".
+      const buckets = new Set(hues.map((h) => Math.floor(h / 30)))
+      expect(buckets.size).toBeGreaterThanOrEqual(4)
+    }
+  })
+
+  it('draws a person as squares and a household as pips', () => {
+    for (const seed of seeds) {
+      expect(decode(identicon(seed, 'person'))).toContain('<rect')
+      expect(decode(identicon(seed, 'person'))).not.toContain('<circle')
+      expect(decode(identicon(seed, 'space'))).toContain('<circle')
+      expect(decode(identicon(seed, 'space'))).not.toContain('<rect')
+    }
+  })
+
+  it('gives the same seed two visibly different marks', () => {
+    // Same id, two kinds: this is what stops a household's generated avatar from
+    // being mistaken for a member of it.
+    for (const seed of seeds) {
+      expect(identicon(seed, 'person')).not.toBe(identicon(seed, 'space'))
+    }
+  })
+
+  it('never leaves a household mark without a middle row', () => {
+    for (const seed of seeds) {
+      expect(decode(identicon(seed, 'space'))).toMatch(/cy="10"/)
+    }
+  })
+
+  it('is deterministic per kind', () => {
+    for (const seed of seeds) {
+      for (const kind of ['person', 'space'] as const) {
+        expect(identicon(seed, kind)).toBe(identicon(seed, kind))
+      }
+    }
+  })
+
+  it('does not let a person and a household share a colour outright', () => {
+    // Shape already separates them, but a shared colour removes the second cue.
+    const collisions = seeds.filter(
+      (s) => hueOf(identicon(s, 'person')) === hueOf(identicon(s, 'space')),
+    )
+    expect(collisions.length).toBe(0)
+  })
 })
 
 describe('avatarSrc', () => {

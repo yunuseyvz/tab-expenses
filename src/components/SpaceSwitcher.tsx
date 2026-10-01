@@ -205,6 +205,7 @@ function PanelTrigger({
         avatarKey={space?.icon}
         seed={space?.id ?? 'none'}
         name={space?.name}
+        kind="space"
         size={32}
       />
       <span className="min-w-0 flex-1">
@@ -271,6 +272,7 @@ function AvatarTrigger({
         avatarKey={space?.icon}
         seed={space?.id ?? 'none'}
         name={space?.name}
+        kind="space"
         size={30}
       />
       <ChevronDown
@@ -308,10 +310,20 @@ function SpaceMenu({
       aria-label="Switch space"
       className={cn(
         'absolute z-50 min-w-[15rem]',
-        // Opened upward from the bottom bar, downward everywhere else. `bottom-full`
-        // rather than a negative margin, so the gap survives the bar's own
-        // padding instead of being measured from the wrong edge.
-        menuSide === 'above' ? 'bottom-full left-0 mb-1.5' : 'left-0 mt-1.5',
+        // `top-full`/`bottom-full` rather than a margin alone, and this is a real
+        // bug that was invisible until measured. The switcher's wrapper is
+        // `flex items-center`, and an absolutely-positioned child of a flex
+        // container is aligned as if it were the sole flex item — so with `top`
+        // left to its static position the menu was *centred vertically* against
+        // the trigger and, being taller than it, opened 101px *above* the space
+        // it belongs to, covering the sidebar's own logo. The mobile variant never
+        // showed it, because `bottom-full` overrides the vertical static position
+        // outright.
+        //
+        // The margin only sets the gap; the `top-full` sets where "the gap" starts.
+        menuSide === 'above'
+          ? 'bottom-full left-0 mb-1.5'
+          : 'top-full left-0 mt-1.5',
         'rounded-[var(--radius-md)] border border-rule',
         'bg-[var(--color-paper-raised)] p-1 shadow-[var(--shadow-float)]',
       )}
@@ -350,6 +362,7 @@ function SpaceMenu({
                   avatarKey={s.icon}
                   seed={s.id}
                   name={s.name}
+                  kind="space"
                   size={28}
                 />
                 <span className="min-w-0 flex-1">
@@ -363,15 +376,22 @@ function SpaceMenu({
               {/* Separate control, not part of the row button: nesting a button
                   inside a button is invalid HTML and makes the row's hit area
                   ambiguous. Only owners can rename a space, so it is not shown
-                  to members. */}
+                  to members.
+
+                  size-9, because size-7 was a 28px target for the only way to
+                  reach "rename this household" — and `-mr-1.5` to give the 8px
+                  of extra width back to the name, which was being clipped by it.
+                  The negative margin costs nothing in target area: it moves the
+                  button 6px left, which is dead space inside the row's padding. */}
               {s.role === 'owner' && (
                 <button
                   type="button"
                   onClick={() => onEdit(s)}
                   aria-label={`Edit ${s.name}`}
                   title={`Edit ${s.name}`}
-                  className="shrink-0 grid place-items-center size-7 rounded-full
-                    text-ink-faint transition-[color,background-color] duration-150
+                  className="shrink-0 -mr-1.5 grid place-items-center size-9
+                    rounded-full text-ink-faint
+                    transition-[color,background-color] duration-150
                     hover:text-ink hover:bg-[var(--color-paper-raised)]"
                 >
                   <Pencil size={14} aria-hidden />

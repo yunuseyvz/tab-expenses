@@ -159,6 +159,88 @@ export function seedFrom(id: string): number {
 }
 
 /**
+ * What a generated mark stands for.
+ *
+ * A separate type rather than a `hueOffset` parameter, because a household and a
+ * person should be told apart by *shape* and only then by colour. Both render as
+ * the same mirrored 5x5 grid, so the grid alone cannot do it; what differs is
+ * what fills a cell and how the mark is weighted.
+ *
+ *   person — squares, the classic block identicon. Open, airy, a handful of marks
+ *            on paper, which is right for an individual.
+ *   space  — pips, rounder and set closer together, with the middle row always
+ *            lit. Reads as a hub with members around it, and at 22-30px it is
+ *            unmistakably not the square version sitting next to it.
+ */
+export type AvatarKind = 'person' | 'space'
+
+/**
+ * Hue anchors, spread around the wheel.
+ *
+ * The previous range was `18 + hash % 78` — hues 18 to 96, which is orange
+ * through yellow and into yellow-green. That is *one third of the wheel*, and it
+ * put a majority of marks in the 60-96 olive band, so a household's generated
+ * avatars came out assorted shades of the same green. The range was originally
+ * chosen to stay near a warm paper palette; the palette is now a cool neutral at
+ * hue 255 with a terracotta accent, so that reasoning no longer applies and the
+ * narrowness is just a bug.
+ *
+ * Fourteen anchors rather than a continuous range, because evenly spaced
+ * *sampled* hues cluster perceptually: they bunch in the yellow-greens and thin
+ * out through the cyans, which is where "varied" stops being true. A hand-placed
+ * list puts a roughly even number of marks in every region.
+ *
+ * Jittered per id by a few degrees below, so two seeds landing on the same anchor
+ * are visibly different rather than identical.
+ */
+const HUE_ANCHORS = [
+  20, 45, 68, 100, 148, 174, 198, 218, 240, 262, 285, 310, 335, 352,
+] as const
+
+/** Perceptual lightness/chroma, not HSL. */
+interface Ink {
+  fill: string
+  deep: string
+}
+
+/**
+ * Colour for a mark, in oklch.
+ *
+ * oklch rather than hsl because HSL lightness is a lie about brightness across
+ * the wheel: `hsl(60 50% 60%)` is a pale washed yellow while `hsl(240 50% 60%)`
+ * is a mid blue, so an HSL identicon set is never internally consistent — the
+ * yellows always look lighter and weaker than the blues beside them. Holding L
+ * constant in oklch holds apparent lightness constant, which is what makes two
+ * generated avatars feel like they belong to the same set.
+ *
+ * Households sit a little deeper and a little more chromatic than people. Same
+ * weight on screen, but a token rather than a person, and it gives the two kinds
+ * a difference that survives being rendered entirely in greyscale.
+ */
+function inksFor(hue: number, kind: AvatarKind): Ink {
+  const h = ((hue % 360) + 360) % 360
+  const deepHue = (h + 14) % 360
+  return kind === 'space'
+    ? { fill: `oklch(0.58 0.135 ${h})`, deep: `oklch(0.42 0.12 ${deepHue})` }
+    : { fill: `oklch(0.63 0.115 ${h})`, deep: `oklch(0.47 0.105 ${deepHue})` }
+}
+
+/**
+ * The hue for a seed: an anchor, jittered.
+ *
+ * Anchored rather than uniform so that a *narrow* set of ids still spans the
+ * whole palette — which is the common case, since a household has two or three
+ * spaces and two members, not two hundred.
+ */
+function hueFor(h: number, kind: AvatarKind): number {
+  const anchor = HUE_ANCHORS[(h >>> 8) % HUE_ANCHORS.length]!
+  const jitter = ((h >>> 20) % 9) - 4
+  // Nudge the two kinds apart within an anchor so a space and a person sharing
+  // one cannot land on the identical colour even when they share a hue.
+  return (anchor + jitter + (kind === 'space' ? 6 : 0)) % 360
+}
+
+/**
  * A deterministic identicon, as a self-contained SVG data URI.
  *
  * A 5x5 mirrored grid, which is the classic construction: mirroring means 15
@@ -169,38 +251,37 @@ export function seedFrom(id: string): number {
  * anywhere an `src` is accepted — an <img>, a CSS background — with no
  * layout work.
  */
-export function identicon(seed: string): string {
+export function identicon(seed: string, kind: AvatarKind = 'person'): string {
   const h = seedFrom(seed)
+  const { fill, deep } = inksFor(hueFor(h, kind), kind)
   const cells: Array<string> = []
-
-  // Constrained to the app's own range rather than the full wheel. A hue taken
-  // from 360 picks cyan and magenta about a third of the time, and a random
-  // magenta avatar on a warm paper ledger looks like a bug rather than a mark.
-  // Terracotta through olive covers plenty of ground and always sits with the
-  // palette; the secondary is the same hue family, darker.
-  const hue = 18 + ((h >>> 8) % 78)
-  const fill = `hsl(${hue} ${38 + ((h >>> 4) % 16)}% ${52 + ((h >>> 6) % 8)}%)`
-  const deep = `hsl(${hue + 10} ${44 + ((h >>> 4) % 14)}% 38%)`
 
   for (let row = 0; row < 5; row++) {
     for (let col = 0; col < 3; col++) {
-      const bit = (h >>> (row * 3 + col)) & 1
+      let bit = (h >>> (row * 3 + col)) & 1
+      // A household's middle row is never empty. All 15 bits clear in about one
+      // seed in 32 000, and a mark that renders as a blank disc reads as a broken
+      // image or a stuck spinner rather than as an answer — so for a household
+      // the middle row is forced lit. A person is left to the bits: the same odds
+      // apply, but forcing it there too would cost the two kinds the one thing
+      // that sets them apart.
+      if (kind === 'space' && row === 2 && col === 1) bit = 1
       if (!bit) continue
+
       const x = col * 4
       const y = row * 4
-      cells.push(
-        `<rect x="${x}" y="${y}" width="4" height="4" fill="${
-          (row + col) % 2 === 0 ? fill : deep
-        }"/>`,
-      )
+      const colour = (row + col) % 2 === 0 ? fill : deep
+      const paint = (px: number) =>
+        kind === 'space'
+          ? // 1.75 rather than 2 in a 4-unit cell: at an exact radius of 2 the
+            // pips touch edge to edge and the air gaps that make them read as
+            // separate marks disappear.
+            `<circle cx="${px + 2}" cy="${y + 2}" r="1.75" fill="${colour}"/>`
+          : `<rect x="${px}" y="${y}" width="4" height="4" fill="${colour}"/>`
+
+      cells.push(paint(x))
       // Mirror the third column into the fourth and fifth.
-      if (col < 2) {
-        cells.push(
-          `<rect x="${20 - x - 4}" y="${y}" width="4" height="4" fill="${
-            (row + col) % 2 === 0 ? fill : deep
-          }"/>`,
-        )
-      }
+      if (col < 2) cells.push(paint(20 - x - 4))
     }
   }
 
@@ -222,6 +303,7 @@ export function identicon(seed: string): string {
 export function avatarSrc(
   key: string | null | undefined,
   seed: string,
+  kind: AvatarKind = 'person',
 ):
   | { kind: 'photo'; src: string }
   | { kind: 'icon'; icon: LucideIcon }
@@ -233,7 +315,7 @@ export function avatarSrc(
     const icon = ICON_BY_NAME.get(key)
     if (icon) return { kind: 'icon', icon }
   }
-  return { kind: 'identicon', src: identicon(seed || 'anonymous') }
+  return { kind: 'identicon', src: identicon(seed || 'anonymous', kind) }
 }
 
 /** Human label, for the picker and for screen readers. */

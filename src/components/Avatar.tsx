@@ -1,3 +1,4 @@
+import type { AvatarKind } from '#/lib/avatars'
 import { avatarSrc } from '#/lib/avatars'
 import { cn } from '#/lib/cn'
 
@@ -11,21 +12,27 @@ import { cn } from '#/lib/cn'
  * @param key the stored avatar key, or null for "derive one".
  * @param seed a stable id — the user id or space id, never the display name, so
  *   renaming someone does not change their face.
+ * @param kind whether this is a person or a household. Only affects a *generated*
+ *   mark; a chosen icon is chosen from one set and looks the same either way.
+ *   Defaults to a person, which is wrong in exactly one place — every call site
+ *   that renders a space now passes it — so the default is the safe one.
  */
 export function Avatar({
   avatarKey,
   seed,
   name,
+  kind = 'person',
   size = 40,
   className,
 }: {
   avatarKey: string | null | undefined
   seed: string
   name?: string
+  kind?: AvatarKind
   size?: number
   className?: string
 }) {
-  const resolved = avatarSrc(avatarKey, seed)
+  const resolved = avatarSrc(avatarKey, seed, kind)
   const common = cn(
     'shrink-0 overflow-hidden rounded-full',
     'bg-[var(--color-paper-sunk)]',
