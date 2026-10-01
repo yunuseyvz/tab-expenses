@@ -4,8 +4,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
 import type { PeriodPreset } from '#/lib/period'
+import type { CategoryIconName } from '#/lib/category-icons'
+import { iconFor } from '#/lib/category-icons'
 import { listMySpaces } from '#/lib/auth.functions'
 import { AppShell } from '#/components/AppShell'
+import { IconPicker } from '#/components/IconPicker'
 import { InvitePanel } from '#/components/InvitePanel'
 import { Button } from '#/components/ui/Button'
 import {
@@ -205,6 +208,7 @@ function SettingsRoute() {
   const [memberColor, setMemberColor] = useState('sage')
   const [categoryName, setCategoryName] = useState('')
   const [categoryColor, setCategoryColor] = useState('indigo')
+  const [categoryIcon, setCategoryIcon] = useState<CategoryIconName>('receipt')
   const [personalOwner, setPersonalOwner] = useState('')
   const [personal, setPersonal] = useState(false)
 
@@ -246,7 +250,7 @@ function SettingsRoute() {
           spaceId: spaceId!,
           name: categoryName,
           color: categoryColor,
-          icon: 'tag',
+          icon: categoryIcon,
           scope: personal ? 'personal' : 'shared',
           ownerMemberId: personal ? personalOwner || null : null,
           sortOrder: 0,
@@ -279,7 +283,7 @@ function SettingsRoute() {
 
   return (
     <AppShell>
-      <main id="main" className="mx-auto w-full max-w-3xl px-4 py-4 sm:px-6">
+      <main id="main" className="mx-auto w-full max-w-5xl px-4 py-4 sm:px-6">
         <h1 className="font-serif text-2xl sm:text-3xl mb-4">Settings</h1>
 
         {spaces.length > 1 && (
@@ -382,36 +386,43 @@ function SettingsRoute() {
           <CardHeader>
             <CardTitle>Categories</CardTitle>
           </CardHeader>
-          {(categories.data ?? []).map((c) => (
-            <Row key={c.id}>
-              <span
-                aria-hidden
-                className="h-3 w-3 rounded-sm shrink-0"
-                style={{ background: swatchColor(c.color) }}
-              />
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium truncate">{c.name}</p>
-                <p className="text-xs text-ink-faint">
-                  {c.scope === 'personal'
-                    ? `personal${
-                        members.data?.find((m) => m.id === c.ownerMemberId)
-                          ?.displayName
-                          ? ` · ${members.data.find((m) => m.id === c.ownerMemberId)!.displayName}`
-                          : ''
-                      }`
-                    : 'shared'}
-                </p>
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => removeCategory.mutate(c.id)}
-                aria-label={`Archive ${c.name}`}
-              >
-                Archive
-              </Button>
-            </Row>
-          ))}
+          {(categories.data ?? []).map((c) => {
+            const Icon = iconFor(c.icon)
+            return (
+              <Row key={c.id}>
+                <span
+                  aria-hidden
+                  className="grid place-items-center size-7 shrink-0 rounded-[7px]"
+                  style={{
+                    background: `color-mix(in oklab, ${swatchColor(c.color)} 18%, transparent)`,
+                  }}
+                >
+                  <Icon size={15} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium truncate">{c.name}</p>
+                  <p className="text-xs text-ink-faint">
+                    {c.scope === 'personal'
+                      ? `personal${
+                          members.data?.find((m) => m.id === c.ownerMemberId)
+                            ?.displayName
+                            ? ` · ${members.data.find((m) => m.id === c.ownerMemberId)!.displayName}`
+                            : ''
+                        }`
+                      : 'shared'}
+                  </p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => removeCategory.mutate(c.id)}
+                  aria-label={`Archive ${c.name}`}
+                >
+                  Archive
+                </Button>
+              </Row>
+            )
+          })}
 
           <form
             onSubmit={(e) => {
@@ -422,13 +433,16 @@ function SettingsRoute() {
           >
             <div>
               <Label htmlFor="category-name">Add a category</Label>
-              <Input
-                id="category-name"
-                required
-                value={categoryName}
-                onChange={(e) => setCategoryName(e.target.value)}
-                placeholder="Health"
-              />
+              <div className="flex gap-2">
+                <IconPicker value={categoryIcon} onChange={setCategoryIcon} />
+                <Input
+                  id="category-name"
+                  required
+                  value={categoryName}
+                  onChange={(e) => setCategoryName(e.target.value)}
+                  placeholder="Health"
+                />
+              </div>
             </div>
 
             <label className="flex items-center gap-2 text-sm">
@@ -448,7 +462,7 @@ function SettingsRoute() {
                   value={personalOwner}
                   onChange={(e) => setPersonalOwner(e.target.value)}
                   required
-                  className="w-full bg-paper-sunk px-3 py-2 text-ink rounded-[3px]
+                  className="w-full bg-paper-sunk px-3 py-2 text-ink rounded-[var(--radius-sm)]
                     shadow-[var(--shadow-deboss)]"
                 >
                   <option value="">Choose…</option>

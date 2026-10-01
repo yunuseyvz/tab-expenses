@@ -97,7 +97,7 @@ export function OtpCode({
           aria-invalid={invalid || undefined}
           className={cn(
             'tnum w-full h-14 text-center text-xl font-medium',
-            'bg-paper-sunk rounded-[3px] shadow-[var(--shadow-deboss)]',
+            'bg-paper-sunk rounded-[var(--radius-sm)] shadow-[var(--shadow-deboss)]',
             'border-b-2 transition-colors duration-150',
             invalid
               ? 'border-oxblood'

@@ -1,21 +1,33 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
 import type { Category, SpaceMember } from '#/lib/db/schema'
 import type { SplitDraft } from '#/components/expense/SplitEditor'
+import type { ExpenseRow } from '#/lib/expense.functions'
 import { Sheet } from '#/components/AppShell'
 import { Button } from '#/components/ui/Button'
-import { Input, Label, Textarea } from '#/components/ui/Input'
+import { Input, Label, Select, Textarea } from '#/components/ui/Input'
 import { SplitEditor } from '#/components/expense/SplitEditor'
-import { createExpense } from '#/lib/expense.functions'
+import { createExpense, updateExpense } from '#/lib/expense.functions'
 import { parseAmountToMinor } from '#/lib/money'
 import { today } from '#/lib/period'
 import { swatchColor } from '#/lib/swatches'
 
 /**
- * New-expense entry. A bottom sheet on mobile (the entry point is a phone at a
- * checkout) and an inline panel on desktop.
+ * New-expense entry, and editing an existing one.
+ *
+ * A bottom sheet on mobile (the entry point is a phone at a checkout) and a
+ * centred dialog on desktop.
+ *
+ * Edit is not a separate component: the validation rules, the split editor and
+ * the amount preview are the same either way, and the only real difference is
+ * which server function is called at the end. Two copies of a split editor
+ * would drift, and they always do.
+ *
+ * @param editing the entry to edit, or null to create. Prefill happens in an
+ *   effect keyed on the id, so re-opening for a different entry refills the
+ *   form while re-rendering the same one does not fight the user's typing.
  */
 export function ExpenseSheet({
   open,
@@ -24,6 +36,7 @@ export function ExpenseSheet({
   categories,
   members,
   currency = 'EUR',
+  editing = null,
 }: {
   open: boolean
   onClose: () => void
@@ -31,6 +44,7 @@ export function ExpenseSheet({
   categories: Array<Category>
   members: Array<SpaceMember>
   currency?: string
+  editing?: ExpenseRow | null
 }) {
   const queryClient = useQueryClient()
 
@@ -42,6 +56,43 @@ export function ExpenseSheet({
   const [paidByMemberId, setPaidByMemberId] = useState<string>('')
   const [split, setSplit] = useState(false)
   const [drafts, setDrafts] = useState<Array<SplitDraft>>([])
+
+  const editingId = editing?.id ?? null
+
+  // Prefill for an edit, and clear for a create. Keyed on the id so typing in an
+  // open editor is never reset by an unrelated re-render.
+  useEffect(() => {
+    if (!open) return
+    if (!editing) {
+      // Cleared inline rather than via reset(): that function is rebuilt on
+      // every render, so putting it in the deps would re-run this constantly
+      // and wipe what the user is typing.
+      setAmount('')
+      setPurpose('')
+      setNote('')
+      setCategoryId('')
+      setPaidByMemberId('')
+      setSplit(false)
+      setDrafts([])
+      return
+    }
+    setAmount((editing.amountMinor / 100).toFixed(2))
+    setPurpose(editing.purpose)
+    setNote(editing.note ?? '')
+    setCategoryId(editing.categoryId ?? '')
+    setSpentOn(editing.spentOn)
+    setPaidByMemberId(editing.paidByMemberId)
+    const isSplit = editing.splits.length > 1
+    setSplit(isSplit)
+    setDrafts(
+      isSplit
+        ? editing.splits.map((s) => ({
+            memberId: s.memberId,
+            weightBp: s.weightBp,
+          }))
+        : [],
+    )
+  }, [open, editingId])
 
   // Guard the parse: a half-typed amount should not throw during render.
   const amountMinor = useMemo(() => {
@@ -62,20 +113,34 @@ export function ExpenseSheet({
 
   const save = useMutation({
     mutationFn: () =>
-      createExpense({
-        data: {
-          spaceId: spaceId!,
-          amount,
-          purpose: purpose.trim(),
-          note: note.trim() || null,
-          categoryId: categoryId || null,
-          paidByMemberId,
-          spentOn,
-          splits: split ? drafts : [],
-        },
-      }),
+      editingId
+        ? updateExpense({
+            data: {
+              spaceId: spaceId!,
+              expenseId: editingId,
+              amount,
+              purpose: purpose.trim(),
+              note: note.trim() || null,
+              categoryId: categoryId || null,
+              paidByMemberId,
+              spentOn,
+              splits: split ? drafts : [],
+            },
+          })
+        : createExpense({
+            data: {
+              spaceId: spaceId!,
+              amount,
+              purpose: purpose.trim(),
+              note: note.trim() || null,
+              categoryId: categoryId || null,
+              paidByMemberId,
+              spentOn,
+              splits: split ? drafts : [],
+            },
+          }),
     onSuccess: () => {
-      toast.success('Expense added')
+      toast.success(editingId ? 'Expense updated' : 'Expense added')
       // Every mutation invalidates the space-scoped keys: the headline, the
       // donut, the list, and the balances all read from them.
       void queryClient.invalidateQueries({ queryKey: ['spaces', spaceId] })
@@ -102,13 +167,17 @@ export function ExpenseSheet({
   if (!open) return null
 
   return (
-    <Sheet open={open} onClose={onClose} title="New expense">
+    <Sheet
+      open={open}
+      onClose={onClose}
+      title={editing ? 'Edit expense' : 'New expense'}
+    >
       <form
         onSubmit={(e) => {
           e.preventDefault()
           save.mutate()
         }}
-        className="space-y-4"
+        className="space-y-4 pb-1"
       >
         <div>
           <Label htmlFor="amount">Amount</Label>
@@ -151,14 +220,10 @@ export function ExpenseSheet({
           </div>
           <div>
             <Label htmlFor="category">Category</Label>
-            <select
+            <Select
               id="category"
               value={categoryId}
               onChange={(e) => setCategoryId(e.target.value)}
-              className="w-full bg-paper-sunk px-3 py-2 text-ink rounded-[3px]
-                shadow-[var(--shadow-deboss)] border-b-2 border-transparent
-                focus:shadow-[var(--shadow-raise)] focus:border-terracotta
-               "
             >
               <option value="">Uncategorised</option>
               {categories
@@ -172,7 +237,7 @@ export function ExpenseSheet({
                     {c.scope === 'personal' ? ' (personal)' : ''}
                   </option>
                 ))}
-            </select>
+            </Select>
           </div>
         </div>
 
@@ -189,7 +254,7 @@ export function ExpenseSheet({
                   type="button"
                   onClick={() => setCategoryId(c.id)}
                   aria-pressed={categoryId === c.id}
-                  className="text-xs px-2 py-1 rounded-[3px] border-l-4
+                  className="text-xs px-2 py-1 rounded-[var(--radius-sm)] border-l-4
                     bg-paper-sunk text-ink-muted"
                   style={{
                     borderLeftColor: swatchColor(c.color),
@@ -226,18 +291,38 @@ export function ExpenseSheet({
           />
         </div>
 
-        <div className="flex gap-2 pt-1">
-          <Button
-            type="submit"
-            size="lg"
-            className="flex-1"
-            disabled={!canSave || save.isPending}
-          >
-            {save.isPending ? 'Saving…' : 'Save expense'}
-          </Button>
-          <Button type="button" variant="secondary" size="lg" onClick={onClose}>
-            Cancel
-          </Button>
+        <div
+          className="sticky bottom-0 -mx-5 px-5 pt-3
+            bg-[var(--surface-material)]
+            backdrop-blur-[var(--material-blur)]
+            border-t border-rule
+            /* Clears the iOS home indicator, which sits over the very bottom
+               of a bottom sheet. Without this the Save button is under it on
+               a device that has one. */
+            pb-[max(1rem,env(safe-area-inset-bottom))]"
+        >
+          <div className="flex gap-2.5">
+            <Button
+              type="submit"
+              size="lg"
+              className="flex-1"
+              disabled={!canSave || save.isPending}
+            >
+              {save.isPending
+                ? 'Saving…'
+                : editing
+                  ? 'Save changes'
+                  : 'Save expense'}
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              size="lg"
+              onClick={onClose}
+            >
+              Cancel
+            </Button>
+          </div>
         </div>
       </form>
     </Sheet>

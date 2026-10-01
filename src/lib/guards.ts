@@ -8,6 +8,7 @@
 import { z } from 'zod'
 
 import { BP_TOTAL } from './money'
+import { CATEGORY_ICON_NAMES } from './category-icons'
 
 export const currencySchema = z
   .string()
@@ -53,7 +54,10 @@ export const categoryInputSchema = z
     spaceId: uuidSchema,
     name: z.string().trim().min(1, 'name is required').max(60),
     color: swatchKeySchema,
-    icon: z.string().trim().min(1).max(40).default('tag'),
+    // A closed set, not free text. The name is rendered as a lucide component,
+    // so an unrecognised value would render a blank box in the category list —
+    // and an arbitrary string from the client is not something to store.
+    icon: z.enum(CATEGORY_ICON_NAMES).default('receipt'),
     scope: z.enum(['shared', 'personal']).default('shared'),
     ownerMemberId: uuidSchema.nullable().default(null),
     sortOrder: z.number().int().default(0),
@@ -98,7 +102,7 @@ export const categoryUpdateSchema = z.object({
   categoryId: uuidSchema,
   name: z.string().trim().min(1).max(60).optional(),
   color: swatchKeySchema.optional(),
-  icon: z.string().trim().min(1).max(40).optional(),
+  icon: z.enum(CATEGORY_ICON_NAMES).optional(),
   sortOrder: z.number().int().optional(),
 })
 

@@ -56,7 +56,7 @@ export function PeriodSelector({
       <div
         role="radiogroup"
         aria-label="Period"
-        className="inline-flex p-1 gap-1 well rounded-[3px]"
+        className="inline-flex p-1 gap-1 well rounded-[var(--radius-sm)]"
       >
         {PRESETS.map((p) => {
           const active = current === p.key
@@ -97,7 +97,7 @@ export function PeriodSelector({
               onChange={(e) =>
                 go({ period: 'custom', from: e.target.value || undefined })
               }
-              className="bg-paper-sunk px-2 py-1.5 text-sm rounded-[3px]
+              className="bg-paper-sunk px-2 py-1.5 text-sm rounded-[var(--radius-sm)]
                 shadow-[var(--shadow-deboss)]
                 focus:shadow-[var(--shadow-raise)]"
             />
@@ -116,7 +116,7 @@ export function PeriodSelector({
               onChange={(e) =>
                 go({ period: 'custom', to: e.target.value || undefined })
               }
-              className="bg-paper-sunk px-2 py-1.5 text-sm rounded-[3px]
+              className="bg-paper-sunk px-2 py-1.5 text-sm rounded-[var(--radius-sm)]
                 shadow-[var(--shadow-deboss)]
                 focus:shadow-[var(--shadow-raise)]"
             />

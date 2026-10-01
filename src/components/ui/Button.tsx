@@ -5,16 +5,22 @@ import type { ComponentProps } from 'react'
 import { cn } from '#/lib/cn'
 
 /**
- * The tactile button: raised at rest, drops 1px into the paper on press.
+ * The tactile button: raised at rest, pressed in on tap.
  *
  * Only `transform` and `background-color` transition. Animating box-shadow is
  * not compositor-accelerated and stutters on mid-range Android — the shadow
  * swap here is a discrete state change, not a tween.
+ *
+ * The press is a scale, not a 1px nudge. `active:scale-[0.97]` is the single
+ * cheapest thing that makes an interface feel like it is answering back, and
+ * unlike a shadow it costs nothing: it is a compositor-only property.
  */
 const buttonVariants = cva(
   [
     'inline-flex items-center justify-center gap-2 font-medium whitespace-nowrap',
+    'rounded-[var(--radius-md)]',
     'transition-[transform,background-color,border-color,color] duration-150 ease-[var(--ease-out-soft)]',
+    'active:scale-[0.97] motion-reduce:active:scale-100',
     'disabled:pointer-events-none disabled:opacity-50',
     'select-none',
   ],

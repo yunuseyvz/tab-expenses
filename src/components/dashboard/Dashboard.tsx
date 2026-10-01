@@ -4,6 +4,7 @@ import { motion } from 'motion/react'
 
 import type { Category } from '#/lib/db/schema'
 import type { PeriodPreset } from '#/lib/period'
+import type { ExpenseRow } from '#/lib/expense.functions'
 import type { ListFilter } from '#/lib/session'
 import {
   Card,
@@ -13,7 +14,7 @@ import {
   SectionTitle,
 } from '#/components/ui/Card'
 import { CategoryChips } from '#/components/dashboard/CategoryChips'
-import { CategoryDonut } from '#/components/dashboard/CategoryDonut'
+import { CategoryBars } from '#/components/dashboard/CategoryBars'
 import { balancesQuery, expensesQuery, totalsQuery } from '#/lib/session'
 import { formatMoney } from '#/lib/money'
 import { swatchColor } from '#/lib/swatches'
@@ -34,7 +35,10 @@ export function Dashboard({
   allCategoryIds,
   selectedCategoryIds,
   search,
+  onEdit,
 }: {
+  /** Opens the editor for a row. Null on screens that cannot edit. */
+  onEdit?: (row: ExpenseRow) => void
   spaceId: string | null
   currency: string
   filter: ListFilter
@@ -138,28 +142,11 @@ export function Dashboard({
         <CardHeader>
           <CardTitle>By category</CardTitle>
         </CardHeader>
-        <CategoryDonut
+        <CategoryBars
           data={totals.data?.byCategory ?? []}
           currency={currency}
           totalMinor={totals.data?.totalMinor ?? 0}
         />
-        <ul className="mt-3 space-y-1.5">
-          {(totals.data?.byCategory ?? [])
-            .filter((c) => c.totalMinor > 0)
-            .map((c) => (
-              <li key={c.id} className="flex items-center gap-2 text-sm">
-                <span
-                  aria-hidden
-                  className="h-2.5 w-2.5 rounded-sm shrink-0"
-                  style={{ background: swatchColor(c.color) }}
-                />
-                <span className="flex-1 truncate">{c.name}</span>
-                <span className="tnum text-ink-muted">
-                  {formatMoney(c.totalMinor, currency)}
-                </span>
-              </li>
-            ))}
-        </ul>
       </Card>
 
       <Card>
@@ -184,28 +171,37 @@ export function Dashboard({
                   damping: 30,
                 }}
               >
-                <Row>
-                  <span
-                    aria-hidden
-                    className="h-8 w-1 rounded-sm shrink-0"
-                    style={{
-                      background:
-                        e.categoryColor !== null
-                          ? swatchColor(e.categoryColor)
-                          : 'var(--color-rule)',
-                    }}
-                  />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">{e.purpose}</p>
-                    <p className="truncate text-xs text-ink-faint tnum">
-                      {e.categoryName ?? 'Uncategorised'} · {e.paidByName} ·{' '}
-                      {e.spentOn}
-                    </p>
-                  </div>
-                  <span className="tnum text-sm font-medium shrink-0">
-                    {formatMoney(e.amountMinor, currency)}
-                  </span>
-                </Row>
+                <button
+                  type="button"
+                  onClick={() => onEdit?.(e)}
+                  aria-label={`Edit ${e.purpose}, ${formatMoney(e.amountMinor, currency)}`}
+                  className="w-full text-left transition-colors duration-150"
+                >
+                  <Row>
+                    <span
+                      aria-hidden
+                      className="h-8 w-1 rounded-sm shrink-0"
+                      style={{
+                        background:
+                          e.categoryColor !== null
+                            ? swatchColor(e.categoryColor)
+                            : 'var(--color-rule)',
+                      }}
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="truncate text-sm font-medium block">
+                        {e.purpose}
+                      </span>
+                      <span className="truncate text-xs text-ink-faint tnum block">
+                        {e.categoryName ?? 'Uncategorised'} · {e.paidByName} ·{' '}
+                        {e.spentOn}
+                      </span>
+                    </span>
+                    <span className="tnum text-sm font-medium shrink-0">
+                      {formatMoney(e.amountMinor, currency)}
+                    </span>
+                  </Row>
+                </button>
               </motion.div>
             ))}
           </div>

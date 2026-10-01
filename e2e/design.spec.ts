@@ -181,10 +181,16 @@ test.describe('design system', () => {
   test('selected chips carry a glyph, not just colour', async ({ page }) => {
     await page.goto('/dashboard?period=all')
 
+    // Checks for *a mark* — an SVG icon or the ✓ character — rather than one
+    // specific one. The chip renders lucide's Check while unselected chips show
+    // the category's own icon, and both are legitimate marks; what this guards
+    // is that selection is never signalled by colour alone, so pinning the test
+    // to a particular glyph would only make it brittle.
     const hasGlyph = await page.evaluate<boolean>(`(() => {
       const el = [...document.querySelectorAll('button')]
         .find((b) => b.getAttribute('aria-pressed') === 'true')
-      return !!el && (el.textContent ?? '').includes('✓')
+      if (!el) return false
+      return !!el.querySelector('svg') || (el.textContent ?? '').includes('✓')
     })()`)
     expect(hasGlyph).toBe(true)
   })

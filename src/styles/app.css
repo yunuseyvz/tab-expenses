@@ -83,6 +83,22 @@
   /* the active state of a button: 1px lower and flatter */
   --shadow-press: inset 0 2px 4px rgb(70 45 25 / 0.22);
 
+  /* ── radii ────────────────────────────────────────────────────────────
+   * A real scale rather than hand-written `rounded-[3px]` on every component.
+   * Two reasons: the 3px that predated it reads as 1998 — Apple's system sits
+   * around 10-22px for controls and panels, and that softness is most of the
+   * "it feels like hardware" quality being aimed for here — and a *missing*
+   * token falls back to `unset` rather than failing, so a component could
+   * reference a radius that does not exist and quietly render square with
+   * nothing to notice. Two of those had already happened.
+   */
+  --radius-xs: 0.375rem;
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.375rem;
+  --radius-2xl: 1.75rem;
+
   /* ── type ──────────────────────────────────────────────────────────── */
   --font-sans:
     'Inter var', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -111,51 +127,84 @@
    * destroys legibility. */
   --paper-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='5' stitchTiles='stitch'/%3E%3CfeDiffuseLighting lighting-color='%23fff' surfaceScale='1'%3E%3CfeDistantLight azimuth='45' elevation='60'/%3E%3CfeDiffuseLighting%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.4'/%3E%3C/svg%3E");
 
+  /* Apple's "material": a translucent surface that lets the grain and the
+   * colour behind it show through, softened by a backdrop blur, with a hairline
+   * of light along the top edge. Only meaningful on surfaces that actually have
+   * something behind them — the header, the nav bars, the sheet — so cards use
+   * the opaque raised token instead. Applying it to cards would blur the flat
+   * paper behind them into nothing and buy nothing but a compositor layer.
+   */
+  --surface-material: oklch(0.978 0.01 85 / 0.78);
+  --material-blur: 18px;
+  --material-edge: inset 0 1px 0 rgb(255 255 255 / 0.6);
+
   color-scheme: light;
 }
 
 .dark {
-  /* Dark mode is a separate art pass, not an inversion: paper under lamplight
-   * is warm charcoal, not black, and accents are lifted and desaturated or
-   * they vibrate against it. Grain is dialled down. */
-  --color-paper: oklch(0.22 0.014 70);
-  --color-paper-raised: oklch(0.26 0.016 70);
-  --color-paper-sunk: oklch(0.19 0.012 70);
-
-  --color-ink: oklch(0.92 0.012 85);
-  --color-ink-muted: oklch(0.7 0.014 80);
-  --color-ink-faint: oklch(0.64 0.012 80);
-
-  /* Dark mode is a separate art pass, not an inversion: paper under lamplight
-   * is warm charcoal, not black, and accents are lifted and desaturated or
-   * they vibrate against it. Grain is dialled down.
+  /* Dark mode is its own art pass, not an inversion.
    *
-   * Crucially the fill/text roles SWAP rather than carrying over. A near-white
-   * label needs a DARK fill, and link text on dark paper needs to be LIGHTER
-   * than the fill — the same terracotta value cannot serve both roles the way
-   * it nearly does in light mode. Values found by searching in-browser
-   * (scripts/find-dark-contrast.mjs) and asserted in e2e/design.spec.ts.
+   * The version this replaces read as mud, and for three separable reasons:
+   *
+   *   1. Chroma was far too high for the lightness. A warm hue at L≈0.2 with
+   *      C≈0.015 is not "warm charcoal", it is brown — and brown on brown has no
+   *      contrast, so nothing on the screen separated from anything else.
+   *      Chroma here is roughly halved: the warmth survives as a whisper.
+   *   2. The surface steps were 0.19 / 0.22 / 0.26 — about 0.04 apart, which at
+   *      this lightness is a few RGB units. Cards were technically lighter than
+   *      the page and visually identical. The steps are now much wider, so
+   *      elevation is something you can actually see.
+   *   3. Shadows were brown. A brown shadow on a brown page does not read as
+   *      depth, it reads as dirt. They are neutral black now, and softer and
+   *      wider, because dark UI needs to make room for its own edges.
+   *
+   * Fill/text roles still swap: a near-white label needs a DARK fill, and link
+   * text on dark paper has to be lighter than that fill. One terracotta value
+   * cannot serve both, which is why every accent carries two tokens.
+   * Ratios asserted in e2e/design.spec.ts; measured in-browser, not by hand.
    */
-  --color-terracotta: oklch(0.52 0.11 45); /* dark fill, ink label */
+  --color-paper: oklch(0.185 0.006 70);
+  --color-paper-raised: oklch(0.245 0.007 70);
+  --color-paper-sunk: oklch(0.145 0.005 70);
+
+  --color-ink: oklch(0.95 0.004 85);
+  --color-ink-muted: oklch(0.78 0.007 80);
+  --color-ink-faint: oklch(0.7 0.007 80);
+
+  --color-terracotta: oklch(0.52 0.105 45); /* fill, ink label 4.76:1  */
   --color-terracotta-strong: oklch(
-    0.46 0.11 45
-  ); /* hover: darkens, still ≥4.5 */
-  --color-terracotta-ink: oklch(0.645 0.1 45); /* text on dark paper */
-  --color-ochre: oklch(0.5 0.09 80); /* fill        */
-  --color-ochre-ink: oklch(0.64 0.09 80); /* text        */
-  --color-sage: oklch(0.63 0.07 150); /* fill and text */
-  --color-sage-ink: oklch(0.68 0.07 150);
-  --color-oxblood: oklch(0.525 0.13 20); /* fill, ink label */
-  --color-oxblood-ink: oklch(0.65 0.12 20); /* text on dark paper */
-  --color-rule: oklch(0.54 0.014 75);
+    0.46 0.105 45
+  ); /* hover: darkens, 6.2:1    */
+  --color-terracotta-ink: oklch(0.72 0.095 45); /* text on dark paper */
+  --color-ochre: oklch(0.5 0.085 80);
+  --color-ochre-ink: oklch(0.75 0.085 80);
+  --color-sage: oklch(0.7 0.065 150);
+  --color-sage-ink: oklch(0.74 0.065 150);
+  --color-oxblood: oklch(0.525 0.125 20);
+  --color-oxblood-ink: oklch(0.72 0.11 20);
+  /* Hairlines are non-text and need 3:1 against the surface they sit on
+   * (WCAG 1.4.11), which on a dark surface means a much lighter line than
+   * intuition suggests. */
+  --color-rule: oklch(0.535 0.008 75);
 
   --shadow-deboss:
-    inset 0 1px 2px rgb(0 0 0 / 0.4), inset 0 -1px 0 rgb(255 240 220 / 0.06);
-  --shadow-raise: 0 1px 1px rgb(0 0 0 / 0.3), 0 4px 10px -2px rgb(0 0 0 / 0.35);
-  --shadow-float: 0 2px 4px rgb(0 0 0 / 0.3), 0 12px 28px -6px rgb(0 0 0 / 0.5);
-  --shadow-press: inset 0 2px 4px rgb(0 0 0 / 0.45);
+    inset 0 1px 2px rgb(0 0 0 / 0.55), inset 0 -1px 0 rgb(255 255 255 / 0.045);
+  --shadow-raise: 0 1px 2px rgb(0 0 0 / 0.4), 0 6px 16px -4px rgb(0 0 0 / 0.5);
+  --shadow-float:
+    0 2px 6px rgb(0 0 0 / 0.45), 0 18px 40px -8px rgb(0 0 0 / 0.65);
+  --shadow-press: inset 0 2px 5px rgb(0 0 0 / 0.6);
 
-  --paper-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='5' stitchTiles='stitch'/%3E%3CfeDiffuseLighting lighting-color='%23fff' surfaceScale='1'%3E%3CfeDistantLight azimuth='45' elevation='60'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.22'/%3E%3C/svg%3E");
+  /* Quieter than light mode. Grain that reads as fibre on cream reads as noise
+   * on charcoal, and it sits under text. */
+  --paper-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='5' stitchTiles='stitch'/%3E%3CfeDiffuseLighting lighting-color='%23fff' surfaceScale='1'%3E%3CfeDistantLight azimuth='45' elevation='60'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.09'/%3E%3C/svg%3E");
+
+  /* Apple's material: a translucent surface that lets the grain and colour
+   * behind it show through, softened by a backdrop blur, with a hairline of
+   * light along the top edge. Only works on surfaces that actually have
+   * something behind them, so it is for chrome — bars, nav, sheets — not cards. */
+  --surface-material: oklch(0.245 0.007 70 / 0.72);
+  --material-blur: 20px;
+  --material-edge: inset 0 1px 0 rgb(255 255 255 / 0.06);
 
   color-scheme: dark;
 }
@@ -173,6 +222,73 @@
 
   html {
     -webkit-text-size-adjust: 100%;
+
+    /*
+     * A permanent scrollbar gutter.
+     *
+     * Without this, a page shorter than the viewport has no scrollbar and one
+     * line longer does, so the content shifts sideways by the scrollbar's width
+     * at exactly the moment you interact with it. Every filter that turns a
+     * short list into a long one triggered a visible jolt. `stable` reserves the
+     * gutter unconditionally, so the layout never moves.
+     *
+     * `both-edges` would centre the content within the frame instead, which is
+     * arguably prettier on a wide screen, but it moves the text off the optical
+     * left margin — a worse trade than a stable margin.
+     */
+    scrollbar-gutter: stable;
+
+    /*
+     * Firefox. `thin` is the one width keyword worth using: it is narrower than
+     * the platform default without disappearing, and colour follows the theme.
+     * The two properties are ignored by WebKit, which gets ::-webkit-scrollbar
+     * below — there is no single declaration that styles both, which is why
+     * this looks like duplication.
+     */
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-rule) transparent;
+  }
+
+  /*
+   * WebKit/Blink scrollbar.
+   *
+   * Minimal on purpose: no buttons at either end, no rounded track, and a thumb
+   * that only becomes visible against the page once you interact with it. The
+   * default scrollbar on macOS is already unobtrusive but it is also wide and it
+   * paints an arrow-button row that has nothing to do with a phone-first app.
+   *
+   * The thumb fades in on hover of the scrollbar itself rather than being always
+   * visible, which keeps it out of the way while still being findable.
+   */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background-color: color-mix(
+      in oklab,
+      var(--color-ink-faint) 38%,
+      transparent
+    );
+    border-radius: 999px;
+    /* The border is transparent so the thumb is inset from the edge, but it
+     * still occupies the box — that is how a scrollbar gets a real hit area
+     * without looking like it has one. */
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: color-mix(in oklab, var(--color-ink) 55%, transparent);
+  }
+
+  ::-webkit-scrollbar-corner {
+    background: transparent;
   }
 
   body {
@@ -227,56 +343,109 @@
    * back to its default blue thumb, which is visibly off-palette in a warm
    * ledger — and `accent-color` alone does not reach the thumb.
    */
+  /*
+   * The split slider.
+   *
+   * "Bouncy" here means two specific, cheap things rather than a wobbly
+   * physics simulation:
+   *
+   *   • the thumb *overshoots* on release, using a spring-ish cubic-bezier with
+   *     a back end. A thumb that grows while held and springs past its resting
+   *     size when let go feels like it has mass;
+   *   • the filled portion is a gradient that brightens toward the thumb, so
+   *     dragging reads as light travelling along the track.
+   *
+   * Both are transform and background-image only. A native <input type=range>
+   * cannot take a CSS transition on its value — only its thumb is styleable —
+   * so the overshoot is a transition on `transform` and there is no per-frame
+   * layout or paint of the input itself. Nothing here animates width, and that
+   * is deliberate: it would relayout on every frame.
+   */
   .range-tactile {
     appearance: none;
     -webkit-appearance: none;
     width: 100%;
-    height: 0.375rem;
+    height: 0.5rem;
     border-radius: 9999px;
     background: var(--color-paper-sunk);
     box-shadow: var(--shadow-deboss);
-    cursor: pointer;
+    cursor: grab;
+    /* A touch target has to be reachable with a thumb, and 0.5rem of track is
+     * not. The track stays thin; only the hit area grows. */
+    padding-block: 0.5rem;
+    background-clip: content-box;
+  }
+
+  .range-tactile:active {
+    cursor: grabbing;
   }
 
   .range-tactile::-webkit-slider-thumb {
     -webkit-appearance: none;
     appearance: none;
-    width: 1.15rem;
-    height: 1.15rem;
+    width: 1.4rem;
+    height: 1.4rem;
+    margin-top: -0.45rem;
     border-radius: 9999px;
     background: var(--color-terracotta);
-    border: 2px solid var(--color-paper-raised);
+    border: 2.5px solid var(--color-paper-raised);
     box-shadow: var(--shadow-raise);
-    /* Transform only — never animate box-shadow. */
-    transition: transform 150ms var(--ease-out-soft);
+    transition:
+      transform 420ms cubic-bezier(0.34, 1.56, 0.64, 1),
+      box-shadow 200ms var(--ease-out-soft);
   }
 
   .range-tactile::-moz-range-thumb {
-    width: 1.15rem;
-    height: 1.15rem;
+    width: 1.4rem;
+    height: 1.4rem;
     border-radius: 9999px;
     background: var(--color-terracotta);
-    border: 2px solid var(--color-paper-raised);
+    border: 2.5px solid var(--color-paper-raised);
     box-shadow: var(--shadow-raise);
-    transition: transform 150ms var(--ease-out-soft);
+    transition:
+      transform 420ms cubic-bezier(0.34, 1.56, 0.64, 1),
+      box-shadow 200ms var(--ease-out-soft);
   }
 
+  /* Lifted and glowing while held, then it springs back past its resting size —
+   * that overshoot is the whole effect. */
   .range-tactile:active::-webkit-slider-thumb,
   .range-tactile:active::-moz-range-thumb {
-    transform: scale(1.12);
+    transform: scale(1.22);
+    box-shadow:
+      var(--shadow-float),
+      0 0 0 6px color-mix(in oklab, var(--color-terracotta) 22%, transparent);
+  }
+
+  /* Keyboard focus gets the same ring the fields do, so the control is not
+   * mouse-only in the way it looks. */
+  .range-tactile:focus-visible {
+    outline: none;
+  }
+
+  .range-tactile:focus-visible::-webkit-slider-thumb {
+    box-shadow:
+      var(--shadow-raise),
+      0 0 0 3px color-mix(in oklab, var(--color-terracotta) 45%, transparent);
+  }
+
+  .range-tactile:focus-visible::-moz-range-thumb {
+    box-shadow:
+      var(--shadow-raise),
+      0 0 0 3px color-mix(in oklab, var(--color-terracotta) 45%, transparent);
   }
 
   /* Cards, list rows, sheets. */
   .card {
     background-color: var(--color-paper-raised);
     box-shadow: var(--shadow-raise);
-    border-radius: 3px;
+    border-radius: var(--radius-lg);
   }
 
   .well {
     background-color: var(--color-paper-sunk);
     box-shadow: var(--shadow-deboss);
-    border-radius: 3px;
+    border-radius: var(--radius-md);
   }
 }
 

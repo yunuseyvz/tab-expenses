@@ -5,7 +5,7 @@ import { toast } from 'sonner'
 
 import type { MySpace } from '#/lib/space.types'
 import { Button } from '#/components/ui/Button'
-import { Input, Label } from '#/components/ui/Input'
+import { Input, Label, Select } from '#/components/ui/Input'
 import { rememberSpace } from '#/lib/auth.functions'
 import { createSpace } from '#/lib/space.functions'
 import { spaceKeys } from '#/lib/session'
@@ -121,21 +121,17 @@ export function SetupForm({
 
         <div>
           <Label htmlFor="currency">Currency</Label>
-          <select
+          <Select
             id="currency"
             value={currency}
             onChange={(e) => setCurrency(e.target.value)}
-            className="w-full bg-paper-sunk px-3 py-2 text-ink rounded-[3px]
-              shadow-[var(--shadow-deboss)] border-b-2 border-transparent
-              focus:shadow-[var(--shadow-raise)] focus:border-terracotta
-             "
           >
             {CURRENCIES.map((c) => (
               <option key={c} value={c}>
                 {c}
               </option>
             ))}
-          </select>
+          </Select>
           <p className="text-xs text-ink-faint mt-1.5">
             One currency per space, so sums are always meaningful.
           </p>

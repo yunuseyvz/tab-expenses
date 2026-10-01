@@ -105,7 +105,7 @@ export function SplitEditor({
           value={paidByMemberId ?? ''}
           onChange={(e) => onPaidByChange(e.target.value)}
           required
-          className="w-full bg-paper-sunk px-3 py-2 text-ink rounded-[3px]
+          className="w-full bg-paper-sunk px-3 py-2 text-ink rounded-[var(--radius-sm)]
             shadow-[var(--shadow-deboss)] border-b-2 border-transparent
             focus:shadow-[var(--shadow-raise)] focus:border-terracotta
            "
@@ -223,7 +223,7 @@ export function SplitEditor({
                         }
                         aria-label={`${name} percent`}
                         className="tnum w-16 bg-paper-sunk pl-2 pr-5 py-1 text-right
-                          text-sm rounded-[3px] shadow-[var(--shadow-deboss)]
+                          text-sm rounded-[var(--radius-sm)] shadow-[var(--shadow-deboss)]
                           border-b-2 border-transparent
                           focus:shadow-[var(--shadow-raise)]
                           focus:border-terracotta"

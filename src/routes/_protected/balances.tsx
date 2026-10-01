@@ -65,7 +65,7 @@ function BalancesRoute() {
 
   return (
     <AppShell>
-      <main id="main" className="mx-auto w-full max-w-3xl px-4 py-4 sm:px-6">
+      <main id="main" className="mx-auto w-full max-w-5xl px-4 py-4 sm:px-6">
         <h1 className="font-serif text-2xl sm:text-3xl mb-1">Balances</h1>
         <p className="text-xs text-ink-faint mb-4 tnum">
           paid − share. Positive means the household owes them.

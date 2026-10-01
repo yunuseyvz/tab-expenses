@@ -1,5 +1,8 @@
+import { Check } from 'lucide-react'
+
 import type { Category } from '#/lib/db/schema'
 import { cn } from '#/lib/cn'
+import { iconFor } from '#/lib/category-icons'
 import { swatchColor } from '#/lib/swatches'
 
 /**
@@ -15,7 +18,7 @@ export function CategoryChips({
   selected,
   onChange,
 }: {
-  categories: Array<Pick<Category, 'id' | 'name' | 'color'>>
+  categories: Array<Pick<Category, 'id' | 'name' | 'color' | 'icon'>>
   allIds: Array<string>
   selected: Array<string> | undefined
   onChange: (next: Array<string> | undefined) => void
@@ -62,6 +65,7 @@ export function CategoryChips({
       <div className="flex flex-wrap gap-2">
         {categories.map((c) => {
           const on = selected === undefined || selected.includes(c.id)
+          const Icon = iconFor(c.icon)
           return (
             <button
               key={c.id}
@@ -70,7 +74,7 @@ export function CategoryChips({
               aria-pressed={on}
               className={cn(
                 'inline-flex items-center gap-1.5 pl-2 pr-2.5 py-1.5 text-sm',
-                'rounded-[3px] border-l-4 transition-[background-color,box-shadow,border-width] duration-150',
+                'rounded-[var(--radius-sm)] border-l-4 transition-[background-color,box-shadow,border-width] duration-150',
                 on
                   ? 'bg-paper-raised text-ink shadow-[var(--shadow-raise)]'
                   : 'bg-paper-sunk text-ink-muted shadow-[var(--shadow-deboss)]',
@@ -80,12 +84,12 @@ export function CategoryChips({
                 borderLeftWidth: on ? 4 : 2,
               }}
             >
-              {on && (
-                <span aria-hidden className="text-[10px] leading-none">
-                  ✓
-                </span>
+              {on ? (
+                <Check size={13} aria-hidden className="shrink-0" />
+              ) : (
+                <Icon size={13} aria-hidden className="shrink-0 opacity-70" />
               )}
-              {c.name}
+              <span className="truncate">{c.name}</span>
             </button>
           )
         })}

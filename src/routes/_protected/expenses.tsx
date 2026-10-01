@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react'
+
 import { createFileRoute, useNavigate, useSearch } from '@tanstack/react-router'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import type { ExpenseRow } from '#/lib/expense.functions'
 
 import type { PeriodPreset } from '#/lib/period'
 import type { ListFilter } from '#/lib/session'
@@ -70,7 +72,6 @@ function ExpensesRoute() {
   const search = useSearch({ from: '/_protected/expenses' })
   const navigate = useNavigate()
   const { space, spaceId } = useCurrentSpace(search.space)
-  const [sheetOpen, setSheetOpen] = useState(false)
 
   const period = useMemo(() => presetToPeriod(search.period), [search.period])
 
@@ -104,6 +105,20 @@ function ExpensesRoute() {
   const groups = useMemo(() => groupByDay(expenses.data ?? []), [expenses.data])
   const currency = space?.currency ?? 'EUR'
 
+  // One sheet for both jobs. `editing === null` means "new"; otherwise the row
+  // that was tapped comes with it, already filled in.
+  const [sheetOpen, setSheetOpen] = useState(false)
+  const [editing, setEditing] = useState<ExpenseRow | null>(null)
+
+  const openNew = () => {
+    setEditing(null)
+    setSheetOpen(true)
+  }
+  const openEdit = (row: ExpenseRow) => {
+    setEditing(row)
+    setSheetOpen(true)
+  }
+
   const go = (
     patch: Partial<{
       space: string | undefined
@@ -131,7 +146,11 @@ function ExpensesRoute() {
               {formatMoney(totalShown, currency)}
             </p>
           </div>
-          <Button onClick={() => setSheetOpen(true)} disabled={!spaceId}>
+          <Button
+            onClick={openNew}
+            disabled={!spaceId}
+            className="w-full sm:w-auto"
+          >
             New expense
           </Button>
         </div>
@@ -146,7 +165,7 @@ function ExpensesRoute() {
             value={search.member ?? ''}
             onChange={(e) => go({ member: e.target.value || undefined })}
             aria-label="Filter by member"
-            className="bg-paper-sunk px-2 py-1.5 text-sm rounded-[3px]
+            className="bg-paper-sunk px-2 py-1.5 text-sm rounded-[var(--radius-sm)]
               shadow-[var(--shadow-deboss)]"
           >
             <option value="">Everyone</option>
@@ -186,9 +205,14 @@ function ExpensesRoute() {
 
                 <Card className="p-0">
                   {g.items.map((e) => (
-                    <div
+                    <button
                       key={e.id}
-                      className="flex items-center gap-3 px-4 py-3 border-b border-rule last:border-b-0"
+                      type="button"
+                      onClick={() => openEdit(e)}
+                      aria-label={`Edit ${e.purpose}, ${formatMoney(e.amountMinor, currency)}`}
+                      className="w-full flex items-center gap-3 px-4 py-3 text-left
+                        border-b border-rule last:border-b-0
+                        transition-colors duration-150 hover:bg-[var(--color-paper-sunk)]"
                     >
                       <span
                         aria-hidden
@@ -200,21 +224,21 @@ function ExpensesRoute() {
                               : 'var(--color-rule)',
                         }}
                       />
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium">
+                      <span className="min-w-0 flex-1">
+                        <span className="truncate text-sm font-medium block">
                           {e.purpose}
-                        </p>
-                        <p className="truncate text-xs text-ink-faint">
+                        </span>
+                        <span className="truncate text-xs text-ink-faint block">
                           {e.categoryName ?? 'Uncategorised'} · paid by{' '}
                           {e.paidByName}
                           {e.splits.length > 1 &&
                             ` · split ${e.splits.length} ways`}
-                        </p>
-                      </div>
+                        </span>
+                      </span>
                       <span className="tnum text-sm font-medium shrink-0">
                         {formatMoney(e.amountMinor, currency)}
                       </span>
-                    </div>
+                    </button>
                   ))}
                 </Card>
               </section>
@@ -224,7 +248,11 @@ function ExpensesRoute() {
 
         <ExpenseSheet
           open={sheetOpen}
-          onClose={() => setSheetOpen(false)}
+          editing={editing}
+          onClose={() => {
+            setSheetOpen(false)
+            setEditing(null)
+          }}
           spaceId={spaceId}
           categories={categories.data ?? []}
           members={members.data ?? []}

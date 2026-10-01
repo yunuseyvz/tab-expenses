@@ -3,6 +3,7 @@ import { createFileRoute, useSearch } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { Plus } from 'lucide-react'
 
+import type { ExpenseRow } from '#/lib/expense.functions'
 import type { ListFilter } from '#/lib/session'
 import type { PeriodPreset } from '#/lib/period'
 import { AppShell } from '#/components/AppShell'
@@ -84,7 +85,18 @@ export const Route = createFileRoute('/_protected/dashboard')({
 function DashboardRoute() {
   const search = useSearch({ from: '/_protected/dashboard' })
   const { space, spaceId } = useCurrentSpace(search.space)
+  // One sheet for new and edit, exactly as on the expenses list.
   const [sheetOpen, setSheetOpen] = useState(false)
+  const [editing, setEditing] = useState<ExpenseRow | null>(null)
+
+  const openNew = () => {
+    setEditing(null)
+    setSheetOpen(true)
+  }
+  const openEdit = (row: ExpenseRow) => {
+    setEditing(row)
+    setSheetOpen(true)
+  }
 
   const period = useMemo(
     () =>
@@ -132,7 +144,11 @@ function DashboardRoute() {
               {space?.currency} · {periodLabel(period)}
             </p>
           </div>
-          <Button onClick={() => setSheetOpen(true)} disabled={!spaceId}>
+          <Button
+            onClick={openNew}
+            disabled={!spaceId}
+            className="w-full sm:w-auto"
+          >
             <Plus size={16} aria-hidden />
             New expense
           </Button>
@@ -152,11 +168,16 @@ function DashboardRoute() {
           allCategoryIds={allIds}
           selectedCategoryIds={selectedIds}
           search={search}
+          onEdit={openEdit}
         />
 
         <ExpenseSheet
           open={sheetOpen}
-          onClose={() => setSheetOpen(false)}
+          editing={editing}
+          onClose={() => {
+            setSheetOpen(false)
+            setEditing(null)
+          }}
           spaceId={spaceId}
           categories={categories.data ?? []}
           members={members.data ?? []}

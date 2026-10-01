@@ -33,7 +33,7 @@ export function InlinePeriod({
             role="radio"
             aria-checked={active}
             onClick={() => onChange(p.key)}
-            className="px-3 py-1.5 text-sm rounded-[3px]
+            className="px-3 py-1.5 text-sm rounded-[var(--radius-sm)]
               transition-[background-color,box-shadow] duration-150"
             style={{
               background: active

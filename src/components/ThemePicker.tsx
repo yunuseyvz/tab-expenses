@@ -46,7 +46,7 @@ export function ThemePicker() {
       <div
         role="radiogroup"
         aria-label="Theme"
-        className="inline-flex p-1 gap-1 well rounded-[3px]"
+        className="inline-flex p-1 gap-1 well rounded-[var(--radius-sm)]"
       >
         {OPTIONS.map((o) => {
           const active = ready && theme === o.value

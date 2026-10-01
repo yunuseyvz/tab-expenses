@@ -218,11 +218,27 @@ describe('categoryInputSchema', () => {
       categoryInputSchema.safeParse({
         ...base,
         color: 'sage',
-        icon: 'leaf',
+        icon: 'sprout',
         scope: 'shared',
         ownerMemberId: null,
       }).success,
     ).toBe(true)
+  })
+
+  it('rejects an icon outside the curated set', () => {
+    // The set is closed on purpose. The name is stored in the database and
+    // rendered as a component, so an unrecognised value would be a blank box in
+    // the category list — and an arbitrary string from the client is not
+    // something to persist. This used to be free text and accepted anything.
+    expect(
+      categoryInputSchema.safeParse({
+        ...base,
+        color: 'sage',
+        icon: 'leaf',
+        scope: 'shared',
+        ownerMemberId: null,
+      }).success,
+    ).toBe(false)
   })
 })
 
