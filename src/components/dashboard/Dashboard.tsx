@@ -6,6 +6,7 @@ import type { Category } from '#/lib/db/schema'
 import type { PeriodPreset } from '#/lib/period'
 import type { ExpenseRow } from '#/lib/expense.functions'
 import type { ListFilter } from '#/lib/session'
+import { CountUp } from '#/components/CountUp'
 import {
   Card,
   CardHeader,
@@ -101,10 +102,18 @@ export function Dashboard({
       <div className="grid gap-4 sm:grid-cols-2">
         <Card>
           <SectionTitle>Total spend</SectionTitle>
+          {/* The paragraph is the caller's, not CountUp's: a figure is a
+              paragraph, and the element that carries the type should be the one
+              a test and a screen reader meet. */}
           <p className="tnum font-serif text-3xl mt-1">
-            {totals.isPending
-              ? '—'
-              : formatMoney(totals.data?.totalMinor ?? 0, currency)}
+            {totals.isPending ? (
+              '—'
+            ) : (
+              <CountUp
+                value={totals.data?.totalMinor ?? 0}
+                format={(v: number) => formatMoney(v, currency)}
+              />
+            )}
           </p>
           <p className="text-xs text-ink-faint mt-1 tnum">
             {totals.data?.count ?? 0} entries
@@ -114,9 +123,14 @@ export function Dashboard({
         <Card>
           <SectionTitle>Your share</SectionTitle>
           <p className="tnum font-serif text-3xl mt-1">
-            {totals.isPending
-              ? '—'
-              : formatMoney(totals.data?.yourShareMinor ?? 0, currency)}
+            {totals.isPending ? (
+              '—'
+            ) : (
+              <CountUp
+                value={totals.data?.yourShareMinor ?? 0}
+                format={(v: number) => formatMoney(v, currency)}
+              />
+            )}
           </p>
           <p
             className="text-xs mt-1 tnum font-medium"

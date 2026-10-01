@@ -1,5 +1,21 @@
 @import 'tailwindcss';
 
+@font-face {
+  font-family: 'Fraunces';
+  font-style: normal;
+  /* A range, not a single value, for one static file. The wordmark asks for 500
+   * and the amounts for 400; declaring only 500 leaves the browser matching 400
+   * to a face that does not claim it, and the exact result depends on the
+   * engine. Claiming both means neither request synthesises a weight. */
+  font-weight: 400 500;
+  font-display: swap;
+  src: url('/fonts/fraunces-latin-500.woff2') format('woff2');
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212,
+    U+2215, U+FEFF, U+FFFD;
+}
+
 /*
  * ── Design system: warm tactile ──────────────────────────────────────────
  *
@@ -19,6 +35,35 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
+  /* ── the wordmark's face ──────────────────────────────────────────────
+   * Fraunces, one static instance, latin subset, 17KB.
+   *
+   * SELF-HOSTED, and that is the point rather than a privacy flourish. The
+   * wordmark used to be a stack of system serifs, which means it is not one
+   * mark at all: Iowan Old Style on iOS, Palatino on Windows, Noto Serif on
+   * Android, and a DejaVu fallback in a container. The glyphs are the brand, so
+   * they cannot be allowed to be a different shape per platform — and a hosted
+   * stylesheet would fix the shape by adding a third-party request to a page that
+   * currently makes none.
+   *
+   * One static instance at optical size 144 and weight 500, not the variable
+   * font: 17KB against 67KB, for a face that only ever sets a three-letter
+   * wordmark, three amounts and one input. A variable font would be paying for
+   * axes nothing here varies.
+   *
+   * `swap`, so the wordmark paints in the fallback rather than blocking on a
+   * download. font-display: block would be the wrong trade for a label beside
+   * the mark — the mark is SVG and instant, so a gap next to it reads as a
+   * broken icon rather than as loading text.
+   *
+   * The subset covers U+0000-00FF, U+2000-206F and U+20AC, so it carries the
+   * wordmark, `€`, an em dash and German umlauts and ß. The amounts use this
+   * face, so the euro sign is not optional.
+   *
+   * Licence: SIL Open Font License 1.1, shipped alongside it at
+   * public/fonts/Fraunces-OFL.txt.
+   */
+
   /* ── paper ─────────────────────────────────────────────────────────────
    * Neutral, not warm, and deliberately so.
    *
@@ -126,8 +171,13 @@
   /* ── type ──────────────────────────────────────────────────────────── */
   --font-sans:
     'Inter var', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  /* Fraunces, self-hosted. See the @font-face above for why it is a file
+   * rather than a stack of system serifs — a stack renders a *different wordmark
+   * on every platform*, and Iowan Old Style on iOS, Palatino on Windows and
+   * Noto Serif on Android are three different logos for the same three letters.
+   */
   --font-serif:
-    'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
+    'Fraunces', 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
   --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, monospace;
 
   /* ── motion: springs over durations ────────────────────────────────── */

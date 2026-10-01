@@ -110,7 +110,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // reconcile; the latch is updated after, in an effect, because updating it
   // during render would make every later render look like a household change.
   const currentSpace = spaceId ?? 'none'
-  const changingHousehold = paintedSpace !== null && paintedSpace !== currentSpace
+  const changingHousehold =
+    paintedSpace !== null && paintedSpace !== currentSpace
   useEffect(() => {
     paintedSpace = currentSpace
   }, [currentSpace])

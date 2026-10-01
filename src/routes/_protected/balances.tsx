@@ -3,6 +3,7 @@ import { createFileRoute, useNavigate, useSearch } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 
 import type { PeriodPreset } from '#/lib/period'
+import { CountUp } from '#/components/CountUp'
 import { AppShell } from '#/components/AppShell'
 import {
   Card,
@@ -104,16 +105,21 @@ function BalancesRoute() {
           <div className="space-y-4">
             <Card>
               <SectionTitle>Your position</SectionTitle>
-              <p
+              <CountUp
                 className="tnum font-serif text-3xl mt-1"
+                // Signed, so the tween runs between the two real figures rather
+                // than through zero: a position falling from +€1,400 to −€200
+                // would otherwise sweep through €600 on the way, which is a
+                // number that never existed.
+                value={yourNet}
+                format={(v) =>
+                  (v >= 0 ? '+' : '−') + formatMoney(Math.abs(v), currency)
+                }
                 style={{
                   color:
                     yourNet >= 0 ? 'var(--color-sage)' : 'var(--color-oxblood)',
                 }}
-              >
-                {yourNet >= 0 ? '+' : '−'}
-                {formatMoney(Math.abs(yourNet), currency)}
-              </p>
+              />
               <p className="text-sm text-ink-muted mt-1">
                 {yourNet > 0
                   ? 'The household owes you this.'
