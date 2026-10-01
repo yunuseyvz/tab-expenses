@@ -400,6 +400,68 @@ test.describe('design system', () => {
     ).toBe('auto')
   })
 
+  /**
+   * A popover may not push the page sideways.
+   *
+   * Two symptoms, one cause, and the second is the one that made this hard to
+   * see. The date panel hung 149px off the right of a phone, and the fix for
+   * "off the right" was to measure against the visible width — but the panel
+   * overflowed, Chrome widened the *layout* viewport to fit the overflow, and the
+   * clamp then measured that widened viewport and reported the panel as fitting.
+   * A loop, with the correct answer at no point in it.
+   *
+   * So this asserts the thing a person would notice rather than the thing the
+   * code computes: the panel's own box is inside the window, and the document
+   * has not gained a horizontal scrollbar. The second is what "shifts
+   * everything" was — not the panel being visible but slightly wrong, the whole
+   * page becoming horizontally scrollable and sliding under your thumb.
+   */
+  test('the custom date panel stays on screen and the page does not widen', async ({
+    browser,
+  }) => {
+    const context = await browser.newContext({
+      ...devices['Pixel 7'],
+      storageState: 'test-results/auth.json',
+    })
+    const page = await context.newPage()
+    await page.goto('/dashboard')
+
+    const width = async () =>
+      page.evaluate(() => ({
+        client: document.documentElement.clientWidth,
+        scroll: document.documentElement.scrollWidth,
+      }))
+
+    const before = await width()
+    expect(
+      before.scroll,
+      'the page should not be horizontally scrollable to begin with',
+    ).toBe(before.client)
+
+    await page.getByRole('radio', { name: 'Custom' }).click()
+    const panel = page.getByRole('dialog', { name: 'Custom date range' })
+    await expect(panel).toBeVisible()
+
+    const box = await panel.boundingBox()
+    const viewport = before.client
+    expect(
+      box!.x,
+      'the panel must not start off the left edge',
+    ).toBeGreaterThanOrEqual(0)
+    expect(
+      box!.x + box!.width,
+      'the panel must not hang off the right edge',
+    ).toBeLessThanOrEqual(viewport)
+
+    const after = await width()
+    expect(
+      after.scroll,
+      'opening a popover must not make the page horizontally scrollable',
+    ).toBe(after.client)
+
+    await context.close()
+  })
+
   test('reduced motion collapses animations to instant state changes', async ({
     browser,
   }) => {

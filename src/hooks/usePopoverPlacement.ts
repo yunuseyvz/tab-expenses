@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 /**
  * Keep a popover inside the viewport, relative to the thing it hangs off.
@@ -19,10 +19,35 @@ import { useEffect, useRef, useState } from 'react'
  *   right =  viewport width − margin     − popover width
  *   → the offset is the largest of the two, capped at 0
  *
+ * MEASURED AGAINST THE VISIBLE WIDTH, NOT window.innerWidth
+ * This is the whole reason the date panel used to hang 149px off the right of a
+ * phone. On a phone, a document that overflows horizontally makes Chrome widen
+ * the *layout* viewport to match, and `window.innerWidth` then reports the
+ * overflow rather than the screen. So the panel overflowed, the viewport grew to
+ * 569px to accommodate it, and the clamp measured 569 and concluded a 300px
+ * panel hanging off a trigger at x=269 fitted — inside the overflow it had just
+ * caused. `document.documentElement.clientWidth` stays at the device width
+ * whatever the content does, so the smaller of the two is the honest number.
+ *
+ * A LAYOUT EFFECT, so the un-clamped panel is never painted
+ * With a passive effect the popover first renders at `left-0` at its full class
+ * width, and only afterwards gets corrected. On a phone that first frame is
+ * enough to widen the layout viewport on its own, so by the time the
+ * measurement ran the thing it was measuring against was already wrong — and the
+ * correction could not recover. Measuring before paint removes the bad frame
+ * entirely, and costs no visible latency, because the panel is opening anyway.
+ *
  * Recomputed on resize, and on scroll from *any* ancestor (capture phase), so a
  * popover inside the expense sheet's scroller stays against its trigger instead
  * of drifting as the sheet scrolls underneath it.
  */
+
+// React warns when a layout effect is used during server rendering, and this
+// module is imported by components that render on the server. The effect only
+// does anything on the client, so the server is given the passive one.
+const useIsomorphicLayoutEffect =
+  typeof window === 'undefined' ? useEffect : useLayoutEffect
+
 export function usePopoverPlacement<T extends HTMLElement>({
   open,
   width,
@@ -39,7 +64,7 @@ export function usePopoverPlacement<T extends HTMLElement>({
     width: number
   } | null>(null)
 
-  useEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     if (!open) {
       setPlacement(null)
       return
@@ -49,14 +74,20 @@ export function usePopoverPlacement<T extends HTMLElement>({
       const el = anchor.current
       if (!el) return
       const rect = el.getBoundingClientRect()
-      const w = Math.min(width, window.innerWidth - margin * 2)
-      const maxLeft = window.innerWidth - margin - w - rect.left
+      const viewport = Math.min(
+        document.documentElement.clientWidth || window.innerWidth,
+        window.innerWidth,
+      )
+      const w = Math.min(width, viewport - margin * 2)
+      const maxLeft = viewport - margin - w - rect.left
       const minLeft = margin - rect.left
       setPlacement({ left: Math.max(minLeft, Math.min(0, maxLeft)), width: w })
     }
 
     place()
     window.addEventListener('resize', place)
+    // Capture, so scrolling any ancestor — including the sheet's own scroller —
+    // keeps the panel against its trigger rather than letting it drift.
     window.addEventListener('scroll', place, true)
     return () => {
       window.removeEventListener('resize', place)

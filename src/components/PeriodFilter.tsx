@@ -126,7 +126,15 @@ export function PeriodFilter({
             </button>
           )
 
-          if (!isCustom) return pill
+          // Every branch of this map needs a key, and that is load-bearing
+          // rather than housekeeping. Three of the four presets return the bare
+          // button; only the custom one is wrapped. A list whose children are
+          // partly keyed and partly not reconciles by position for the unkeyed
+          // ones, and the popover's anchor ref — which lives on the wrapper —
+          // ended up on the *second* pill instead of Custom. The clamp then
+          // measured that button's box, decided the panel fitted, and left it
+          // hanging 149px off the right edge of a phone.
+          if (!isCustom) return <span key={p.key}>{pill}</span>
 
           return (
             <span key={p.key} ref={anchor} className="relative inline-flex">

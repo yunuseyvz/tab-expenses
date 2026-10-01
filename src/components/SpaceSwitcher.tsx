@@ -134,7 +134,13 @@ export function SpaceSwitcher({
   // the mobile top bar worked. `editing` is set either way; only the dialog was
   // missing. One return, one menu, one editor.
   return (
-    <div ref={root} className="relative">
+    // `flex items-center` and not just `relative`: as a flex item in the floating
+    // bar this div is stretched to the full height of the bar, and the tabs
+    // beside it are centred in that height. Without centring here the switcher
+    // sat against the top, putting the household's mark 8px above the middle of
+    // the bar while every label next to it lined up on the centre line — which
+    // is what made the bar look crooked rather than merely mis-spaced.
+    <div ref={root} className="relative flex items-center">
       {variant === 'panel' ? (
         <PanelTrigger
           space={space}
