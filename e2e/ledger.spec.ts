@@ -35,7 +35,12 @@ test.describe('ledger', () => {
   }) => {
     await page.goto('/dashboard?period=all')
 
-    const total = page.locator('p.tnum.font-serif').first()
+    // By class, and that is worth saying: the assertion is about arithmetic,
+    // not about the figure's typeface, and it has already broken once when the
+    // amounts moved off the wordmark's serif. `tnum` matters — it is what keeps
+    // the digits the same width, so the text content is the real figure and not
+    // something reflowed.
+    const total = page.locator('p.tnum.text-3xl').first()
     await expect(total).toHaveText(/€[\d.,]+/)
     const before = await total.textContent()
 
@@ -54,7 +59,7 @@ test.describe('ledger', () => {
 
   test('"All" restores the unfiltered total', async ({ page }) => {
     await page.goto('/dashboard?period=all')
-    const total = page.locator('p.tnum.font-serif').first()
+    const total = page.locator('p.tnum.text-3xl').first()
     await expect(total).toHaveText(/€[\d.,]+/)
     const before = await total.textContent()
 

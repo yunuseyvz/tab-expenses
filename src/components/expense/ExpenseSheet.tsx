@@ -200,7 +200,9 @@ export function ExpenseSheet({
             onChange={(e) => setAmount(e.target.value)}
             placeholder="0.00"
             aria-invalid={amount !== '' && amountMinor === 0}
-            className="tnum text-2xl font-serif"
+            // Sans, matching the figures it will become. A serif at this size
+            // fought the field it sits in rather than characterising it.
+            className="tnum text-2xl font-medium tracking-tight"
           />
         </div>
 

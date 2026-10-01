@@ -106,7 +106,10 @@ function BalancesRoute() {
             <Card>
               <SectionTitle>Your position</SectionTitle>
               <CountUp
-                className="tnum font-serif text-3xl mt-1"
+                // The sans, for the same reason as the dashboard totals: the
+                // wordmark's serif is a display cut and reads as decoration at
+                // figure sizes. See Dashboard.tsx.
+                className="tnum text-3xl mt-1"
                 // Signed, so the tween runs between the two real figures rather
                 // than through zero: a position falling from +€1,400 to −€200
                 // would otherwise sweep through €600 on the way, which is a

@@ -105,7 +105,14 @@ export function Dashboard({
           {/* The paragraph is the caller's, not CountUp's: a figure is a
               paragraph, and the element that carries the type should be the one
               a test and a screen reader meet. */}
-          <p className="tnum font-serif text-3xl mt-1">
+          {/* The sans, not the wordmark's serif. Fraunces is loaded at optical
+              size 144, which is a *display* face — very high stroke contrast,
+              almost calligraphic. That is the right register for three letters
+              and the wrong one for a total: at €16,569.23 the comma and the
+              6, 9 and 5 stop reading as digits and start reading as lettering.
+              `tnum` keeps the columns aligned, which is what the serif was
+              actually doing there. */}
+          <p className="tnum text-3xl mt-1">
             {totals.isPending ? (
               '—'
             ) : (
@@ -122,7 +129,14 @@ export function Dashboard({
 
         <Card>
           <SectionTitle>Your share</SectionTitle>
-          <p className="tnum font-serif text-3xl mt-1">
+          {/* The sans, not the wordmark's serif. Fraunces is loaded at optical
+              size 144, which is a *display* face — very high stroke contrast,
+              almost calligraphic. That is the right register for three letters
+              and the wrong one for a total: at €16,569.23 the comma and the
+              6, 9 and 5 stop reading as digits and start reading as lettering.
+              `tnum` keeps the columns aligned, which is what the serif was
+              actually doing there. */}
+          <p className="tnum text-3xl mt-1">
             {totals.isPending ? (
               '—'
             ) : (

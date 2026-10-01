@@ -257,7 +257,12 @@ function AvatarTrigger({
       aria-haspopup="listbox"
       aria-label={`Space: ${name}`}
       title={name}
-      className="flex items-center rounded-full px-1.5
+      // gap-1.5, and not a negative margin on the chevron to claw the space
+      // back. A negative margin is how the chevron ended up 2px from the mark
+      // and reading as part of it rather than as a separate control: the avatar
+      // carries a hairline ring, so anything closer than a real gap looks like
+      // it is drawn on the disc.
+      className="flex items-center gap-1.5 rounded-full px-1.5
         transition-[background-color,transform] duration-150
         hover:bg-[var(--color-paper-sunk)]
         active:scale-[0.96] motion-reduce:active:scale-100"
@@ -272,7 +277,7 @@ function AvatarTrigger({
         size={14}
         aria-hidden
         className={cn(
-          'shrink-0 -ml-0.5 text-ink-muted transition-transform duration-200',
+          'shrink-0 text-ink-muted transition-transform duration-200',
           open && 'rotate-180',
         )}
       />

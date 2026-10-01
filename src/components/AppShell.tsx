@@ -464,7 +464,10 @@ function BottomLink({
 
       <span
         className={cn(
-          'relative block text-[11.5px] leading-none tracking-[0.01em] truncate',
+          // 11px. 11.5 was chosen against a 20px glyph and reads as a caption
+          // beside these icons; at four across a 390px screen the labels are the
+          // widest thing in the bar and were setting the rhythm of it.
+          'relative block text-[11px] leading-none tracking-[0.01em] truncate',
           active ? 'text-terracotta-ink' : 'text-ink-muted',
         )}
       >
