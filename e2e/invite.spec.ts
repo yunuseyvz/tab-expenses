@@ -24,8 +24,8 @@ import { readInviteLink, registerUser } from './helpers'
  * flow. setup.spec.ts uses the same trick.
  */
 const RUN = Date.now()
-const VALE = `vale-invited-${RUN}@splitwise.local`
-const EVE = `eve-stranger-${RUN}@splitwise.local`
+const VALE = `vale-invited-${RUN}@tab.local`
+const EVE = `eve-stranger-${RUN}@tab.local`
 
 /**
  * ⚠ MARKED FIXME — NOT YET PROVEN. See the note below.

@@ -34,7 +34,7 @@ COPY . .
 # Vite inlines VITE_* at build time, so the only variable needed here is the
 # genuinely public app name. Every secret is read from process.env at RUNTIME;
 # see src/lib/db/env.ts and scripts/check-no-vite-env.mjs.
-ENV VITE_APP_NAME=Tally
+ENV VITE_APP_NAME=Tab
 RUN pnpm build
 
 # ── runtime ────────────────────────────────────────────────────────────────

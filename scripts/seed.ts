@@ -6,6 +6,8 @@
  *
  *   pnpm db:seed
  */
+import { randomUUID } from 'node:crypto'
+
 import { eq } from 'drizzle-orm'
 import postgres from 'postgres'
 
@@ -23,8 +25,18 @@ if (!DATABASE_URL) {
 }
 const dbUrl: string = DATABASE_URL
 
-const DEMO_EMAIL = 'demo@splitwise.local'
-const DEMO_USER_ID = 'seed-demo-user'
+const DEMO_EMAIL = 'demo@tab.local'
+/**
+ * A preferred id, so a freshly seeded database is reproducible and the demo
+ * user's row is easy to recognise.
+ *
+ * Preferred, never required. A database that already has a different account
+ * sitting on this id — which is exactly what happens after a rename, when the
+ * old address's seed row survives and the new one comes looking — must not fail
+ * with a bare primary-key violation. So it is used when free and generated
+ * otherwise.
+ */
+const PREFERRED_DEMO_USER_ID = 'seed-demo-user'
 
 async function main() {
   const sql = postgres(dbUrl, { max: 1 })
@@ -42,9 +54,17 @@ async function main() {
     // id collides on user_email_unique the moment anyone has used the app once
     // — and the seed is documented as re-runnable. Everything below therefore
     // references whatever id is actually in the database.
+    const [idTaken] = await sql<Array<{ id: string }>>`
+      select id from "user" where id = ${PREFERRED_DEMO_USER_ID}
+        and email <> ${DEMO_EMAIL} limit 1
+    `
+    const demoUserIdToInsert = idTaken?.id
+      ? randomUUID()
+      : PREFERRED_DEMO_USER_ID
+
     const [demoUser] = await sql<Array<{ id: string }>>`
       insert into "user" (id, name, email, email_verified, created_at, updated_at)
-      values (${DEMO_USER_ID}, 'Vale', ${DEMO_EMAIL}, true, now(), now())
+      values (${demoUserIdToInsert}, 'Vale', ${DEMO_EMAIL}, true, now(), now())
       on conflict (email) do update
         set name = excluded.name,
             email_verified = true,

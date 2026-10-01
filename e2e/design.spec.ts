@@ -276,7 +276,7 @@ test.describe('design system', () => {
     page,
   }) => {
     await page.addInitScript(() => {
-      localStorage.setItem('splitwise:theme', 'dark')
+      localStorage.setItem('tab:theme', 'dark')
     })
     await page.goto('/login')
 
@@ -298,7 +298,7 @@ test.describe('design system', () => {
 
   test('the theme can be switched back to light', async ({ page }) => {
     await page.addInitScript(() => {
-      localStorage.setItem('splitwise:theme', 'light')
+      localStorage.setItem('tab:theme', 'light')
     })
     await page.goto('/login')
     expect(
@@ -310,7 +310,7 @@ test.describe('design system', () => {
 
   test('dark palette clears AA on its own surfaces', async ({ page }) => {
     await page.addInitScript(() => {
-      localStorage.setItem('splitwise:theme', 'dark')
+      localStorage.setItem('tab:theme', 'dark')
     })
     await page.goto('/login')
 

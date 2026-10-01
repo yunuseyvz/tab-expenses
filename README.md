@@ -1,4 +1,4 @@
-# Tally
+# Tab
 
 A shared household expense ledger. Replaces a spreadsheet of
 `date / purpose / amount` with categories, percentage splits, and a settlement
@@ -12,7 +12,7 @@ docker compose --profile dev up --build
 ```
 
 The app is on <http://localhost:3000>, Mailpit on <http://localhost:8025>.
-Sign in as `demo@splitwise.local`; the code lands in Mailpit instead of a real
+Sign in as `demo@tab.local`; the code lands in Mailpit instead of a real
 inbox. The seeded space is a German household with rent, groceries, a 5¢ bread,
 and a 60/40 split.
 

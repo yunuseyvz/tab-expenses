@@ -24,7 +24,7 @@ const buildAuth = createServerOnlyFn(() => {
   const e = env()
 
   return betterAuth({
-    appName: 'Tally',
+    appName: 'Tab',
     secret: e.BETTER_AUTH_SECRET,
     baseURL: e.BETTER_AUTH_URL,
 

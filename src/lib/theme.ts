@@ -12,7 +12,7 @@
  */
 export type Theme = 'system' | 'light' | 'dark'
 
-export const THEME_KEY = 'splitwise:theme'
+export const THEME_KEY = 'tab:theme'
 
 function systemPrefersDark(): boolean {
   if (typeof window === 'undefined') return false

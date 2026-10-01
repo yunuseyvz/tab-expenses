@@ -11,7 +11,7 @@ import { dirname } from 'node:path'
 
 const BASE = process.env.SWL_BASE_URL ?? 'http://127.0.0.1:3000'
 const MAILPIT = process.env.MAILPIT_URL ?? 'http://127.0.0.1:8025'
-const EMAIL = process.env.SWL_E2E_EMAIL ?? 'demo@splitwise.local'
+const EMAIL = process.env.SWL_E2E_EMAIL ?? 'demo@tab.local'
 const OUT = 'test-results/auth.json'
 
 export default async function globalSetup() {

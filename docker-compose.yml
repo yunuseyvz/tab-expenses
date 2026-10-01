@@ -1,4 +1,4 @@
-# Tally — single-VPS deployment.
+# Tab — single-VPS deployment.
 #
 # One `docker compose up --build` brings up the app, Postgres, and (in dev) a
 # mail catcher. In production, Coolify's Traefik terminates TLS in front of
@@ -8,7 +8,7 @@
 # Secrets come from .env — copy .env.example and fill it in. Nothing secret is
 # baked into the image.
 
-name: tally
+name: tab
 
 services:
   db:
@@ -63,7 +63,7 @@ services:
       # Traefik is in front, so the real client IP is in X-Forwarded-For.
       TRUSTED_PROXY_HEADERS: 'true'
       RESEND_API_KEY: ${RESEND_API_KEY:-}
-      EMAIL_FROM: ${EMAIL_FROM:-Tally <noreply@example.com>}
+      EMAIL_FROM: ${EMAIL_FROM:-Tab <noreply@example.com>}
       # Only read when RESEND_API_KEY is blank. Deliberately NOT taken from
       # .env: that copy is a host-side value pointing at localhost, and inside
       # this container localhost is the app itself — so the send fails with a

@@ -38,7 +38,7 @@ test('a wrong code is refused, the right one works, and onboarding follows', asy
   await page.getByRole('link', { name: 'Create one' }).click()
   await expect(page).toHaveURL(/\/register/)
 
-  const email = `e2e-${Date.now()}@splitwise.local`
+  const email = `e2e-${Date.now()}@tab.local`
   await page.getByLabel('Your name').fill('E2E Tester')
   await page.getByLabel('Email').fill(email)
   await page.getByRole('button', { name: 'Send code' }).click()

@@ -37,24 +37,24 @@ export interface SendOtpArgs {
 function subjectFor(type: OtpType): string {
   switch (type) {
     case 'sign-in':
-      return 'Your Tally sign-in code'
+      return 'Your Tab sign-in code'
     case 'email-verification':
-      return 'Verify your Tally email'
+      return 'Verify your Tab email'
     case 'forget-password':
-      return 'Your Tally password reset code'
+      return 'Your Tab password reset code'
     case 'change-email':
-      return 'Confirm your new Tally email'
+      return 'Confirm your new Tab email'
   }
 }
 
 function bodyFor(type: OtpType, otp: string): string {
   const intro =
     type === 'sign-in'
-      ? 'Use this code to sign in to Tally:'
+      ? 'Use this code to sign in to Tab:'
       : type === 'email-verification'
         ? 'Use this code to verify your email address:'
         : type === 'forget-password'
-          ? 'Use this code to reset your Tally password:'
+          ? 'Use this code to reset your Tab password:'
           : 'Use this code to confirm your new email address:'
 
   return [
@@ -65,7 +65,7 @@ function bodyFor(type: OtpType, otp: string): string {
     'The code is valid for 10 minutes. If you did not request it, you can',
     'safely ignore this message.',
     '',
-    '— Tally',
+    '— Tab',
   ].join('\n')
 }
 
@@ -158,7 +158,7 @@ export const sendInviteEmail = createServerOnlyFn(async function ({
   )
 
   const text = [
-    `${inviterName} invited you to join "${spaceName}" on Tally.`,
+    `${inviterName} invited you to join "${spaceName}" on Tab.`,
     '',
     'Accept the invitation:',
     '',
@@ -167,7 +167,7 @@ export const sendInviteEmail = createServerOnlyFn(async function ({
     `The link works for anyone signed in as ${to}, and expires in ${days} day${days === 1 ? '' : 's'}.`,
     'If you were not expecting this, ignore this message — nothing has changed.',
     '',
-    '— Tally',
+    '— Tab',
   ].join('\n')
 
   await deliver(e, to, `${inviterName} invited you to ${spaceName}`, text)

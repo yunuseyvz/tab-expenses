@@ -11,6 +11,8 @@ import { useMutation } from '@tanstack/react-query'
 import { AnimatePresence, motion } from 'motion/react'
 
 import { OtpCode, codeIsComplete, emptyCode } from '#/components/OtpCode'
+import { TabLogo } from '#/components/TabLogo'
+import { APP_NAME } from '#/lib/app-meta'
 import { Button } from '#/components/ui/Button'
 import { Input, Label } from '#/components/ui/Input'
 import { authClient } from '#/lib/auth-client'
@@ -86,9 +88,7 @@ export function RegisterForm({ initialEmail }: { initialEmail?: string }) {
   return (
     <div className="w-full max-w-sm">
       <header className="mb-6">
-        <p className="text-xs uppercase tracking-[0.16em] text-ink-faint">
-          Tally
-        </p>
+        <TabLogo wordmark={APP_NAME} markSize={24} className="mb-4" />
         <h1 className="font-serif text-3xl mt-1">
           {step === 'details' ? 'Create your account' : 'Enter your code'}
         </h1>

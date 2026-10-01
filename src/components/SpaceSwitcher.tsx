@@ -85,58 +85,50 @@ export function SpaceSwitcher({
     void navigate({ to: '/spaces/new' })
   }
 
+  const menu = (
+    <SpaceMenu
+      spaces={spaces}
+      currentId={spaceId}
+      onPick={(id) => pick.mutate(id)}
+      onNew={newSpace}
+      onEdit={(s) => {
+        setOpen(false)
+        setEditing(s)
+      }}
+    />
+  )
+
+  const editor = (
+    <SpaceEditor space={editing} onClose={() => setEditing(null)} />
+  )
+
   // A single space still gets a control: it is the only way to reach
   // "new space", and hiding it would make adding a second household
   // undiscoverable.
-  if (variant === 'panel') {
-    return (
-      <div ref={root} className="relative">
+  //
+  // Both variants render the same menu and the same editor. They used to branch
+  // early, and the panel branch returned before the editor was created — so the
+  // edit pencil in the sidebar silently did nothing while the same control in
+  // the mobile top bar worked. `editing` is set either way; only the dialog was
+  // missing. One return, one menu, one editor.
+  return (
+    <div ref={root} className="relative">
+      {variant === 'panel' ? (
         <PanelTrigger
           space={space}
           count={spaces.length}
           open={open}
           onToggle={() => setOpen((o) => !o)}
         />
-        {open && (
-          <SpaceMenu
-            spaces={spaces}
-            currentId={spaceId}
-            onPick={(id) => pick.mutate(id)}
-            onNew={newSpace}
-            onEdit={(s) => {
-              setOpen(false)
-              setEditing(s)
-            }}
-          />
-        )}
-      </div>
-    )
-  }
-
-  const editor = (
-    <SpaceEditor space={editing} onClose={() => setEditing(null)} />
-  )
-
-  return (
-    <div ref={root} className="relative">
-      <CompactTrigger
-        name={space?.name ?? 'No space'}
-        compact={compact}
-        open={open}
-        onToggle={() => setOpen((o) => !o)}
-      />
-      {open && (
-        <SpaceMenu
-          spaces={spaces}
-          currentId={spaceId}
-          onPick={(id) => pick.mutate(id)}
-          onNew={newSpace}
-          onEdit={(s) => {
-            setOpen(false)
-            setEditing(s)
-          }}
+      ) : (
+        <CompactTrigger
+          name={space?.name ?? 'No space'}
+          compact={compact}
+          open={open}
+          onToggle={() => setOpen((o) => !o)}
         />
       )}
+      {open && menu}
       {editor}
     </div>
   )

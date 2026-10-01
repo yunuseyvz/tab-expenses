@@ -9,7 +9,7 @@ set -e
 
 BASE=${BASE:-http://127.0.0.1:$(cat /tmp/opencode/swl/port)}
 MAILPIT=${MAILPIT:-http://127.0.0.1:8025}
-EMAIL=${EMAIL:-demo@splitwise.local}
+EMAIL=${EMAIL:-demo@tab.local}
 JAR=$(mktemp)
 OUT=$(mktemp -d)
 

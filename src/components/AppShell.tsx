@@ -26,7 +26,9 @@ import {
   Settings as SettingsIcon,
 } from 'lucide-react'
 
+import { APP_NAME } from '#/lib/app-meta'
 import { Avatar } from '#/components/Avatar'
+import { TabLogo, TabMark } from '#/components/TabLogo'
 import { SpaceSwitcher } from '#/components/SpaceSwitcher'
 import { authClient } from '#/lib/auth-client'
 import { cn } from '#/lib/cn'
@@ -116,9 +118,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <Link
               to="/dashboard"
               search={NAV_SEARCH['/dashboard']}
-              className="px-2.5 pt-2 pb-3.5 font-serif text-lg tracking-tight"
+              className="px-2.5 pt-2 pb-3.5 text-lg"
             >
-              Tally
+              <TabLogo wordmark={APP_NAME} markSize={22} />
             </Link>
 
             {/* A dedicated section for the household, separated from the nav
@@ -196,7 +198,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         bg-[var(--surface-material)]
         shadow-[var(--material-edge)]"
       >
-        <SpaceSwitcher compact />
+        <div className="flex items-center gap-1 min-w-0">
+          <Link
+            to="/dashboard"
+            search={NAV_SEARCH['/dashboard']}
+            aria-label={APP_NAME}
+            className="shrink-0 pl-1 pr-0.5 -ml-1 rounded-[var(--radius-sm)]
+              transition-transform duration-150 active:scale-95
+              motion-reduce:active:scale-100"
+          >
+            <TabMark size={20} />
+          </Link>
+          <SpaceSwitcher compact />
+        </div>
         <div ref={accountRef} className="relative">
           <button
             type="button"

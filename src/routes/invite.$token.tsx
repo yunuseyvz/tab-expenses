@@ -17,6 +17,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
 
+import { TabLogo } from '#/components/TabLogo'
 import { Button } from '#/components/ui/Button'
 import { Card } from '#/components/ui/Card'
 import { getSession } from '#/lib/auth.functions'
@@ -99,9 +100,7 @@ function InviteRoute() {
           />
         ) : info ? (
           <>
-            <p className="text-xs uppercase tracking-[0.16em] text-ink-faint">
-              Invitation
-            </p>
+            <TabLogo wordmark="Invitation" markSize={20} className="mb-4" />
             <h1 className="font-serif text-2xl mt-1">Join {info.spaceName}</h1>
             <p className="text-sm text-ink-muted mt-2">
               {info.inviterName} invited you to share this household's expenses.

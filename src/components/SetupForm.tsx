@@ -4,6 +4,8 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
 import type { MySpace } from '#/lib/space.types'
+import { TabLogo } from '#/components/TabLogo'
+import { APP_NAME } from '#/lib/app-meta'
 import { Button } from '#/components/ui/Button'
 import { Input, Label, Select } from '#/components/ui/Input'
 import { rememberSpace } from '#/lib/auth.functions'
@@ -94,9 +96,7 @@ export function SetupForm({
   return (
     <div className="w-full max-w-md">
       <header className="mb-6">
-        <p className="text-xs uppercase tracking-[0.16em] text-ink-faint">
-          Tally
-        </p>
+        <TabLogo wordmark={APP_NAME} markSize={24} className="mb-4" />
         <h1 className="font-serif text-3xl mt-1">{title}</h1>
         <p className="text-sm text-ink-muted mt-1.5">{blurb}</p>
       </header>

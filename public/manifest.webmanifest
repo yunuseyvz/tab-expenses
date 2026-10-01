@@ -1,6 +1,6 @@
 {
-  "name": "Tally — shared household expense ledger",
-  "short_name": "Tally",
+  "name": "Tab — shared household expense ledger",
+  "short_name": "Tab",
   "description": "Shared household expenses with percentage splits and a settlement view.",
   "start_url": "/dashboard",
   "scope": "/",
