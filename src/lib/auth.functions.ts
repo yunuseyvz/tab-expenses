@@ -13,6 +13,7 @@ import { createServerFn } from '@tanstack/react-start'
 import {
   getCookie,
   getRequestHeaders,
+  getRequestProtocol,
   setCookie,
 } from '@tanstack/react-start/server'
 import { and, eq, isNull } from 'drizzle-orm'
@@ -20,7 +21,6 @@ import { z } from 'zod'
 
 import { auth } from './auth'
 import { getDb } from './db'
-import { env } from './db/env'
 import { space, spaceMember, user } from './db/schema'
 
 /**
@@ -185,11 +185,48 @@ export const startRegistration = createServerFn({ method: 'POST' })
 export const SPACE_COOKIE = 'swl-space'
 
 /**
+ * Whether the space cookie may carry `Secure`.
+ *
+ * `Secure` is not a hardening flag here, it is a *permission slip*: a browser
+ * refuses to store a `Secure` cookie that arrives over plain HTTP on an origin
+ * that is not a secure context. So getting it wrong does not degrade the cookie,
+ * it makes it not exist.
+ *
+ * It therefore has to follow the request the cookie is being set on, not the
+ * deployment mode. Deriving it from NODE_ENV breaks the one case that matters
+ * most — a production build reached over plain HTTP on a LAN or Tailscale name —
+ * and it breaks silently: the server sends the header, the browser drops it, and
+ * the only symptom is that the app forgets which household you were in.
+ *
+ * The same build, two origins:
+ *
+ *   http://localhost:3000   Chromium calls localhost a secure context, so
+ *                           `Secure` is allowed and the cookie is kept.
+ *   http://kaya:3000        Not a secure context. `Secure` is refused outright
+ *                           and the cookie never arrives.
+ *
+ * `getRequestProtocol` reads X-Forwarded-Proto first, which is what Traefik sets
+ * in front of the app in production, so this marks the cookie `Secure` behind
+ * TLS and does not in front of it.
+ *
+ * Exported for the tests, because the failure it prevents is invisible: nothing
+ * throws, the response looks right, and the bug surfaces only as a preference
+ * that will not stick.
+ */
+export function secureSpaceCookie(protocol: string): boolean {
+  return protocol === 'https'
+}
+
+/**
  * Remember which space to open by default.
  *
  * The URL's `?space=` wins when present, so this only decides what happens on a
  * bare /dashboard — which is the common case, because the nav links deliberately
  * do not carry a space and so must not pin one.
+ *
+ * That is also why the cookie has to survive. With no space in the nav links, a
+ * cookie the browser quietly refuses does not degrade the app — it sends you
+ * back to the first household the next time you change section.
  *
  * Membership is checked before the cookie is written. Without that, the cookie
  * would be an unchecked pointer into someone else's household that survives for
@@ -210,7 +247,10 @@ export const rememberSpace = createServerFn({ method: 'POST' })
       sameSite: 'lax',
       path: '/',
       maxAge: 60 * 60 * 24 * 365,
-      secure: env().NODE_ENV === 'production',
+      // The request's protocol, not NODE_ENV. See secureSpaceCookie above: the
+      // old form made the cookie unstoreable on any plain-HTTP origin that is
+      // not localhost, which is exactly where this bug was reported from.
+      secure: secureSpaceCookie(getRequestProtocol()),
     })
 
     return { ok: true as const }

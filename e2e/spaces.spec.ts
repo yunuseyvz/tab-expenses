@@ -8,7 +8,7 @@
  * still looks correct right up until you own two.
  */
 import { expect, test } from '@playwright/test'
-import type { Page } from '@playwright/test'
+import type { Page, Request } from '@playwright/test'
 
 test.use({ storageState: 'test-results/auth.json' })
 
@@ -157,6 +157,147 @@ test.describe('space switching', () => {
  * reads as "the animation did not happen" and is indistinguishable from a real
  * failure — which is exactly how it was mistaken for one.
  */
+/**
+ * `Secure` follows the request's protocol, not NODE_ENV.
+ *
+ * This is the whole reason switching households appeared to work on localhost
+ * and silently fail everywhere else. `Secure` was derived from
+ * `NODE_ENV === 'production'`, so a production build served over plain HTTP sent
+ * a `Secure` cookie — and a browser refuses to *store* one over plain HTTP on an
+ * origin that is not a secure context. Chromium calls localhost a secure context,
+ * so localhost kept the cookie and every other hostname dropped it. Nothing threw:
+ * the response looked correct, and the only symptom was that a household switch
+ * reverted the next time you changed section.
+ *
+ * Both branches are asserted, because the fix has two halves and the wrong half
+ * of each is invisible here. Over plain HTTP there must be no `Secure`, or the
+ * cookie cannot be stored at all. Behind the proxy there must *be* one, or the
+ * cookie would travel in the clear on the deployment it exists for.
+ */
+test.describe('the space cookie', () => {
+  test('is stored over plain HTTP and marked Secure behind the proxy', async ({
+    page,
+  }) => {
+    await page.goto('/dashboard')
+    await expect(
+      page.getByRole('heading', { name: 'Hauptstraße' }),
+    ).toBeVisible()
+
+    const switcher = page
+      .getByRole('navigation', { name: 'Main' })
+      .locator('button[aria-haspopup=listbox]')
+      .first()
+
+    // Capture the real call rather than reconstructing one: the server function's
+    // URL is a build hash and its body is a serialised envelope, so replaying the
+    // request the browser actually made is the only version of this that does not
+    // need to know either.
+    //
+    // Matched by *response* rather than by being the first POST seen. Several
+    // server functions here are POSTs — reading the remembered household is one,
+    // deliberately, so it can never be cached — so "the first POST after load" is
+    // the wrong request and silently replays a getter that sets no cookie.
+    const writesCookie = new Set<string>()
+    page.on('response', async (r) => {
+      if ((await r.allHeaders())['set-cookie']?.includes('swl-space')) {
+        writesCookie.add(r.request().url())
+      }
+    })
+    const seen: Array<Request> = []
+    page.on('request', (r) => {
+      if (r.url().includes('/_serverFn/')) seen.push(r)
+    })
+
+    // Pick a household that is *not* the current one, by name rather than by
+    // position. Index 1 is only meaningful when the account has exactly two
+    // spaces, and an account that has made a few by hand would silently turn
+    // this into a test that switches to whichever space happens to be second.
+    const current = (await switcher.getAttribute('aria-label')) ?? ''
+    await switcher.click()
+    const options = page.getByRole('option')
+    const count = await options.count()
+    let target = ''
+    let index = -1
+    for (let i = 0; i < count; i++) {
+      const label = (await options.nth(i).innerText()).split('\n')[0]!.trim()
+      if (label && !current.includes(label)) {
+        target = label
+        index = i
+        break
+      }
+    }
+    expect(
+      index,
+      'the account needs a second household to switch to',
+    ).toBeGreaterThanOrEqual(0)
+    await options.nth(index).scrollIntoViewIfNeeded()
+    await options.nth(index).click()
+    await expect(page.getByRole('heading', { name: target })).toBeVisible()
+    expect(
+      new URL(page.url()).searchParams.get('space'),
+      'a switch is only a switch if the URL names the household',
+    ).not.toBeNull()
+
+    const call = seen.find(
+      (r) => r.method() === 'POST' && writesCookie.has(r.url()),
+    )
+    expect(
+      call,
+      'switching a household must POST a server function that writes the cookie',
+    ).toBeTruthy()
+    expect(call!.postData(), 'and must carry a body to replay').toBeTruthy()
+
+    /**
+     * Replay the captured call, optionally as though a proxy had terminated TLS.
+     *
+     * Two header-reading traps, both of which fail in ways that have nothing to
+     * do with cookies:
+     *
+     *   • replaying with `request.headers()` is refused by Start's CSRF guard.
+     *     It checks `Sec-Fetch-Site` first and falls back to Origin, then Referer;
+     *     `headers()` omits the `sec-fetch-*` set, and a request with none of the
+     *     three comes back a bare 403 "Forbidden".
+     *   • reading the reply with `headers()` instead of `headersArray()` drops
+     *     `set-cookie`, so the cookie would look absent even though it arrived.
+     */
+    const headers = async (extra: Record<string, string>) => {
+      const res = await page.request.post(call!.url(), {
+        headers: {
+          ...(await call!.allHeaders()),
+          ...extra,
+        },
+        data: call!.postData()!,
+      })
+      expect(
+        res.status(),
+        'the replayed call must be accepted, not rejected by the CSRF guard',
+      ).toBe(200)
+      return res
+        .headersArray()
+        .filter((h) => h.name.toLowerCase() === 'set-cookie')
+        .map((h) => h.value)
+        .join('\n')
+    }
+
+    const overHttp = await headers({})
+    expect(overHttp, 'the server must set the space cookie').toContain(
+      'swl-space',
+    )
+    expect(
+      overHttp,
+      'over plain HTTP a Secure cookie is refused by the browser, so the ' +
+        'household switch cannot be remembered at all',
+    ).not.toMatch(/;\s*secure/i)
+
+    const overProxy = await headers({ 'x-forwarded-proto': 'https' })
+    expect(
+      overProxy,
+      'Traefik terminates TLS in front of the app, so the cookie must still be ' +
+        'marked Secure when the request arrived over HTTPS',
+    ).toMatch(/;\s*secure/i)
+  })
+})
+
 function watchContent(page: Page) {
   return page.evaluate(
     () =>
