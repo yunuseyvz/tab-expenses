@@ -10,7 +10,7 @@
  * for near-black on near-white. Every measurement here goes through a canvas,
  * which always rasterises to sRGB.
  */
-import { expect, test } from '@playwright/test'
+import { devices, expect, test } from '@playwright/test'
 
 /** Rasterise any CSS colour to sRGB through a canvas. */
 const TO_RGB = `
@@ -84,14 +84,37 @@ test.describe('design system', () => {
    * plan's palette put white on terracotta at 1.7:1 (the primary button was
    * effectively unreadable) and terracotta as link text at 1.6:1.
    */
-  test('every text token clears AA on the surface it is used on', async ({
-    page,
-  }) => {
-    await page.goto('/login')
+  // The table below was light-only for its whole life, which is a hole: on dark
+  // paper the same tokens are re-declared at different lightnesses, so a value
+  // that measures 5.9:1 in light can measure 3.1:1 in dark and nothing notices.
+  // Both themes are now measured, from the same list.
+  for (const theme of ['light', 'dark'] as const) {
+    test(`every text token clears AA on the surface it is used on (${theme})`, async ({
+      page,
+    }) => {
+      if (theme === 'dark') {
+        // Before any script runs, so the app's own resolver never paints light
+        // first and every token is read at its dark value.
+        await page.addInitScript(() => {
+          localStorage.setItem('tab:theme', 'dark')
+          document.documentElement.classList.add('dark')
+        })
+      }
+      await page.goto('/login')
+      // Without this, a broken theme switch would measure light twice and the
+      // dark half of this loop would be a silent no-op that always passes.
+      expect(
+        await page.evaluate(() =>
+          document.documentElement.classList.contains('dark')
+            ? 'dark'
+            : 'light',
+        ),
+        'theme did not apply, so the dark run would just re-measure light',
+      ).toBe(theme)
 
-    const results = await page.evaluate<
-      Array<{ pair: string; ratio: number; min: number }>
-    >(`(() => {
+      const results = await page.evaluate<
+        Array<{ pair: string; ratio: number; min: number }>
+      >(`(() => {
       const paper = window.__toRgb('var(--color-paper)')
       const raised = window.__toRgb('var(--color-paper-raised)')
       const sunk = window.__toRgb('var(--color-paper-sunk)')
@@ -115,7 +138,11 @@ test.describe('design system', () => {
         ['ink on terracotta fill', 'var(--color-ink)', window.__toRgb('var(--color-terracotta)'), 4.5],
         ['ink on terracotta-strong', 'var(--color-ink)', window.__toRgb('var(--color-terracotta-strong)'), 4.5],
         ['white on oxblood fill', '#ffffff', window.__toRgb('var(--color-oxblood)'), 4.5],
-        ['white on oxblood-ink fill', '#ffffff', window.__toRgb('var(--color-oxblood-ink)'), 4.5],
+        // The danger button's own fill token. Measuring white against
+        // oxblood-ink instead — which is what this did — is how the dark theme
+        // shipped a Delete button at 2.6:1: oxblood-ink is a *text* colour, and
+        // on dark paper it is a light step.
+        ['white on danger fill', '#ffffff', window.__toRgb('var(--color-danger-fill)'), 4.5],
         // Focus ring is a non-text element: 3:1 per WCAG 1.4.11.
         ['focus ring / paper', 'var(--color-terracotta-ink)', paper, 3],
         ['focus ring / raised', 'var(--color-terracotta-ink)', raised, 3],
@@ -143,12 +170,13 @@ test.describe('design system', () => {
       }))
     })()`)
 
-    const failures = results
-      .filter((r) => r.ratio < r.min)
-      .map((r) => `${r.pair}: ${r.ratio.toFixed(2)}:1 (needs ${r.min})`)
+      const failures = results
+        .filter((r) => r.ratio < r.min)
+        .map((r) => `${r.pair}: ${r.ratio.toFixed(2)}:1 (needs ${r.min})`)
 
-    expect(failures, failures.join('\n')).toEqual([])
-  })
+      expect(failures, failures.join('\n')).toEqual([])
+    })
+  }
 
   test('focus is visible, not suppressed', async ({ page }) => {
     await page.goto('/login')
@@ -193,6 +221,57 @@ test.describe('design system', () => {
       return !!el.querySelector('svg') || (el.textContent ?? '').includes('✓')
     })()`)
     expect(hasGlyph).toBe(true)
+  })
+
+  /**
+   * A regression guard, and the reason it is here at all.
+   *
+   * The floating bar's wrapper once carried `aria-hidden`, put there to hide a
+   * decorative gradient scrim. It hid the entire primary navigation with it:
+   * the <nav> landmark and the space menu both live inside that wrapper. Nothing
+   * broke visibly — the bar rendered, looked right, and was tappable — but a
+   * screen reader would have found no main navigation on a phone, and a
+   * Playwright locator by role could not find a button that was plainly on
+   * screen. It is exactly the class of regression that ships, because a
+   * misplaced attribute is invisible in a screenshot.
+   *
+   * `getByRole` only matches what is exposed to the accessibility tree, so
+   * asserting through it is the assertion. A CSS selector would have passed
+   * throughout, which is why the bug survived a first reading.
+   */
+  test('the floating navigation is exposed to assistive technology', async ({
+    browser,
+  }) => {
+    // The phone project, because the sidebar is display:none there and only one
+    // `navigation` landmark with this name exists to be found.
+    const context = await browser.newContext({
+      ...devices['Pixel 7'],
+      storageState: 'test-results/auth.json',
+    })
+    const page = await context.newPage()
+    await page.goto('/dashboard')
+
+    // Reachable by role, at every size: the sidebar's on desktop, the floating
+    // bar's on a phone. `.first()` because on a wide viewport both are in the
+    // DOM and only one of them is visible.
+    await expect(
+      page.getByRole('navigation', { name: 'Main' }).first(),
+    ).toBeVisible()
+
+    // And so is what it opens. A menu rendered inside an aria-hidden ancestor
+    // is the same bug one level deeper, and this is the only way it is reached
+    // in practice.
+    // `:visible`, not just `.first()`: the sidebar's switcher comes earlier in
+    // the DOM and is display:none on a phone, so `.first()` picks a button that
+    // can never be clicked and the test waits until it is over.
+    await page
+      .locator('button[aria-haspopup="listbox"]:visible')
+      .first()
+      .click()
+    await expect(page.getByRole('listbox')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'New space' })).toBeVisible()
+
+    await context.close()
   })
 
   test('reduced motion collapses animations to instant state changes', async ({
@@ -285,15 +364,19 @@ test.describe('design system', () => {
     )
     expect(isDark).toBe(true)
 
-    // Warm charcoal, not black — an inversion would land near #000.
+    // Charcoal, not black — an inversion would land near #000.
     const paper = await page.evaluate<Array<number>>(
       `window.__toRgb(getComputedStyle(document.body).backgroundColor)`,
     )
     const [r = 0, , b = 0] = paper
     expect(r).toBeGreaterThan(15)
     expect(r).toBeLessThan(80)
-    // Warm: the red channel leads.
-    expect(r).toBeGreaterThan(b)
+    // The cool tint, asserted in the direction the palette now runs. This used
+    // to be `r > b` — "warm charcoal" — which was a true statement about the
+    // palette at the time and a trap the moment the paper stopped being warm.
+    // A test that pins a hue direction silently becomes a test that pins the
+    // old brand, so it is written to say what is meant now.
+    expect(b).toBeGreaterThan(r)
   })
 
   test('the theme can be switched back to light', async ({ page }) => {

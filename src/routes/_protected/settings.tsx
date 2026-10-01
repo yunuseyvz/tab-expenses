@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link, createFileRoute, useSearch } from '@tanstack/react-router'
+import { LogOut } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
@@ -8,6 +9,8 @@ import type { CategoryIconName } from '#/lib/category-icons'
 import { iconFor } from '#/lib/category-icons'
 import { getSession, listMySpaces, updateProfile } from '#/lib/auth.functions'
 import { AppShell } from '#/components/AppShell'
+import { authClient } from '#/lib/auth-client'
+import { Avatar } from '#/components/Avatar'
 import { AvatarPicker } from '#/components/AvatarPicker'
 import { IconPicker } from '#/components/IconPicker'
 import { Switch } from '#/components/ui/Switch'
@@ -213,6 +216,7 @@ function SettingsRoute() {
   const [categoryIcon, setCategoryIcon] = useState<CategoryIconName>('receipt')
   const [personalOwner, setPersonalOwner] = useState('')
   const [personal, setPersonal] = useState(false)
+  const [signingOut, setSigningOut] = useState(false)
 
   const members = useQuery({
     ...membersQuery(spaceId ?? ''),
@@ -228,6 +232,16 @@ function SettingsRoute() {
 
   const invalidate = () =>
     queryClient.invalidateQueries({ queryKey: ['spaces', spaceId] })
+
+  // A full navigation rather than a router refresh: Better Auth clears the
+  // session cookie, and every loader on every route is keyed to it, so this is
+  // the one action where an in-app transition would show the previous user's
+  // screen for a frame.
+  async function signOut() {
+    setSigningOut(true)
+    await authClient.signOut()
+    window.location.href = '/login'
+  }
 
   const saveAvatar = useMutation({
     mutationFn: (avatar: string | null) => updateProfile({ data: { avatar } }),
@@ -300,7 +314,48 @@ function SettingsRoute() {
   return (
     <AppShell>
       <main id="main" className="mx-auto w-full max-w-5xl px-4 py-4 sm:px-6">
-        <h1 className="font-serif text-2xl sm:text-3xl mb-4">Settings</h1>
+        <h1 className="text-2xl sm:text-3xl mb-4 tracking-tight">Settings</h1>
+
+        {/* The account, first.
+         *
+         * Signing out used to live in an avatar menu in the mobile top bar, and
+         * in the foot of the desktop sidebar. Both are poor places for it: one
+         * is a 30px target you have to guess at, and the other is a scroll
+         * away on a settings screen that is otherwise entirely about the
+         * household rather than about you. A phone had no top bar at all after
+         * it was removed, so this is now the only way out.
+         *
+         * It sits above the space and member sections because none of them are
+         * about the reader. */}
+        <Card className="mb-4">
+          <div className="flex items-center gap-3">
+            <Avatar
+              avatarKey={me.data?.user.avatar ?? null}
+              // The id, not the name: renaming yourself should not change your face.
+              seed={me.data?.user.id ?? 'anonymous'}
+              name={me.data?.user.name}
+              size={38}
+            />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium truncate">
+                {me.data?.user.name}
+              </p>
+              <p className="text-xs text-ink-faint truncate">
+                {me.data?.user.email}
+              </p>
+            </div>
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={signingOut}
+              onClick={() => void signOut()}
+              className="shrink-0"
+            >
+              <LogOut size={15} aria-hidden />
+              {signingOut ? 'Signing out…' : 'Sign out'}
+            </Button>
+          </div>
+        </Card>
 
         {spaces.length > 1 && (
           <Card className="mb-4">

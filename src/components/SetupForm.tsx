@@ -97,7 +97,7 @@ export function SetupForm({
     <div className="w-full max-w-md">
       <header className="mb-6">
         <TabLogo wordmark={APP_NAME} markSize={24} className="mb-4" />
-        <h1 className="font-serif text-3xl mt-1">{title}</h1>
+        <h1 className="text-3xl mt-1 tracking-tight">{title}</h1>
         <p className="text-sm text-ink-muted mt-1.5">{blurb}</p>
       </header>
 

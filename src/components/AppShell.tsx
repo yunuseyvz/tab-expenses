@@ -28,8 +28,8 @@ import {
 
 import { APP_NAME } from '#/lib/app-meta'
 import { Avatar } from '#/components/Avatar'
-import { TabLogo, TabMark } from '#/components/TabLogo'
 import { SpaceSwitcher } from '#/components/SpaceSwitcher'
+import { TabLogo } from '#/components/TabLogo'
 import { useCurrentSpace } from '#/hooks/useCurrentSpace'
 import { authClient } from '#/lib/auth-client'
 import { cn } from '#/lib/cn'
@@ -196,79 +196,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
 
-      {/* ── mobile: top bar ───────────────────────────────────────────── */}
-      {/* No settings gear here: that screen is already one of the four bottom
-          tabs, so a second route to it in the corner is redundant. The right
-          slot is the account, which is the one thing the bottom bar cannot
-          reach. */}
-      <div
-        className="md:hidden sticky top-0 z-30 flex items-center justify-between
-        px-4 h-12 border-b border-rule
-        backdrop-blur-[var(--material-blur)]
-        bg-[var(--surface-material)]
-        shadow-[var(--material-edge)]"
-      >
-        <div className="flex items-center gap-1 min-w-0">
-          <Link
-            to="/dashboard"
-            search={NAV_SEARCH['/dashboard']}
-            aria-label={APP_NAME}
-            className="shrink-0 pl-1 pr-0.5 -ml-1 rounded-[var(--radius-sm)]
-              transition-transform duration-150 active:scale-95
-              motion-reduce:active:scale-100"
-          >
-            <TabMark size={20} />
-          </Link>
-          <SpaceSwitcher compact />
-        </div>
-        <div ref={accountRef} className="relative">
-          <button
-            type="button"
-            onClick={() => setAccountOpen((o) => !o)}
-            aria-expanded={accountOpen}
-            aria-haspopup="menu"
-            aria-label="Account"
-            className="rounded-full transition-transform duration-150
-              active:scale-95 motion-reduce:active:scale-100"
-          >
-            <Avatar
-              avatarKey={user.avatar}
-              seed={user.id}
-              name={user.name}
-              size={30}
-            />
-          </button>
-
-          {accountOpen && (
-            <div
-              role="menu"
-              className="absolute z-50 right-0 mt-1.5 w-[13rem] p-1.5
-                rounded-[var(--radius-md)] border border-rule
-                bg-[var(--color-paper-raised)] shadow-[var(--shadow-float)]"
-            >
-              <div className="px-2.5 py-2">
-                <p className="truncate text-sm font-medium">{user.name}</p>
-                <p className="truncate text-xs text-ink-faint">{user.email}</p>
-              </div>
-              <div className="border-t border-rule pt-1 mt-1">
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => void signOut()}
-                  disabled={signingOut}
-                  className="w-full flex items-center gap-2.5 rounded-[var(--radius-sm)]
-                    px-2.5 py-2 text-sm text-ink-muted
-                    transition-colors duration-150
-                    hover:bg-[var(--color-paper-sunk)] hover:text-ink"
-                >
-                  <LogOut size={16} aria-hidden />
-                  {signingOut ? 'Signing out…' : 'Sign out'}
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
+      {/* No top bar on a phone, and none is needed.
+       *
+       * It used to hold the mark, the space switcher and the account on every
+       * screen: two controls that never change, in a 48px strip of chrome,
+       * above content that does. The space switcher moved into the floating
+       * bar — where the desktop sidebar keeps it too — and the account moved
+       * to the top of Settings, next to the name and theme that belong with
+       * it. The greeting on the dashboard is now the first thing on a phone's
+       * page, which is a better use of that space than a wordmark.
+       *
+       * Consequence: content starts at the top of the page, so the main
+       * wrapper no longer carries the pt-14 this bar used to occupy.
+       */}
 
       {/* Keyed on the space, so the entrance replays when the household
           changes and not when you move between screens. A cross-fade out
@@ -280,30 +220,68 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         initial={settled ? { opacity: 0, y: reduceMotion ? 0 : 10 } : false}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-        className="flex-1 min-w-0 pb-20 md:pb-0"
+        className="flex-1 min-w-0 pb-24 md:pb-0"
       >
         {children}
       </motion.div>
 
-      {/* ── mobile: bottom nav ────────────────────────────────────────── */}
-      <nav
-        aria-label="Main"
-        className="md:hidden fixed bottom-0 inset-x-0 z-30
-          border-t border-rule
-          backdrop-blur-[var(--material-blur)]
-          bg-[var(--surface-material)]
-          shadow-[var(--material-edge),0_-4px_16px_-6px_rgb(70_45_25/0.2)]"
+      {/* ── mobile: the floating bar ───────────────────────────────────
+       * The desktop sidebar, sideways: which household you are in, then
+       * the four screens. The space switcher leads because it leads in the
+       * sidebar, and a hairline separates it for the same reason the sidebar
+       * has a rule above its nav — they are different kinds of thing, and
+       * running them together is what makes a bottom bar feel like a row of
+       * unrelated icons.
+       *
+       * Detached from the bottom edge rather than pinned to it, which is the
+       * whole point: a bar welded to the bezel is a bar the content has to
+       * be padded away from, and a bar floating in the middle of the screen
+       * is a loose object that casts a shadow and takes its own space.
+       */}
+      {/* NOT aria-hidden. An earlier version put it on this wrapper, to hide the
+          decorative scrim, and that hid the entire primary navigation from the
+          accessibility tree along with it — the <nav> landmark and the space
+          menu both live inside here. It failed silently: the bar still rendered
+          and still looked right, and nothing complained until a test asked for a
+          button by role and could not find a button that was plainly on screen.
+          The scrim is the only decorative thing here, so that is what carries
+          the attribute. */}
+      <div
+        className="md:hidden fixed inset-x-0 bottom-0 z-30 pointer-events-none
+          pb-[max(0.75rem,env(safe-area-inset-bottom))]"
       >
-        <ul className="grid grid-cols-4">
-          {NAV.map((item) => (
-            <li key={item.to}>
-              <BottomLink {...item} active={pathname === item.to} />
-            </li>
-          ))}
-        </ul>
-        {/* Keeps the last tab clear of the iOS home indicator. */}
-        <div className="h-[env(safe-area-inset-bottom)]" />
-      </nav>
+        {/* The scroll edge effect. Content dissolves into the paper as it passes
+            under the glass, so the bar's top rim is a gradient rather than a
+            cut. Sits behind the bar, and is the only reason a translucent bar
+            over a scrolling list stays readable. */}
+        <div
+          aria-hidden
+          className="absolute inset-0 -z-10 bg-[var(--glass-scrim)]"
+        />
+
+        <nav
+          aria-label="Main"
+          className="pointer-events-auto mx-3 flex items-stretch gap-1
+            rounded-full border border-rule/60
+            bg-[var(--glass-surface)]
+            backdrop-blur-[var(--glass-blur)]
+            backdrop-saturate-[var(--glass-saturate)]
+            shadow-[var(--glass-edge),var(--glass-shadow)]
+            px-1.5 py-[0.45rem]"
+        >
+          <SpaceSwitcher variant="avatar" menuSide="above" />
+
+          <span aria-hidden className="w-px self-stretch my-1.5 bg-rule/70" />
+
+          <ul className="flex flex-1 items-stretch">
+            {NAV.map((item) => (
+              <li key={item.to} className="flex-1">
+                <BottomLink {...item} active={pathname === item.to} />
+              </li>
+            ))}
+          </ul>
+        </nav>
+      </div>
     </div>
   )
 }
@@ -354,45 +332,59 @@ function BottomLink({
       to={to}
       search={NAV_SEARCH[to]}
       aria-current={active ? 'page' : undefined}
-      className={cn(
-        'flex flex-col items-center justify-center gap-1 h-[4.25rem] relative',
-        'pb-1',
-        // 11px was tracking as cramped and slightly misaligned against the
-        // icons — it is a label, not a caption, and it sits under a 20px glyph.
-        'text-[12px] leading-none tracking-[0.005em]',
-        'transition-[color] duration-150',
-        active ? 'text-terracotta-ink' : 'text-ink-muted',
-      )}
+      className="relative flex flex-col items-center justify-center gap-0.5
+        rounded-full px-1.5 pt-1.5 pb-1 min-w-0
+        transition-colors duration-200
+        active:scale-[0.94] motion-reduce:active:scale-100"
     >
       {/*
-       * The indicator slides between tabs rather than blinking on and off.
+       * A tinted pill behind the active tab, sliding between them.
        *
-       * `layoutId` hands the same element to whichever tab is active, so
-       * motion interpolates its position and width across the gap instead of
-       * one tab's bar fading out while another fades in. That continuity is
-       * most of what makes a bottom bar feel like one object rather than four.
+       * `layoutId` hands the same element to whichever tab is active, so motion
+       * interpolates its position and width across the gap instead of one tab's
+       * pill vanishing while another appears. That continuity is most of what
+       * makes a bar feel like one object rather than four.
        *
-       * It is also still a *shape* change, not only a colour change, so the
-       * active tab survives a greyscale screenshot and colour-blind vision.
+       * This replaced a 3px rule above the icon, which is how a tab bar looked
+       * before the material arrived. A tinted capsule is the newer idiom, and
+       * Apple's guidance is to tint selectively — the one thing that is
+       * selected — rather than tint the bar as a whole.
+       *
+       * It is a *shape* change as well as a colour one, so the active tab
+       * survives a greyscale screenshot and colour-blind vision.
        */}
-      <span aria-hidden className="h-[3px] w-7 rounded-full flex items-center">
-        {active && (
-          <motion.span
-            layoutId="bottom-nav-indicator"
-            className="h-[3px] w-7 rounded-full"
-            style={{ background: 'var(--color-terracotta)' }}
-            transition={{ type: 'spring', stiffness: 420, damping: 34 }}
-          />
-        )}
-      </span>
+      {active && (
+        <motion.span
+          layoutId="bottom-nav-pill"
+          className="absolute inset-0 rounded-full"
+          style={{
+            background:
+              'color-mix(in oklab, var(--color-terracotta) 14%, transparent)',
+          }}
+          transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+        />
+      )}
+
       <motion.span
-        animate={{ scale: active ? 1 : 0.92, y: active ? -1 : 0 }}
+        animate={{ scale: active ? 1 : 0.94 }}
         transition={{ type: 'spring', stiffness: 380, damping: 28 }}
-        className="contents"
+        className="relative"
       >
-        <Icon size={21} aria-hidden />
+        <Icon
+          size={21}
+          aria-hidden
+          className={active ? 'text-terracotta-ink' : 'text-ink-muted'}
+        />
       </motion.span>
-      <span className="leading-none">{label}</span>
+
+      <span
+        className={cn(
+          'relative block text-[11.5px] leading-none tracking-[0.01em] truncate',
+          active ? 'text-terracotta-ink' : 'text-ink-muted',
+        )}
+      >
+        {label}
+      </span>
     </Link>
   )
 }
@@ -485,7 +477,7 @@ export function Sheet({
               />
             </div>
             <div className="flex items-center justify-between px-5 py-2.5 shrink-0">
-              <h2 className="font-serif text-xl">{title}</h2>
+              <h2 className="text-xl tracking-tight">{title}</h2>
               <button
                 type="button"
                 onClick={onClose}

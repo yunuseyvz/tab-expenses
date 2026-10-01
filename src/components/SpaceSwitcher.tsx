@@ -6,11 +6,17 @@
  * reload, and the remembered-space cookie, so the nav links — which carry no
  * space — land on whichever space you last actually looked at.
  *
- * Two shapes. `panel` is the sidebar's dedicated section: a card with the
- * household's initial, its currency and how many spaces the account holds, so
- * "which household am I in" is answered by the chrome rather than by reading the
- * page heading. `compact` is the mobile top bar, where there is only room for a
- * name and a chevron.
+ * Two shapes, because there are two places it appears and they are mirrors of
+ * each other. `panel` is the sidebar's dedicated section: a card with the
+ * household's mark, its name, its currency and how many spaces the account holds,
+ * so "which household am I in" is answered by the chrome rather than by reading
+ * the page heading. `avatar` is the same switcher reduced to the mark, sitting
+ * in the floating bottom bar where four tabs and a household's *name* do not fit
+ * across a phone — the same information the sidebar leads with, first.
+ *
+ * A third shape used to exist: the name in the mobile top bar. It was removed
+ * when the bar took over, because a phone was then showing the same household
+ * twice — as a name at the top and as a mark at the bottom.
  *
  * Hand-rolled rather than pulled from a primitives library: a disclosure, a
  * list, and a click-outside handler.
@@ -31,11 +37,17 @@ import { spaceKeys } from '#/lib/session'
 type Space = ReturnType<typeof useCurrentSpace>['spaces'][number]
 
 export function SpaceSwitcher({
-  compact,
-  variant = 'compact',
+  variant = 'panel',
+  menuSide = 'below',
 }: {
-  compact?: boolean
-  variant?: 'compact' | 'panel'
+  /** `panel` is the sidebar's card; `avatar` is the mark alone, in the bar. */
+  variant?: 'panel' | 'avatar'
+  /**
+   * Which way the list opens. In the floating bottom bar the trigger is at the
+   * bottom of the screen, so a menu that dropped downward would open off the
+   * bottom edge — which is the one direction that cannot be scrolled to reach.
+   */
+  menuSide?: 'below' | 'above'
 }) {
   const { spaces, space, spaceId } = useCurrentSpace()
   const navigate = useNavigate()
@@ -87,6 +99,7 @@ export function SpaceSwitcher({
 
   const menu = (
     <SpaceMenu
+      menuSide={menuSide}
       spaces={spaces}
       currentId={spaceId}
       onPick={(id) => pick.mutate(id)}
@@ -130,9 +143,8 @@ export function SpaceSwitcher({
           onToggle={() => setOpen((o) => !o)}
         />
       ) : (
-        <CompactTrigger
-          name={space?.name ?? 'No space'}
-          compact={compact}
+        <AvatarTrigger
+          space={space}
           open={open}
           onToggle={() => setOpen((o) => !o)}
         />
@@ -199,18 +211,26 @@ function PanelTrigger({
   )
 }
 
-function CompactTrigger({
-  name,
-  compact,
+/**
+ * The switcher as the mark alone, for the floating bar.
+ *
+ * The household's name is not lost by dropping it: it is in the aria-label and
+ * the tooltip, and it is the first line of the menu that opens from here. Four
+ * tabs plus a household's *name* does not fit across a phone, and the sidebar
+ * leads with the mark anyway, so the mark alone is the same information the
+ * sidebar gives first.
+ */
+function AvatarTrigger({
+  space,
   open,
   onToggle,
 }: {
-  name: string
-  compact?: boolean
+  space: Space | null
   open: boolean
   onToggle: () => void
 }) {
   const menuId = useId()
+  const name = space?.name ?? 'No space'
   return (
     <button
       type="button"
@@ -218,20 +238,24 @@ function CompactTrigger({
       aria-expanded={open}
       aria-controls={menuId}
       aria-haspopup="listbox"
-      className={cn(
-        'flex items-center gap-1.5 rounded-[var(--radius-md)] px-2.5 py-1.5',
-        'transition-[background-color] duration-150 hover:bg-[var(--color-paper-sunk)]',
-        compact ? 'text-sm' : 'text-[15px]',
-      )}
+      aria-label={`Space: ${name}`}
+      title={name}
+      className="flex items-center rounded-full px-1.5
+        transition-[background-color,transform] duration-150
+        hover:bg-[var(--color-paper-sunk)]
+        active:scale-[0.96] motion-reduce:active:scale-100"
     >
-      <span className="font-serif tracking-tight truncate max-w-[9rem]">
-        {name}
-      </span>
+      <Avatar
+        avatarKey={space?.icon}
+        seed={space?.id ?? 'none'}
+        name={space?.name}
+        size={30}
+      />
       <ChevronDown
-        size={15}
+        size={14}
         aria-hidden
         className={cn(
-          'text-ink-muted transition-transform duration-200',
+          'shrink-0 -ml-0.5 text-ink-muted transition-transform duration-200',
           open && 'rotate-180',
         )}
       />
@@ -240,12 +264,14 @@ function CompactTrigger({
 }
 
 function SpaceMenu({
+  menuSide,
   spaces,
   currentId,
   onPick,
   onNew,
   onEdit,
 }: {
+  menuSide: 'below' | 'above'
   spaces: Array<Space>
   currentId: string | null
   onPick: (id: string) => void
@@ -259,10 +285,11 @@ function SpaceMenu({
       role="listbox"
       aria-label="Switch space"
       className={cn(
-        'absolute z-50 mt-1.5 min-w-[15rem]',
-        // In the sidebar the trigger is full-width, so the menu hangs off its
-        // left edge; in the top bar it should stay inside the viewport instead.
-        'left-0',
+        'absolute z-50 min-w-[15rem]',
+        // Opened upward from the bottom bar, downward everywhere else. `bottom-full`
+        // rather than a negative margin, so the gap survives the bar's own
+        // padding instead of being measured from the wrong edge.
+        menuSide === 'above' ? 'bottom-full left-0 mb-1.5' : 'left-0 mt-1.5',
         'rounded-[var(--radius-md)] border border-rule',
         'bg-[var(--color-paper-raised)] p-1 shadow-[var(--shadow-float)]',
       )}

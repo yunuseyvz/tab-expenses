@@ -1,12 +1,17 @@
 import { useMemo, useState } from 'react'
-import { createFileRoute, useNavigate, useSearch } from '@tanstack/react-router'
+import {
+  createFileRoute,
+  useNavigate,
+  useRouteContext,
+  useSearch,
+} from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 
 import type { ExpenseRow } from '#/lib/expense.functions'
 import type { ListFilter } from '#/lib/session'
 import type { PeriodPreset } from '#/lib/period'
 import { AppShell } from '#/components/AppShell'
-import { NewExpenseButton } from '#/components/NewExpenseButton'
+import { DashboardHeader } from '#/components/DashboardHeader'
 import { Dashboard } from '#/components/dashboard/Dashboard'
 import { ExpenseSheet } from '#/components/expense/ExpenseSheet'
 import { PeriodFilter } from '#/components/PeriodFilter'
@@ -95,6 +100,10 @@ function DashboardRoute() {
     setSheetOpen(true)
   }
 
+  // Already resolved for the route guard, so reading it from context is free
+  // rather than a second round trip.
+  const { user } = useRouteContext({ from: '/_protected' })
+
   const period = useMemo(
     () => resolvePeriod(search.period, search.from, search.to),
     [search.period, search.from, search.to],
@@ -129,17 +138,18 @@ function DashboardRoute() {
   return (
     <AppShell>
       <main id="main" className="mx-auto w-full max-w-5xl px-4 py-4 sm:px-6">
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-          <div>
-            <h1 className="font-serif text-2xl sm:text-3xl">
-              {space?.name ?? 'Dashboard'}
-            </h1>
-            <p className="text-xs text-ink-faint tnum">
-              {space?.currency} · {periodLabel(period)}
-            </p>
-          </div>
-          <NewExpenseButton onClick={openNew} disabled={!spaceId} />
-        </div>
+        {/* The greeting, the app's mark and the reader's avatar, in place of the
+            mobile top bar that used to sit above this. The period label is
+            passed in already resolved so this line and the filter below it can
+            never describe different windows. */}
+        <DashboardHeader
+          user={user}
+          spaceName={space?.name}
+          currency={space?.currency}
+          periodLabel={periodLabel(period)}
+          onNewExpense={openNew}
+          newDisabled={!spaceId}
+        />
 
         <PeriodFilter
           current={search.period}

@@ -148,7 +148,7 @@ function ExpensesRoute() {
       <main id="main" className="mx-auto w-full max-w-5xl px-4 py-4 sm:px-6">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <div>
-            <h1 className="font-serif text-2xl sm:text-3xl">Expenses</h1>
+            <h1 className="text-2xl sm:text-3xl tracking-tight">Expenses</h1>
             <p className="text-xs text-ink-faint tnum">
               {expenses.data?.length ?? 0} entries ·{' '}
               {formatMoney(totalShown, currency)}

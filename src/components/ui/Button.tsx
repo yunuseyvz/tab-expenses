@@ -39,7 +39,9 @@ const buttonVariants = cva(
         secondary:
           'bg-transparent text-ink border border-rule hover:border-terracotta-ink',
         ghost: 'bg-transparent text-ink-muted hover:text-ink',
-        danger: 'bg-oxblood-ink text-white hover:brightness-110',
+        // A per-theme token, not oxblood-ink: that is a text colour, and on
+        // dark paper it is a light step, so white on it fails (2.6:1).
+        danger: 'bg-[var(--color-danger-fill)] text-white hover:brightness-110',
         link: 'bg-transparent text-terracotta-ink underline underline-offset-4 p-0 h-auto',
       },
       size: {

@@ -7,9 +7,9 @@
  * wherever texture would cost clarity. Rules that are load-bearing, not
  * stylistic:
  *
- *  · Light source is top-left, everywhere. Every shadow pairs a warm-dark
- *    (70 45 25 — never neutral black, which reads as digital) with a
- *    warm-light (255 250 240).
+ *  · Light source is top-left, everywhere. Every shadow pairs a tinted dark
+ *    (28 34 46 — never neutral black, which reads as digital, and never a warm
+ *    brown, which reads as grime on a neutral ground) with a white highlight.
  *  · Shadows are two-part: a tight contact shadow plus a soft diffuse one.
  *  · Grain is page-background only, static, and never behind body text.
  *  · Animate transform/opacity only. box-shadow and filter are not
@@ -19,10 +19,24 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-  /* ── paper ─────────────────────────────────────────────────────────── */
-  --color-paper: oklch(0.965 0.012 85);
-  --color-paper-raised: oklch(0.978 0.01 85);
-  --color-paper-sunk: oklch(0.93 0.014 85);
+  /* ── paper ─────────────────────────────────────────────────────────────
+   * Neutral, not warm, and deliberately so.
+   *
+   * These were hue 85 — a cream that, with the terracotta accent, measured
+   * #fbf7f0 against a published brand's #FAF9F5 and #d97c50 against its
+   * #D97757. A distance of 5.5 and 8.6 out of 255. That is not a palette
+   * inspired by another one; it is the same two colours, and anyone who uses
+   * that product recognises the app before reading a word of it.
+   *
+   * The fix is not a different accent. It is the ground: hue 255 at a chroma of
+   * 0.004 is a true neutral with the faintest cool cast, so the same terracotta
+   * stops being part of a warm monochrome and becomes an accent sitting on grey.
+   * Chroma is deliberately tiny — a neutral with visible blue in it reads as
+   * "blue-grey theme", which is a different look, not a less Claude one.
+   */
+  --color-paper: oklch(0.968 0.004 255);
+  --color-paper-raised: oklch(0.986 0.003 255);
+  --color-paper-sunk: oklch(0.938 0.0055 255);
 
   /* ── ink ───────────────────────────────────────────────────────────────
    * Lightness values are tuned so every level clears WCAG AA (4.5:1) against
@@ -38,9 +52,9 @@
    * faint text is additionally differentiated by size and letterspacing rather
    * than by being lighter still.
    */
-  --color-ink: oklch(0.28 0.02 60);
-  --color-ink-muted: oklch(0.46 0.018 60);
-  --color-ink-faint: oklch(0.52 0.014 60);
+  --color-ink: oklch(0.26 0.009 255);
+  --color-ink-muted: oklch(0.455 0.008 255);
+  --color-ink-faint: oklch(0.515 0.007 255);
 
   /* ── accents ───────────────────────────────────────────────────────────
    * Each accent has two roles with genuinely different contrast requirements,
@@ -66,22 +80,32 @@
   --color-ochre-ink: oklch(0.44 0.11 80); /* text ≥ 4.5:1      */
   --color-sage: oklch(0.5 0.075 150); /* fill and text ≥ 4.5:1  */
   --color-sage-ink: oklch(0.44 0.075 150);
-  --color-oxblood: oklch(0.48 0.14 20); /* fill, white label 7.0:1 */
-  --color-oxblood-ink: oklch(0.42 0.13 20); /* text and danger fill */
-  --color-rule: oklch(0.86 0.016 80);
+  --color-oxblood: oklch(0.48 0.14 20);
+  --color-oxblood-ink: oklch(0.42 0.13 20); /* text on paper, ≥ 4.5:1 */
+  /* The danger BUTTON's fill, which is not the same token as oxblood-ink and
+   * cannot be. oxblood-ink is a *text* colour, so on dark paper it is a light
+   * step — and a white label on a light fill is 2.6:1, which is why the Delete
+   * button was effectively unreadable in dark mode. Only a test that loads the
+   * dark palette ever saw it. */
+  --color-danger-fill: oklch(0.42 0.13 20); /* white on this: 9.1:1 */
+  --color-rule: oklch(0.875 0.006 255);
 
   /* ── elevation: the heart of the effect ────────────────────────────── */
   /* pressed into the paper — inputs, wells, pressed toggles */
+  /* The shadow colour had to move with the paper. A warm brown at 0.18 over a
+   * neutral ground is not a shadow, it is a smudge — the hue difference between
+   * what casts the shade and what receives it is visible at exactly the moment
+   * the eye goes looking for depth. */
   --shadow-deboss:
-    inset 0 1px 2px rgb(70 45 25 / 0.18), inset 0 -1px 0 rgb(255 250 240 / 0.7);
+    inset 0 1px 2px rgb(28 34 46 / 0.16), inset 0 -1px 0 rgb(255 255 255 / 0.7);
   /* sitting on top of the paper — cards, list rows */
   --shadow-raise:
-    0 1px 1px rgb(70 45 25 / 0.1), 0 4px 10px -2px rgb(70 45 25 / 0.12);
+    0 1px 1px rgb(28 34 46 / 0.09), 0 4px 10px -2px rgb(28 34 46 / 0.11);
   /* above everything — sheets, dialogs, popovers */
   --shadow-float:
-    0 2px 4px rgb(70 45 25 / 0.08), 0 12px 28px -6px rgb(70 45 25 / 0.2);
+    0 2px 4px rgb(28 34 46 / 0.07), 0 12px 28px -6px rgb(28 34 46 / 0.18);
   /* the active state of a button: 1px lower and flatter */
-  --shadow-press: inset 0 2px 4px rgb(70 45 25 / 0.22);
+  --shadow-press: inset 0 2px 4px rgb(28 34 46 / 0.2);
 
   /* ── radii ────────────────────────────────────────────────────────────
    * A real scale rather than hand-written `rounded-[3px]` on every component.
@@ -134,9 +158,50 @@
    * the opaque raised token instead. Applying it to cards would blur the flat
    * paper behind them into nothing and buy nothing but a compositor layer.
    */
-  --surface-material: oklch(0.978 0.01 85 / 0.78);
+  /* A translucent overlay, so it is a surface in its own right and has to
+     track the paper it sits on. Left on the old warm hue it rendered the
+     sidebar cream while the content behind it went neutral — which reads
+     as two themes on one page rather than as a missed token. */
+  --surface-material: oklch(0.986 0.003 255 / 0.78);
   --material-blur: 18px;
   --material-edge: inset 0 1px 0 rgb(255 255 255 / 0.6);
+
+  /* ── the floating navigation bar ─────────────────────────────────────
+   * Apple's Liquid Glass, to the extent CSS allows: the tab bar detaches
+   * from the bezel, refracts what passes behind it, and carries a specular
+   * edge where light catches its top rim.
+   *
+   * SATURATE IS NOT OPTIONAL. A plain backdrop-blur() averages the colours
+   * behind the bar toward grey, which is what makes most "glass" CSS look like
+   * frosted plastic. Boosting saturation as well restores the chroma the blur
+   * removed, so what you see through the bar still looks like the page — just
+   * out of focus. That is the whole difference between glass and grey soup.
+   *
+   * The alpha is low (0.62) for the same reason: the bar is a lens, not a
+   * panel. Combined with a blur strong enough to kill the text underneath it
+   * while leaving the shapes readable, that is what keeps the content behind
+   * legible *through* the bar rather than merely hidden by it.
+   */
+  --glass-surface: oklch(0.986 0.003 255 / 0.62);
+  --glass-blur: 20px;
+  --glass-saturate: 180%;
+  /* A hairline that is brighter along the top rim than the sides, which is what
+   * a rounded glass edge does to a light source above and to the left. */
+  --glass-edge:
+    inset 0 1px 0 rgb(255 255 255 / 0.9),
+    inset 0 0 0 0.5px rgb(255 255 255 / 0.4);
+  /* Deeper than --shadow-float, because this bar is not in a panel: it is a
+   * loose object over the content, so it has to cast to read as detached. */
+  --glass-shadow:
+    0 1px 2px rgb(28 34 46 / 0.05), 0 6px 16px -4px rgb(28 34 46 / 0.14),
+    0 18px 40px -12px rgb(28 34 46 / 0.16);
+  /* The scroll edge effect: content dissolving into the background as it passes
+   * under the glass, so the bar's top rim is not a hard cut across the page. */
+  --glass-scrim: linear-gradient(
+    to top,
+    oklch(0.968 0.004 255 / 0.9) 34%,
+    oklch(0.968 0.004 255 / 0) 100%
+  );
 
   color-scheme: light;
 }
@@ -163,13 +228,13 @@
    * cannot serve both, which is why every accent carries two tokens.
    * Ratios asserted in e2e/design.spec.ts; measured in-browser, not by hand.
    */
-  --color-paper: oklch(0.185 0.006 70);
-  --color-paper-raised: oklch(0.262 0.007 70);
-  --color-paper-sunk: oklch(0.145 0.005 70);
+  --color-paper: oklch(0.19 0.006 255);
+  --color-paper-raised: oklch(0.265 0.007 255);
+  --color-paper-sunk: oklch(0.15 0.005 255);
 
-  --color-ink: oklch(0.95 0.004 85);
-  --color-ink-muted: oklch(0.78 0.007 80);
-  --color-ink-faint: oklch(0.7 0.007 80);
+  --color-ink: oklch(0.95 0.004 255);
+  --color-ink-muted: oklch(0.78 0.006 255);
+  --color-ink-faint: oklch(0.7 0.006 255);
 
   --color-terracotta: oklch(0.52 0.105 45); /* fill, ink label 4.76:1  */
   --color-terracotta-strong: oklch(
@@ -182,10 +247,11 @@
   --color-sage-ink: oklch(0.74 0.065 150);
   --color-oxblood: oklch(0.525 0.125 20);
   --color-oxblood-ink: oklch(0.72 0.11 20);
+  --color-danger-fill: oklch(0.525 0.125 20); /* white on this: 5.8:1 */
   /* Hairlines are non-text and need 3:1 against the surface they sit on
    * (WCAG 1.4.11), which on a dark surface means a much lighter line than
    * intuition suggests. */
-  --color-rule: oklch(0.55 0.008 75);
+  --color-rule: oklch(0.55 0.008 255);
 
   --shadow-deboss:
     inset 0 1px 2px rgb(0 0 0 / 0.55), inset 0 -1px 0 rgb(255 255 255 / 0.045);
@@ -202,11 +268,51 @@
    * behind it show through, softened by a backdrop blur, with a hairline of
    * light along the top edge. Only works on surfaces that actually have
    * something behind them, so it is for chrome — bars, nav, sheets — not cards. */
-  --surface-material: oklch(0.262 0.007 70 / 0.72);
+  --surface-material: oklch(0.265 0.007 255 / 0.72);
   --material-blur: 20px;
   --material-edge: inset 0 1px 0 rgb(255 255 255 / 0.06);
 
+  /* Darker and less transparent than the light version. Apple notes that the
+   * material flips between appearances based on what is behind it, and the
+   * usual answer on a dark ground is *less* transparency, not more — a pale
+   * film over charcoal reads as haze. */
+  --glass-surface: oklch(0.265 0.007 255 / 0.58);
+  --glass-blur: 22px;
+  --glass-saturate: 160%;
+  --glass-edge:
+    inset 0 1px 0 rgb(255 255 255 / 0.12),
+    inset 0 0 0 0.5px rgb(255 255 255 / 0.08);
+  --glass-shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px -6px rgb(0 0 0 / 0.55);
+  --glass-scrim: linear-gradient(
+    to top,
+    oklch(0.19 0.006 255 / 0.92) 34%,
+    oklch(0.19 0.006 255 / 0) 100%
+  );
+
   color-scheme: dark;
+}
+
+/* Where translucency is switched off at the OS level, the glass becomes an
+ * opaque surface. Not a stylistic preference: a bar that relies on blur to keep
+ * the text behind it unreadable becomes a legibility problem the moment the blur
+ * is gone, so the fill has to take over that job on its own. */
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --glass-surface: oklch(0.986 0.003 255);
+    --glass-scrim: linear-gradient(
+      to top,
+      oklch(0.968 0.004 255) 60%,
+      oklch(0.968 0.004 255 / 0) 100%
+    );
+  }
+  .dark {
+    --glass-surface: oklch(0.265 0.007 255);
+    --glass-scrim: linear-gradient(
+      to top,
+      oklch(0.19 0.006 255) 60%,
+      oklch(0.19 0.006 255 / 0) 100%
+    );
+  }
 }
 
 @layer base {

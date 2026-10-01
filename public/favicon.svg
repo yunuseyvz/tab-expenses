@@ -12,26 +12,64 @@
 
     The background is a rounded square rather than a circle, because Android
     already masks the icon to its own shape and a circle would be masked twice.
+
+    Lit from the top-left, the same way the app is: a four-stop gradient running
+    away from that corner, a sheen in it, a fine diagonal hatch across it, a
+    darkened far corner, and a rim that is bright where the light lands and dark
+    where it does not. The rim does most of the work — at 16px it is very nearly
+    the whole cue, because a flat fill reads as a coloured square and an edged one
+    reads as an object.
+
+    This is the same material as src/components/TabLogo.tsx, kept in step by hand.
+    A favicon cannot import from the bundle, so the two files are duplicates and
+    have to be edited together.
   -->
   <defs>
-    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#d9793f" />
-      <stop offset="1" stop-color="#c2603a" />
+    <linearGradient id="base" x1="0.08" y1="0" x2="0.86" y2="1">
+      <stop offset="0" stop-color="#e59463" />
+      <stop offset="0.38" stop-color="#d0713f" />
+      <stop offset="0.78" stop-color="#ad5730" />
+      <stop offset="1" stop-color="#8f4425" />
     </linearGradient>
+    <radialGradient id="sheen" cx="0.22" cy="0.14" r="0.85">
+      <stop offset="0" stop-color="#fff" stop-opacity="0.4" />
+      <stop offset="0.45" stop-color="#fff" stop-opacity="0.09" />
+      <stop offset="1" stop-color="#fff" stop-opacity="0" />
+    </radialGradient>
+    <pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <line x1="0" y1="0" x2="0" y2="6" stroke="#fff" stroke-opacity="0.06" stroke-width="2" />
+    </pattern>
+    <radialGradient id="fall" cx="0.9" cy="0.95" r="0.75">
+      <stop offset="0" stop-color="#3a1608" stop-opacity="0.34" />
+      <stop offset="1" stop-color="#3a1608" stop-opacity="0" />
+    </radialGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="0.6" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity="0.55" />
+      <stop offset="0.5" stop-color="#fff" stop-opacity="0.12" />
+      <stop offset="1" stop-color="#2a0f04" stop-opacity="0.3" />
+    </linearGradient>
+    <clipPath id="tile"><rect width="64" height="64" rx="15" /></clipPath>
+    <filter id="lift" x="-25%" y="-25%" width="150%" height="150%">
+      <feDropShadow dx="0" dy="1.1" stdDeviation="0.9" flood-color="#4a1a08" flood-opacity="0.42" />
+    </filter>
   </defs>
 
-  <rect width="64" height="64" rx="15" fill="url(#tile)" />
+  <g clip-path="url(#tile)">
+    <rect width="64" height="64" fill="url(#base)" />
+    <rect width="64" height="64" fill="url(#hatch)" />
+    <rect width="64" height="64" fill="url(#sheen)" />
+    <rect width="64" height="64" fill="url(#fall)" />
+  </g>
 
-  <g
-    stroke="#fdf6ec"
-    stroke-width="4.5"
-    stroke-linecap="round"
-    fill="none"
-  >
-    <path d="M18 17.5 L18.6 46.5" />
-    <path d="M27.5 16 L28.4 47.5" />
-    <path d="M37 17 L37.4 46" />
-    <path d="M46 16.5 L46.8 47" />
-    <path d="M15 50.5 L49 13.5" />
+  <rect width="63" height="63" x="0.5" y="0.5" rx="14.5" fill="none" stroke="url(#rim)" stroke-width="1" />
+
+  <g filter="url(#lift)">
+    <g stroke="#fff" stroke-width="4.5" stroke-linecap="round" fill="none">
+      <path d="M18 17.5 L18.6 46.5" />
+      <path d="M27.5 16 L28.4 47.5" />
+      <path d="M37 17 L37.4 46" />
+      <path d="M46 16.5 L46.8 47" />
+      <path d="M15 50.5 L49 13.5" />
+    </g>
   </g>
 </svg>

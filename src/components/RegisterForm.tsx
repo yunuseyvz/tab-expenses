@@ -89,7 +89,7 @@ export function RegisterForm({ initialEmail }: { initialEmail?: string }) {
     <div className="w-full max-w-sm">
       <header className="mb-6">
         <TabLogo wordmark={APP_NAME} markSize={24} className="mb-4" />
-        <h1 className="font-serif text-3xl mt-1">
+        <h1 className="text-3xl mt-1 tracking-tight">
           {step === 'details' ? 'Create your account' : 'Enter your code'}
         </h1>
         <p className="text-sm text-ink-muted mt-1.5">

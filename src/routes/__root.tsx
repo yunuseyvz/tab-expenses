@@ -29,7 +29,7 @@ export const Route = createRootRouteWithContext<{
         name: 'description',
         content: 'Shared household expense ledger with percentage splits.',
       },
-      { name: 'theme-color', content: '#f6f1e6' },
+      { name: 'theme-color', content: '#f4f4f1' },
     ],
     links: [
       { rel: 'manifest', href: '/manifest.webmanifest' },

@@ -101,7 +101,9 @@ function InviteRoute() {
         ) : info ? (
           <>
             <TabLogo wordmark="Invitation" markSize={20} className="mb-4" />
-            <h1 className="font-serif text-2xl mt-1">Join {info.spaceName}</h1>
+            <h1 className="text-2xl mt-1 tracking-tight">
+              Join {info.spaceName}
+            </h1>
             <p className="text-sm text-ink-muted mt-2">
               {info.inviterName} invited you to share this household's expenses.
             </p>
@@ -169,7 +171,7 @@ function InviteRoute() {
 function Outcome({ title, body }: { title: string; body: string }) {
   return (
     <>
-      <h1 className="font-serif text-2xl">{title}</h1>
+      <h1 className="text-2xl tracking-tight">{title}</h1>
       <p className="text-sm text-ink-muted mt-2">{body}</p>
       <Link
         to="/login"

@@ -23,6 +23,20 @@ test.describe('space switching', () => {
 
     const switcher = page.locator('button[aria-haspopup=listbox]:visible')
 
+    /**
+     * Assert which household the switcher is showing.
+     *
+     * On the accessible name, not on the text. The mobile trigger in the
+     * floating bar shows the household's mark and nothing else — four tabs and a
+     * name do not fit across a phone — so it carries the name in `aria-label`.
+     * That is a stronger assertion than the text was: the text is a visual
+     * detail, the accessible name is what a screen reader actually announces,
+     * and a switcher that silently stopped naming the household would break
+     * someone who cannot see the mark at all.
+     */
+    const expectSwitcher = (name: string) =>
+      expect(switcher).toHaveAccessibleName(new RegExp(name))
+
     // ── create another household ────────────────────────────────────────
     await switcher.click()
     await page.getByRole('button', { name: 'New space' }).click()
@@ -38,7 +52,7 @@ test.describe('space switching', () => {
     await expect(page).toHaveURL(/\/dashboard/)
     await expect(page.getByRole('heading', { name })).toBeVisible()
     // And the switcher follows, without a reload.
-    await expect(switcher).toContainText(name)
+    await expectSwitcher(name)
 
     // A brand-new space has nothing in it. If this ever shows a number it means
     // the space switched was not the new one.
@@ -63,18 +77,18 @@ test.describe('space switching', () => {
     await page.getByRole('link', { name: 'Balances' }).click()
     await expect(page).toHaveURL(/\/balances/)
     expect(new URL(page.url()).searchParams.get('space')).toBeNull()
-    await expect(switcher).toContainText('Hauptstraße')
+    await expectSwitcher('Hauptstraße')
 
     await page.reload()
     expect(new URL(page.url()).searchParams.get('space')).toBeNull()
     await expect(page.getByRole('heading', { name: 'Balances' })).toBeVisible()
-    await expect(switcher).toContainText('Hauptstraße')
+    await expectSwitcher('Hauptstraße')
 
     // ── a ?space= for someone else's space must be refused, not obeyed ──
     // resolveSpaceId ignores ids the user does not belong to. The screen has to
     // keep showing a real household rather than going blank.
     await page.goto('/balances?space=00000000-0000-4000-8000-000000000000')
-    await expect(switcher).toContainText('Hauptstraße')
+    await expectSwitcher('Hauptstraße')
     await expect(page.getByRole('heading', { name: 'Balances' })).toBeVisible()
   })
 })
