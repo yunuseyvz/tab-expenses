@@ -98,8 +98,17 @@ export function SpaceSwitcher({
     />
   )
 
+  // Keyed on the space so the editor's state dies with the dialog. Without it
+  // the component stays mounted across close/reopen (it returns null rather
+  // than unmounting), and the next space opened would come up pre-filled with
+  // the previous one's half-typed rename — and on the delete step, with the
+  // previous space's name already typed into the confirmation field.
   const editor = (
-    <SpaceEditor space={editing} onClose={() => setEditing(null)} />
+    <SpaceEditor
+      key={editing?.id ?? 'none'}
+      space={editing}
+      onClose={() => setEditing(null)}
+    />
   )
 
   // A single space still gets a control: it is the only way to reach

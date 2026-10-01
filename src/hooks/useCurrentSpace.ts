@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { useRouterState } from '@tanstack/react-router'
 
 import { resolveSpaceId } from '#/lib/space-preference'
 import { rememberedSpaceQuery, spaceKeys } from '#/lib/session'
@@ -23,10 +24,26 @@ export function useCurrentSpace(requestedSpaceId?: string) {
   })
   const remembered = useQuery(rememberedSpaceQuery())
 
+  // The URL's own `?space=`, read here rather than by each caller.
+  //
+  // The sidebar trigger used to call this with no argument, which sent it down
+  // the cookie branch alone while every route passed `search.space` and went
+  // down the URL branch. The two answers disagreed whenever the URL named a
+  // space the cookie did not — a bookmark, a shared link, a link inside the app
+  // — and the page would show one household while the switcher showed another,
+  // with the check mark on the wrong row. Reading the URL here means the cookie
+  // is only ever the fallback, which is the order the rest of the app assumes.
+  const urlSpaceId = useRouterState({
+    select: (s) => {
+      const value = (s.location.search as Record<string, unknown>).space
+      return typeof value === 'string' ? value : undefined
+    },
+  })
+
   const list = spaces.data ?? []
   const spaceId = resolveSpaceId(
     list,
-    requestedSpaceId,
+    requestedSpaceId ?? urlSpaceId,
     remembered.data ?? null,
   )
 

@@ -19,7 +19,7 @@ import {
   requireSpaceOwner,
 } from './auth.functions'
 import { getDb } from './db'
-import { category, expense, space, spaceMember } from './db/schema'
+import { category, expense, space, spaceInvite, spaceMember } from './db/schema'
 import {
   avatarKeySchema,
   categoryInputSchema,
@@ -29,6 +29,7 @@ import {
   memberUpdateSchema,
   uuidSchema,
 } from './guards'
+import type { Db } from './db'
 
 // ── spaces ────────────────────────────────────────────────────────────────
 
@@ -130,23 +131,113 @@ export const updateSpace = createServerFn({ method: 'POST' })
   })
 
 /**
- * Does this space have any expenses?
+ * What this space holds, and how much of it.
  *
- * Only needed to decide whether the currency can still be changed, and only once
- * the editor is open — so it is a separate call rather than a count column on
- * every row of the space list, which is loaded on every screen.
+ * Counts serve two jobs from one call, and only once the editor is open — it is
+ * not a column on the space list, which is loaded on every screen.
+ *
+ *   expenses > 0  locks the currency, so a rename cannot restate history
+ *   the rest     is what the delete confirmation has to state, because a
+ *                warning that says "this cannot be undone" without saying
+ *                *what* is being destroyed is not a warning
  */
-export const spaceHasExpenses = createServerFn({ method: 'GET' })
+export const spaceSummary = createServerFn({ method: 'GET' })
   .inputValidator(z.object({ spaceId: uuidSchema }))
   .handler(async ({ data }) => {
     const session = await ensureSession()
-    await requireSpaceMember(session.user.id, data.spaceId)
+    await requireSpaceOwner(session.user.id, data.spaceId)
     const db = getDb()
     const [row] = await db
-      .select({ n: sql<number>`count(*)::int` })
-      .from(expense)
-      .where(eq(expense.spaceId, data.spaceId))
-    return Number(row?.n ?? 0) > 0
+      .select({
+        expenses: sql<number>`(
+          select count(*)::int from ${expense} where ${expense.spaceId} = ${data.spaceId}
+        )`,
+        members: sql<number>`(
+          select count(*)::int from ${spaceMember} where ${spaceMember.spaceId} = ${data.spaceId}
+        )`,
+        categories: sql<number>`(
+          select count(*)::int from ${category} where ${category.spaceId} = ${data.spaceId}
+        )`,
+        // Only outstanding invites. An accepted one is a dead row, and
+        // counting it would overstate what a person still has to lose.
+        invites: sql<number>`(
+          select count(*)::int from ${spaceInvite}
+          where ${spaceInvite.spaceId} = ${data.spaceId}
+            and ${spaceInvite.acceptedAt} is null
+        )`,
+        // The amount, not just the count. "9 expenses" is an abstraction;
+        // "9 expenses, €3,229.24" is the thing someone is about to lose.
+        totalMinor: sql<number>`(
+          select coalesce(sum(${expense.amountMinor}), 0)::int
+          from ${expense} where ${expense.spaceId} = ${data.spaceId}
+        )`,
+      })
+      .from(space)
+      .where(eq(space.id, data.spaceId))
+      .limit(1)
+
+    return {
+      expenses: Number(row?.expenses ?? 0),
+      members: Number(row?.members ?? 0),
+      categories: Number(row?.categories ?? 0),
+      invites: Number(row?.invites ?? 0),
+      totalMinor: Number(row?.totalMinor ?? 0),
+    }
+  })
+
+/**
+ * Delete a space and everything in it.
+ *
+ * Separated from the request wrapper and given the database as an argument so
+ * the test suite can call the real thing. This is the most destructive code in
+ * the app and it must not be the one function in `src/lib` that can only ever
+ * be exercised by clicking through a browser.
+ *
+ * IRREVERSIBLE. There is no trash, no soft delete and no undo: a household's
+ * whole expense history, its roster, its categories and any outstanding invite
+ * links are gone in the same transaction. The client makes you type the space's
+ * name to get here, which is the only thing standing between a mis-tap and that.
+ *
+ * THE ORDER IS THE POINT
+ * Two foreign keys are `onDelete: 'restrict'` — `expense_split.member_id` and
+ * `expense.category_id` — because archiving a member or a category that other
+ * rows still point at would silently rewrite history. A bare
+ * `delete from space` does survive: Postgres happens to fire the
+ * space → expense cascade before the space → space_member one, so the splits
+ * are already gone by the time RESTRICT is checked.
+ *
+ * "Happens to" is not a property to build on. Cascade order is an artefact of
+ * trigger OIDs, not a guarantee, and the day it changes this becomes a delete
+ * that fails with a foreign key violation on real data — for the one operation
+ * where a failure is least welcome. So the expenses go first, explicitly, and
+ * the restrict rules are never asked to make a decision they were not written
+ * to make.
+ */
+export async function purgeSpace(db: Db, spaceId: string) {
+  return db.transaction(async (tx) => {
+    // Cascades to expense_split, clearing the restrict on member_id.
+    await tx.delete(expense).where(eq(expense.spaceId, spaceId))
+    // Cascades to space_member, category and space_invite. Nothing references
+    // a category any more, so the restrict on expense.category_id is moot.
+    const [row] = await tx
+      .delete(space)
+      .where(eq(space.id, spaceId))
+      .returning({
+        id: space.id,
+      })
+
+    if (!row) throw new Error('Not found')
+    return { ok: true as const, deletedId: row.id }
+  })
+}
+
+/** Owners only. The guard is here, not in purgeSpace, which has no session. */
+export const deleteSpace = createServerFn({ method: 'POST' })
+  .inputValidator(z.object({ spaceId: uuidSchema }))
+  .handler(async ({ data }) => {
+    const session = await ensureSession()
+    await requireSpaceOwner(session.user.id, data.spaceId)
+    return purgeSpace(getDb(), data.spaceId)
   })
 
 export const getSpace = createServerFn({ method: 'GET' })

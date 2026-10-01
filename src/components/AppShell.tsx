@@ -17,7 +17,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
 import { Link, useRouteContext, useRouterState } from '@tanstack/react-router'
-import { AnimatePresence, motion } from 'motion/react'
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import {
   LayoutGrid,
   List,
@@ -30,6 +30,7 @@ import { APP_NAME } from '#/lib/app-meta'
 import { Avatar } from '#/components/Avatar'
 import { TabLogo, TabMark } from '#/components/TabLogo'
 import { SpaceSwitcher } from '#/components/SpaceSwitcher'
+import { useCurrentSpace } from '#/hooks/useCurrentSpace'
 import { authClient } from '#/lib/auth-client'
 import { cn } from '#/lib/cn'
 
@@ -69,6 +70,15 @@ const NAV_SEARCH = {
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname })
+  const { spaceId } = useCurrentSpace()
+  const reduceMotion = useReducedMotion()
+
+  // Only animate the swap once the app has settled, never on the first paint.
+  // `initial` is read when the keyed element mounts, so starting from `false`
+  // means a plain page load renders straight to full opacity — a fade on every
+  // load reads as lag — while a later change of space gets the entrance.
+  const [settled, setSettled] = useState(false)
+  useEffect(() => setSettled(true), [])
   const [signingOut, setSigningOut] = useState(false)
   const [accountOpen, setAccountOpen] = useState(false)
   const accountRef = useRef<HTMLDivElement>(null)
@@ -260,7 +270,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </div>
 
-      <div className="flex-1 min-w-0 pb-20 md:pb-0">{children}</div>
+      {/* Keyed on the space, so the entrance replays when the household
+          changes and not when you move between screens. A cross-fade out
+          instead would mean holding the new screen's numbers back until the
+          old ones had faded — the swap is instant, only the arrival is
+          animated. */}
+      <motion.div
+        key={spaceId ?? 'none'}
+        initial={settled ? { opacity: 0, y: reduceMotion ? 0 : 10 } : false}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+        className="flex-1 min-w-0 pb-20 md:pb-0"
+      >
+        {children}
+      </motion.div>
 
       {/* ── mobile: bottom nav ────────────────────────────────────────── */}
       <nav
