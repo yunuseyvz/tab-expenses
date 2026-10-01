@@ -134,6 +134,20 @@
    * dark palette ever saw it. */
   --color-danger-fill: oklch(0.42 0.13 20); /* white on this: 9.1:1 */
   --color-rule: oklch(0.875 0.006 255);
+  /* The edge on a form field, darker than a divider.
+   *
+   * A hairline and a field boundary are not the same job, and using one token
+   * for both is why the expense sheet read as a wall of pale grey: the panel is
+   * #f9fbfc and a sunken field measured 1.15:1 against it, with an effective
+   * edge around 1.4:1 once the 70% alpha was composited. WCAG 1.4.11 asks 3:1
+   * for a boundary you are meant to be able to see, and 1.4:1 is not a
+   * boundary — it is a hint of one.
+   *
+   * The fill cannot reach 3:1 on its own without becoming a grey box, which
+   * would turn every field into a disabled-looking rectangle, so the edge has
+   * to carry it. This is a 1px line, not a fill: dark enough to be a boundary,
+   * light enough that the field still reads as paper with a line round it. */
+  --rule-field: oklch(0.655 0.008 255);
 
   /* ── elevation: the heart of the effect ────────────────────────────── */
   /* pressed into the paper — inputs, wells, pressed toggles */
@@ -302,6 +316,9 @@
    * (WCAG 1.4.11), which on a dark surface means a much lighter line than
    * intuition suggests. */
   --color-rule: oklch(0.55 0.008 255);
+  /* Dark mode needs a *lighter* line, not a darker one: on a dark surface the
+   * boundary is only visible if it rises above the fill. */
+  --rule-field: oklch(0.56 0.008 255);
 
   --shadow-deboss:
     inset 0 1px 2px rgb(0 0 0 / 0.55), inset 0 -1px 0 rgb(255 255 255 / 0.045);

@@ -8,12 +8,13 @@ import type { ExpenseRow } from '#/lib/expense.functions'
 import { Sheet } from '#/components/AppShell'
 import { Button } from '#/components/ui/Button'
 import { DateField } from '#/components/ui/DateField'
-import { Input, Label, Select, Textarea } from '#/components/ui/Input'
+import { Input, Label, Textarea } from '#/components/ui/Input'
+import { Listbox } from '#/components/ui/Listbox'
+import { CategoryDot } from '#/components/CategoryDot'
 import { SplitEditor } from '#/components/expense/SplitEditor'
 import { createExpense, updateExpense } from '#/lib/expense.functions'
 import { parseAmountToMinor } from '#/lib/money'
 import { today } from '#/lib/period'
-import { swatchColor } from '#/lib/swatches'
 
 /**
  * New-expense entry, and editing an existing one.
@@ -103,6 +104,12 @@ export function ExpenseSheet({
       return 0
     }
   }, [amount])
+
+  // Personal categories belong to one member, so the list depends on who paid —
+  // which is why the dropdown rebuilds when the paid-by changes.
+  const categoryOptions = categories.filter(
+    (c) => c.scope === 'shared' || c.ownerMemberId === paidByMemberId,
+  )
 
   const remainderBp = 10_000 - drafts.reduce((s, d) => s + d.weightBp, 0)
   const canSave =
@@ -208,6 +215,8 @@ export function ExpenseSheet({
           />
         </div>
 
+        {/* The two that belong together: when this expense happened, and what it
+            was for. */}
         <div className="grid grid-cols-2 gap-3">
           <div>
             <Label htmlFor="spent-on">Date</Label>
@@ -220,52 +229,23 @@ export function ExpenseSheet({
           </div>
           <div>
             <Label htmlFor="category">Category</Label>
-            <Select
+            <Listbox
               id="category"
               value={categoryId}
-              onChange={(e) => setCategoryId(e.target.value)}
-            >
-              <option value="">Uncategorised</option>
-              {categories
-                .filter(
-                  (c) =>
-                    c.scope === 'shared' || c.ownerMemberId === paidByMemberId,
-                )
-                .map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                    {c.scope === 'personal' ? ' (personal)' : ''}
-                  </option>
-                ))}
-            </Select>
+              onChange={setCategoryId}
+              options={[
+                { value: '', label: 'Uncategorised' },
+                ...categoryOptions.map((c) => ({
+                  value: c.id,
+                  label: `${c.name}${
+                    c.scope === 'personal' ? ' (personal)' : ''
+                  }`,
+                  leading: <CategoryDot color={c.color} />,
+                })),
+              ]}
+            />
           </div>
         </div>
-
-        {categories.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
-            {categories
-              .filter(
-                (c) =>
-                  c.scope === 'shared' || c.ownerMemberId === paidByMemberId,
-              )
-              .map((c) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  onClick={() => setCategoryId(c.id)}
-                  aria-pressed={categoryId === c.id}
-                  className="text-xs px-2 py-1 rounded-[var(--radius-sm)] border-l-4
-                    bg-paper-sunk text-ink-muted"
-                  style={{
-                    borderLeftColor: swatchColor(c.color),
-                    fontWeight: categoryId === c.id ? 600 : 400,
-                  }}
-                >
-                  {c.name}
-                </button>
-              ))}
-          </div>
-        )}
 
         <hr className="border-rule" />
 

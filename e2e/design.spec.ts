@@ -462,6 +462,60 @@ test.describe('design system', () => {
     await context.close()
   })
 
+  /**
+   * A form field has to be visible as a field.
+   *
+   * WCAG 1.4.11 wants 3:1 for a boundary you are meant to be able to see, and
+   * the expense sheet was at 1.15:1 — the panel is #f9fbfc and a sunken field
+   * barely separated from it, so the form read as a wall of pale grey
+   * rectangles. It looked like a contrast problem and was reported as one, which
+   * is why it is worth a test: the text in that sheet passes AA comfortably, so
+   * nothing about the *text* was ever going to catch it.
+   *
+   * The edge is measured, not the fill. A filled well cannot reach 3:1 against a
+   * light panel without becoming a grey box that reads as disabled, so the line
+   * has to carry it — which means the assertion is on the border.
+   */
+  test('a form field is a visible boundary, not a slightly different grey', async ({
+    browser,
+  }) => {
+    for (const theme of ['light', 'dark'] as const) {
+      const context = await browser.newContext({
+        ...devices['Pixel 7'],
+        storageState: 'test-results/auth.json',
+      })
+      const page = await context.newPage()
+      // The beforeEach installs __toRgb on the fixture page; this test makes its
+      // own contexts, so the helper has to go with them.
+      await page.addInitScript(TO_RGB)
+      await page.addInitScript((t) => {
+        localStorage.setItem('tab:theme', t)
+      }, theme)
+      await page.goto('/expenses?period=all')
+      await page.getByRole('button', { name: 'New expense' }).click()
+      await expect(page.getByRole('dialog')).toBeVisible()
+
+      const measured = await page.evaluate<string>(`(() => {
+        const sheet = document.querySelector('[role=dialog]')
+        const field = sheet.querySelector('#amount')
+        const panel = window.__toRgb(getComputedStyle(sheet).backgroundColor)
+        const border = window.__toRgb(getComputedStyle(field).borderTopColor)
+        return JSON.stringify({ panel, border })
+      })()`)
+      const { panel, border } = JSON.parse(measured) as {
+        panel: Array<number>
+        border: Array<number>
+      }
+
+      expect(
+        contrast(border, panel),
+        `the ${theme} field edge against the sheet panel`,
+      ).toBeGreaterThanOrEqual(3)
+
+      await context.close()
+    }
+  })
+
   test('reduced motion collapses animations to instant state changes', async ({
     browser,
   }) => {

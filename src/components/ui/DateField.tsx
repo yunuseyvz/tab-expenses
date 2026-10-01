@@ -190,7 +190,7 @@ export function DateField({
           'w-full flex items-center gap-2 text-left',
           'bg-paper-sunk text-ink rounded-[var(--radius-md)]',
           compact ? 'px-2.5 py-1.5 text-sm' : 'px-3.5 py-2.5',
-          'border border-rule/70',
+          'border border-[color:var(--rule-field)]',
           'shadow-[var(--shadow-deboss)]',
           'transition-[background-color,border-color,box-shadow] duration-150',
           'ease-[var(--ease-out-soft)]',
@@ -319,7 +319,7 @@ export function DateField({
             })}
           </div>
 
-          <div className="mt-2 pt-2 border-t border-rule/70 flex gap-2">
+          <div className="mt-2 pt-2 border-t border-[color:var(--rule-field)] flex gap-2">
             <button
               type="button"
               onClick={() => {

@@ -77,15 +77,26 @@ export function SpaceSwitcher({
 
   const pick = useMutation({
     mutationFn: (id: string) => rememberSpace({ data: { spaceId: id } }),
-    onSuccess: async (_, id) => {
+    onSuccess: (_, id) => {
       setOpen(false)
-      // Both writes are needed. The cookie decides where the *nav links* go; the
-      // param makes the current screen show the choice immediately without
-      // waiting for a refetch.
-      await queryClient.invalidateQueries({
+      // Write the value we just set into the cache rather than reading it back.
+      //
+      // This used to await an invalidation, which is a round trip to fetch a
+      // value the client has known all along. That is not merely wasteful: it is
+      // a window in which the cached "remembered" space is still the old one,
+      // and the nav links carry no `?space=` of their own. Tapping a tab inside
+      // that window navigates with no space param, the loader reads the stale
+      // remembered id, and the household silently reverts to the one before —
+      // which is the bug this replaced.
+      //
+      // Set first, then navigate, so the cache is correct before anything can
+      // read it. The invalidation still runs, but in the background: it is a
+      // confirmation pass, not a gate.
+      queryClient.setQueryData(spaceKeys.rememberedSpace, id)
+      void queryClient.invalidateQueries({
         queryKey: spaceKeys.rememberedSpace,
       })
-      await navigate({
+      void navigate({
         to: '.',
         search: (prev: Record<string, unknown>) => ({ ...prev, space: id }),
       })

@@ -217,15 +217,31 @@ export const rememberSpace = createServerFn({ method: 'POST' })
   })
 
 /**
- * The remembered space id, or null. Unauthenticated callers get null rather than
- * an error: the protected layout already redirects them, and this is only a
- * display preference.
+ * Unauthenticated callers get null rather than an error: the protected layout
+ * already redirects them, and this is only a display preference.
  *
  * The value is returned raw. resolveSpaceId intersects it with the spaces the
  * user actually belongs to, which is the check that matters — a stale cookie
  * pointing at a household you left cannot open it.
  */
-export const getRememberedSpaceId = createServerFn({ method: 'GET' }).handler(
+/**
+ * The remembered space id, or null.
+ *
+ * POST, not GET, and that is the whole reason for it. This is the read the
+ * protected layout's loader makes on *every* navigation, and it is the only way
+ * a route without a `?space=` param learns which household it is showing — so a
+ * response that is even slightly stale is a page full of the wrong household's
+ * numbers.
+ *
+ * A GET here was a live hazard: no server function in this app sets a
+ * Cache-Control header, so nothing forbids a browser from serving this from its
+ * cache, and the value it would serve is the one from before the last switch.
+ * The response is tiny and requested once per navigation, so a POST costs
+ * nothing measurable, and a browser or proxy will not cache one. Guessing at
+ * cache headers on a response this framework does not expose a header API for
+ * is a worse guarantee than not being cacheable in the first place.
+ */
+export const getRememberedSpaceId = createServerFn({ method: 'POST' }).handler(
   async () => {
     const session = await ensureSession().catch(() => null)
     if (!session) return null

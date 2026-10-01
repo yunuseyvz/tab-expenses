@@ -22,7 +22,13 @@ test.describe('space switching', () => {
       page.getByRole('heading', { name: 'Hauptstraße' }),
     ).toBeVisible()
 
-    const switcher = page.locator('button[aria-haspopup=listbox]:visible')
+    // Scoped to the navigation landmark rather than matched by role alone: the
+    // expenses screen has a second visible listbox trigger (the member filter),
+    // so `button[aria-haspopup=listbox]:visible` is ambiguous once this test
+    // navigates there.
+    const switcher = page
+      .getByRole('navigation', { name: 'Main' })
+      .locator('button[aria-haspopup=listbox]')
 
     /**
      * Assert which household the switcher is showing.
@@ -58,6 +64,31 @@ test.describe('space switching', () => {
     // A brand-new space has nothing in it. If this ever shows a number it means
     // the space switched was not the new one.
     await expect(page.getByText('Total spend')).toBeVisible()
+
+    // ── and it must survive a section change ────────────────────────────
+    // This is the reported failure: switch household, then tap a tab, and the
+    // household silently reverts to the one before.
+    //
+    // The nav links carry no `?space=`, so a section change is the one
+    // navigation that has to resolve the household from the remembered value
+    // alone. The switcher used to write the cookie and then *read it back*
+    // through the query cache before navigating, which left a window where the
+    // cache still held the previous household — and a tab tapped inside that
+    // window rendered the wrong one's numbers. The switcher now writes the value
+    // it just set straight into the cache and navigates without waiting.
+    await expectSwitcher(name)
+    await page.getByRole('link', { name: 'Expenses' }).click()
+    await expect(page).toHaveURL(/expenses/)
+    // No `space` in the URL any more — that is the point of the assertion: the
+    // household can only be right here if the remembered value is.
+    expect(new URL(page.url()).searchParams.get('space')).toBeNull()
+    await expectSwitcher(name)
+    await expect(page.getByRole('heading', { name: 'Expenses' })).toBeVisible()
+
+    // And back to the dashboard, still the same household.
+    await page.getByRole('link', { name: 'Dashboard' }).click()
+    await expect(page).toHaveURL(/dashboard/)
+    await expectSwitcher(name)
 
     // ── switch back ─────────────────────────────────────────────────────
     // The one place in the suite with two spaces to switch between, and so the

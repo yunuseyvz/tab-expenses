@@ -48,7 +48,15 @@ export function DashboardHeader({
           {/* The app's mark, then the reader's — so one line answers "whose app
               is this, and whose data is in it", which is the question a shared
               device has to answer before anything else. */}
-          <div className="flex items-center gap-2.5 mb-3">
+          {/* `md:hidden`, and that is the whole difference between the two
+              layouts rather than a preference. A desktop sidebar already carries
+              the wordmark at the top and the reader's name and address at the
+              bottom, so this row says both again, in a smaller size, directly
+              under the same wordmark — the app introducing itself twice on one
+              screen. A phone has no sidebar, so there the row is the only place
+              the app names itself and the only place the reader is named before
+              the content starts. Keep it where it is doing a job. */}
+          <div className="flex items-center gap-2.5 mb-3 md:hidden">
             <TabLogo markSize={26} wordmark={APP_NAME} />
             <span aria-hidden className="w-px h-5 bg-rule" />
             <Avatar
@@ -65,7 +73,10 @@ export function DashboardHeader({
               h1 leaves the page with no heading of its own, and the greeting
               changing four times a day means the document's top-level structure
               changes four times a day too. */}
-          <p className="mt-3 text-2xl sm:text-3xl tracking-tight">
+          {/* mt-0 on desktop: the 12px gap belonged to the row above it, and
+              with the row hidden it would be space above nothing. On mobile the
+              row's own mb-3 supplies it. */}
+          <p className="mt-0 md:mt-0 text-2xl sm:text-3xl tracking-tight">
             <Salutation name={user.name} />
           </p>
 
