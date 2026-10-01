@@ -295,6 +295,11 @@ async function main() {
     }
 
     // ── verify the split invariant actually held ────────────────────────
+    // Only for expenses that HAVE splits. An expense with none is legitimate —
+    // the payer takes the whole amount, which is how the balances query reads
+    // it — and it has no rows to sum, so comparing 0 against the amount flags
+    // every single unsplit expense as broken. It only surfaced once splitting
+    // could actually be turned off, which is exactly the bug fixed alongside it.
     const [mismatch] = await sql<Array<{ bad: number }>>`
       select count(*)::int as bad
       from expense e
@@ -303,6 +308,7 @@ async function main() {
         from expense_split s where s.expense_id = e.id
       ) t on true
       where t.total <> e.amount_minor
+        and exists (select 1 from expense_split s2 where s2.expense_id = e.id)
     `
     const badCount = Number(mismatch?.bad ?? 0)
     if (badCount !== 0) {

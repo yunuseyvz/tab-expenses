@@ -328,47 +328,71 @@ export const updateExpense = createServerFn({ method: 'POST' })
       // recomputed at read time.
       if (data.splits !== undefined) {
         const splits = data.splits
-        if (splits.length === 0) {
-          throw new Error('Send at least one split, or omit splits entirely')
-        }
-        const weightSum = splits.reduce((s, r) => s + r.weightBp, 0)
-        if (weightSum !== BP_TOTAL) {
-          throw new Error(
-            `Split weights must total 100%, got ${weightSum / 100}%`,
-          )
+        // An empty array means "no split — the payer takes all of it", and it is
+        // deliberately allowed. This used to throw, which meant turning the
+        // split toggle off while editing an expense failed with "send at least
+        // one split": the sheet sends `[]` to mean exactly this, and the server
+        // could not tell it from a mistake. Omitting the key still means "leave
+        // the splits alone", so the three cases stay distinct.
+        // Everything below this guard is about validating a split that exists.
+        // With none there is nothing to total, nothing to deduplicate and
+        // nothing to allocate — the delete-and-reinsert below still runs, and
+        // removing every row is the whole point of `[]`.
+        if (splits.length > 0) {
+          const weightSum = splits.reduce((s, r) => s + r.weightBp, 0)
+          if (weightSum !== BP_TOTAL) {
+            throw new Error(
+              `Split weights must total 100%, got ${weightSum / 100}%`,
+            )
+          }
+
+          const seen = new Set<string>()
+          for (const s of splits) {
+            if (seen.has(s.memberId)) {
+              throw new Error('Duplicate member in split')
+            }
+            seen.add(s.memberId)
+          }
         }
 
-        const seen = new Set<string>()
-        for (const s of splits) {
-          if (seen.has(s.memberId)) throw new Error('Duplicate member in split')
-          seen.add(s.memberId)
-        }
-
-        const shares = allocate(
-          amountMinor,
-          splits.map((s) => s.weightBp),
-        )
+        const shares =
+          splits.length > 0
+            ? allocate(
+                amountMinor,
+                splits.map((s) => s.weightBp),
+              )
+            : []
 
         await tx
           .delete(expenseSplit)
           .where(eq(expenseSplit.expenseId, data.expenseId))
-        await tx.insert(expenseSplit).values(
-          splits.map((s, i) => ({
-            expenseId: data.expenseId,
-            memberId: s.memberId,
-            weightBp: s.weightBp,
-            shareMinor: shares[i]!,
-          })),
-        )
+        // `values([])` is a no-op on some drivers and an error on others, and
+        // there is nothing to write anyway.
+        if (splits.length > 0) {
+          await tx.insert(expenseSplit).values(
+            splits.map((s, i) => ({
+              expenseId: data.expenseId,
+              memberId: s.memberId,
+              weightBp: s.weightBp,
+              shareMinor: shares[i]!,
+            })),
+          )
+        }
 
-        const [check] = await tx
-          .select({
-            total: sql<number>`coalesce(sum(${expenseSplit.shareMinor}), 0)::int`,
-          })
-          .from(expenseSplit)
-          .where(eq(expenseSplit.expenseId, data.expenseId))
-        if (Number(check?.total ?? 0) !== amountMinor) {
-          throw new Error('Split invariant violated on update')
+        // Only meaningful when there ARE splits. With none, the payer's implied
+        // share is the whole amount — which is how the balances query has always
+        // treated a split-less expense — so there is no row to sum against and
+        // comparing 0 to the amount would fail every legitimate un-split.
+        if (splits.length > 0) {
+          const [check] = await tx
+            .select({
+              total: sql<number>`coalesce(sum(${expenseSplit.shareMinor}), 0)::int`,
+            })
+            .from(expenseSplit)
+            .where(eq(expenseSplit.expenseId, data.expenseId))
+          if (Number(check?.total ?? 0) !== amountMinor) {
+            throw new Error('Split invariant violated on update')
+          }
         }
       }
 

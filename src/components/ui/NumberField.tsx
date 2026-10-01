@@ -4,18 +4,25 @@ import { useId } from 'react'
 import { cn } from '#/lib/cn'
 
 /**
- * A number field with steppers.
+ * A percentage stepper.
  *
- * Replaces <input type="number">, which brings three problems at once: the
- * spinner arrows are drawn by the OS and cannot be restyled (so they either
- * clash with the design or have to be hidden), `type=number` silently discards
- * anything that is not a parseable number — a user cannot type "1." on the way
- * to "1.5" — and on mobile it raises a numeric keypad that has no way to show
- * the unit.
+ * Replaces <input type=number>, which brings three problems at once: the spinner
+ * arrows are drawn by the OS and cannot be restyled, `type=number` silently
+ * discards anything unparseable — so a user cannot type "1." on the way to
+ * "1.5" — and on mobile it raises a numeric keypad that cannot show the unit.
  *
- * Here the value is a plain string owned by the caller, so intermediate states
- * are representable, and the steppers are real buttons that work with a
- * keyboard and have accessible names.
+ * The first version of this looked like a form field that had been shrunk until
+ * it fitted: a hard border, a grey well, and three boxed segments. It read as
+ * an input dropped into the middle of a slider row rather than as part of it.
+ *
+ * So at rest it has no chrome at all — just the number, the unit and two quiet
+ * glyphs — and the inset well only appears on hover or focus. It reads as a
+ * label on the slider, and reveals that it is editable when you go near it.
+ * Everything animated is background, colour or transform.
+ *
+ * The value is a plain string owned by the caller so intermediate states are
+ * representable, and the steppers round to the step so repeated clicks do not
+ * accumulate float drift.
  */
 export function NumberField({
   id,
@@ -36,46 +43,48 @@ export function NumberField({
   min?: number
   max?: number
   step?: number
-  /** Rendered inside the field on the right — a unit, e.g. "%". */
+  /** Unit shown beside the number — "%". */
   suffix?: string
   label?: string
   className?: string
   size?: 'sm' | 'md'
 }) {
   const fallbackId = useId()
+  const numeric = Number.parseFloat(value)
+  const atMin = Number.isFinite(numeric) && numeric <= min
+  const atMax = Number.isFinite(numeric) && numeric >= max
 
   function nudge(direction: 1 | -1) {
-    const current = Number.parseFloat(value)
-    const base = Number.isFinite(current) ? current : 0
-    // Rounded to the step so repeated clicks do not accumulate float drift
-    // (0.1 + 0.2 territory, which is visible at three decimal places).
-    const next = Math.min(
-      max,
-      Math.max(min, Number((base + direction * step).toFixed(6))),
+    const base = Number.isFinite(numeric) ? numeric : 0
+    onChange(
+      String(
+        Math.min(
+          max,
+          Math.max(min, Number((base + direction * step).toFixed(6))),
+        ),
+      ),
     )
-    onChange(String(next))
   }
 
   return (
     <div
       className={cn(
-        'inline-flex items-center rounded-[var(--radius-md)]',
-        'bg-paper-sunk border border-rule/70 shadow-[var(--shadow-deboss)]',
-        'focus-within:border-terracotta focus-within:bg-[var(--color-paper-raised)]',
-        'focus-within:shadow-[var(--shadow-deboss),0_0_0_3px_color-mix(in_oklab,var(--color-terracotta)_28%,transparent)]',
-        'transition-[background-color,border-color,box-shadow] duration-150',
+        // rounded-full rather than a radius, because the height is small and a
+        // pill reads as one object rather than three.
+        'group/nf inline-flex items-center rounded-full',
+        'transition-[background-color,box-shadow] duration-200',
+        'ease-[var(--ease-out-soft)]',
+        'hover:bg-[var(--color-paper-sunk)]',
+        'focus-within:bg-[var(--color-paper-sunk)]',
+        'focus-within:shadow-[var(--shadow-deboss)]',
         className,
       )}
     >
-      <StepButton
-        onClick={() => nudge(-1)}
-        disabled={Number.parseFloat(value) <= min}
-        label="Decrease"
-      >
-        <Minus size={13} aria-hidden />
+      <StepButton onClick={() => nudge(-1)} disabled={atMin} label="Decrease">
+        <Minus size={14} aria-hidden strokeWidth={2.25} />
       </StepButton>
 
-      <span className="relative flex items-center">
+      <span className="relative flex items-baseline">
         <input
           id={id ?? fallbackId}
           type="text"
@@ -84,33 +93,23 @@ export function NumberField({
           aria-label={label}
           onChange={(e) => onChange(e.target.value)}
           className={cn(
-            // A fixed narrow width, not w-full: the steppers either side make
-            // this an inline control, and letting the input stretch turned it
-            // into the widest thing in the row.
-            'tnum bg-transparent text-ink text-center min-w-0',
-            'focus:outline-none appearance-none',
-            size === 'sm'
-              ? 'text-sm w-11 px-1 py-1.5'
-              : 'text-base w-14 px-1 py-2',
+            'tnum bg-transparent text-ink text-center appearance-none',
+            'focus:outline-none min-w-0',
+            size === 'sm' ? 'text-base w-9' : 'text-lg w-14',
           )}
         />
         {suffix && (
           <span
             aria-hidden
-            className="pointer-events-none absolute right-1.5
-              text-xs text-ink-faint"
+            className="pointer-events-none text-[0.7em] text-ink-faint -ml-0.5"
           >
             {suffix}
           </span>
         )}
       </span>
 
-      <StepButton
-        onClick={() => nudge(1)}
-        disabled={Number.parseFloat(value) >= max}
-        label="Increase"
-      >
-        <Plus size={13} aria-hidden />
+      <StepButton onClick={() => nudge(1)} disabled={atMax} label="Increase">
+        <Plus size={14} aria-hidden strokeWidth={2.25} />
       </StepButton>
     </div>
   )
@@ -134,12 +133,15 @@ function StepButton({
       disabled={disabled}
       aria-label={label}
       className={cn(
-        'grid place-items-center shrink-0 text-ink-muted',
-        'transition-[color,background-color,transform] duration-150',
-        'hover:text-ink active:scale-90 motion-reduce:active:scale-100',
-        'disabled:opacity-30 disabled:pointer-events-none',
-        'first:rounded-l-[var(--radius-md)] last:rounded-r-[var(--radius-md)]',
-        'hover:bg-[var(--color-paper-raised)]',
+        // Quiet by default, legible on approach. The glyph carries the
+        // affordance; the background is only confirmation.
+        'grid place-items-center shrink-0 text-ink-faint rounded-full',
+        'size-6 transition-[color,background-color,transform] duration-150',
+        'hover:text-ink hover:bg-[var(--color-paper-raised)]',
+        'focus-visible:outline-none focus-visible:text-ink',
+        'focus-visible:bg-[var(--color-paper-raised)]',
+        'active:scale-90 motion-reduce:active:scale-100',
+        'disabled:opacity-25 disabled:pointer-events-none',
       )}
     >
       {children}
