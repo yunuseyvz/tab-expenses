@@ -51,10 +51,18 @@ describe.runIf(await describeIfDatabase())('deleting an account', () => {
   const leaverId = `test-acc-leaver-${suffix}`
   const heirId = `test-acc-heir-${suffix}`
   const strangerId = `test-acc-stranger-${suffix}`
+  /** An owner who has already deleted their account. */
+  const departedId = `test-acc-departed-${suffix}`
 
-  /** Household they share, and one they created alone. */
+  /** Household they share, one they created alone, one they are only on. */
   const shared = randomUUID()
   const solo = randomUUID()
+  /**
+   * Owned by somebody else, and the leaver is its only registered member. The
+   * owner has already gone, so this is the case where "nobody is left to run it"
+   * is true *and* deleting it would be destroying another household's ledger.
+   */
+  const borrowed = randomUUID()
   /** Somebody else's household, which must not move. */
   const stranger = randomUUID()
 
@@ -136,6 +144,12 @@ describe.runIf(await describeIfDatabase())('deleting an account', () => {
         email: `acc-stranger-${suffix}@test.local`,
         emailVerified: true,
       },
+      {
+        id: departedId,
+        name: 'Departed',
+        email: `acc-departed-${suffix}@test.local`,
+        emailVerified: true,
+      },
     ])
     // A session row, so the cascade to Better Auth's own tables is exercised.
     await db.insert(session).values({
@@ -164,6 +178,12 @@ describe.runIf(await describeIfDatabase())('deleting an account', () => {
         currency: 'EUR',
         createdByUserId: strangerId,
       },
+      {
+        id: borrowed,
+        name: `Borrowed ${suffix}`,
+        currency: 'EUR',
+        createdByUserId: departedId,
+      },
     ])
 
     // They share one, and they are the only *registered* person on the other.
@@ -180,17 +200,35 @@ describe.runIf(await describeIfDatabase())('deleting an account', () => {
     })
     await populate(solo, 'solo', leaverId, 'Leaver')
     await populate(stranger, 'stranger', strangerId, 'Stranger')
+
+    // A household the leaver is *on* but does not own. Its owner is `departed`,
+    // who is registered but will not be a member of it — see the archived row
+    // below — so nobody else is on it while the leaver is.
+    await populate(borrowed, 'borrowed', leaverId, 'Leaver')
+    await db
+      .update(spaceMember)
+      .set({ role: 'member' })
+      .where(eq(spaceMember.spaceId, borrowed))
+    await db.insert(spaceMember).values({
+      spaceId: borrowed,
+      userId: departedId,
+      displayName: 'Departed',
+      color: 'plum',
+      role: 'owner',
+      archivedAt: new Date(),
+    })
   })
 
   afterAll(async () => {
     const db = getDb()
-    for (const id of [shared, solo, stranger]) {
+    for (const id of [shared, solo, stranger, borrowed]) {
       await db.delete(spaceInvite).where(eq(spaceInvite.spaceId, id))
       await db.delete(expense).where(eq(expense.spaceId, id))
       await db.delete(space).where(eq(space.id, id))
     }
-    await db.delete(user).where(eq(user.id, heirId))
-    await db.delete(user).where(eq(user.id, strangerId))
+    for (const id of [heirId, strangerId, departedId]) {
+      await db.delete(user).where(eq(user.id, id))
+    }
     await closeDb()
   })
 
@@ -255,6 +293,27 @@ describe.runIf(await describeIfDatabase())('deleting an account', () => {
       .from(expense)
       .where(eq(expense.spaceId, solo))
     expect(expenses).toHaveLength(0)
+  })
+
+  /**
+   * The disagreement this pins. `solo` is the leaver's own household and they own
+   * it, so it goes. `borrowed` is one they are only a member of and do not own,
+   * so it survives — the ledger belongs to whoever owns it, and "the last person
+   * with an account happened to be on it" is not a reason to destroy it.
+   *
+   * Before the fix the preview counted `borrowed` as going to be deleted while
+   * the purge left it alone, so the dialog stated a consequence the code did not
+   * implement.
+   */
+  it('keeps a household they are only a member of, even as the last one', async () => {
+    const db = getDb()
+    const kept = await db.select().from(space).where(eq(space.id, borrowed))
+    expect(kept).toHaveLength(1)
+    const expenses = await db
+      .select()
+      .from(expense)
+      .where(eq(expense.spaceId, borrowed))
+    expect(expenses).toHaveLength(1)
   })
 
   it('deletes the account, its session, and only its own rows', async () => {

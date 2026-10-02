@@ -63,6 +63,13 @@ const UNAUTHENTICATED_EXEMPT = new Set([
   // It cannot be logged into until that code is verified, it reads nothing, and
   // it grants no access to any space.
   'startRegistration',
+  // Whether an address has an account, so the sign-in form can say so instead of
+  // asking for a code that will never arrive. A boolean and nothing else — no
+  // name, no id, no verification state — and it is rate limited to five lookups
+  // a minute per caller. See emailIsRegistered in src/lib/auth.functions.ts for
+  // why the oracle is cheap in this app: no password resets, no third-party
+  // logins, and a login code only ever goes to the address itself.
+  'emailIsRegistered',
 ])
 
 function walk(dir) {

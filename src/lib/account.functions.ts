@@ -99,6 +99,55 @@ function byHousehold(
 }
 
 /**
+ * The households this account is about to leave, and what happens to each.
+ *
+ * One function, because the preview and the purge were answering the same
+ * question separately and disagreed: the preview counted a household as going if
+ * nobody else was registered on it, while the purge only deleted households
+ * where the leaver was an *owner*. So a plain member who happened to be the last
+ * registered person on a household was told, in the dialog, that it would be
+ * deleted — and it was not. The dialog is the only place the user is told what
+ * losing their account costs, so a count that disagrees with the code is worse
+ * than no count.
+ *
+ * Returns per-household detail rather than totals so both callers read the same
+ * numbers. `disposition` is the field that matters: it is what the dialog prints
+ * and what the transaction acts on.
+ */
+function planHouseholds(
+  memberships: ReadonlyArray<{
+    spaceId: string
+    /** Present on the purge path, absent on the preview's. Optional for that. */
+    memberId?: string
+    role: string
+  }>,
+  household: Map<string, Array<{ id: string }>>,
+) {
+  return memberships.map((m) => {
+    const heir = household.get(m.spaceId)?.[0]
+    if (heir) {
+      return {
+        spaceId: m.spaceId,
+        memberId: m.memberId ?? null,
+        disposition: 'stays' as const,
+        heirId: heir.id,
+      }
+    }
+    // Nobody else registered. If the leaver owns it, there is no one left who
+    // can open it, so it goes. If they do not own it, ownership sits with
+    // somebody who has already gone or is virtual, and deleting the household
+    // would throw away a ledger that the owner may still be reachable for.
+    return {
+      spaceId: m.spaceId,
+      memberId: m.memberId ?? null,
+      disposition:
+        m.role === 'owner' ? ('deletes' as const) : ('orphaned' as const),
+      heirId: null,
+    }
+  })
+}
+
+/**
  * What deleting this account would cost, so the dialog can say it.
  *
  * A server function rather than something derived from the page: whether you are
@@ -127,13 +176,15 @@ export const accountDeletionPreview = createServerFn({ method: 'GET' }).handler(
         session.user.id,
       ),
     )
-    const stays = memberships.filter((m) => household.has(m.spaceId))
-    const goes = memberships.filter((m) => !household.has(m.spaceId))
+    const plan = planHouseholds(memberships, household)
 
     return {
-      staying: stays.length,
-      going: goes.length,
-      owned: memberships.filter((m) => m.role === 'owner').length,
+      staying: plan.filter((p) => p.disposition === 'stays').length,
+      going: plan.filter((p) => p.disposition === 'deletes').length,
+      // Left behind with no registered owner, but not deleted. Said out loud
+      // rather than hidden, because "you are leaving a household nobody can
+      // administer" is something to know before clicking, not after.
+      orphaned: plan.filter((p) => p.disposition === 'orphaned').length,
     }
   },
 )
@@ -166,28 +217,37 @@ export async function purgeAccount(db: Db, userId: string) {
       ),
     )
 
-    const owned = memberships
-      .filter((m) => m.role === 'owner')
-      .map((m) => m.spaceId)
+    const plan = planHouseholds(memberships, household)
 
-    // A household where this person was the only member has no reachable roster
-    // left, so it goes with them. Expenses first, for the reason given in
-    // purgeSpace: the restrict rules must never be what decides the order.
-    for (const spaceId of owned) {
-      if (household.has(spaceId)) continue
-      await tx.delete(expense).where(eq(expense.spaceId, spaceId))
-      await tx.delete(space).where(eq(space.id, spaceId))
+    // A household the leaver owned and nobody else is registered on has no
+    // reachable roster left, so it goes with them. Expenses first, for the reason
+    // given in purgeSpace: the restrict rules must never be what decides the
+    // order.
+    //
+    // A household they did *not* own is left alone even with nobody else
+    // registered. Ownership belongs to somebody who has already gone or is
+    // virtual, and deleting a ledger on the strength of the leaver not owning it
+    // would be destroying someone else's data — which is the opposite of what
+    // this function is for.
+    for (const step of plan) {
+      if (step.disposition !== 'deletes') continue
+      await tx.delete(expense).where(eq(expense.spaceId, step.spaceId))
+      await tx.delete(space).where(eq(space.id, step.spaceId))
     }
 
     // Hand over the households that survive. One promotion is enough; a
-    // household has never needed more than one owner.
-    for (const spaceId of owned) {
-      const heir = household.get(spaceId)?.[0]
-      if (!heir) continue
+    // household has never needed more than one owner. Only the leaver's own
+    // owner rows are considered, so a non-owner never promotes anybody.
+    for (const step of plan) {
+      if (step.disposition !== 'stays' || !step.heirId) continue
+      const wasOwner = memberships.some(
+        (m) => m.spaceId === step.spaceId && m.role === 'owner',
+      )
+      if (!wasOwner) continue
       await tx
         .update(spaceMember)
         .set({ role: 'owner' })
-        .where(eq(spaceMember.id, heir.id))
+        .where(eq(spaceMember.id, step.heirId))
     }
 
     // Archive rather than delete the roster row: expense_split restricts on it,

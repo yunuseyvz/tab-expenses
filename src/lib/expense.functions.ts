@@ -14,9 +14,15 @@ import { z } from 'zod'
 import { ensureSession, requireSpaceMember } from './auth.functions'
 import { getDb } from './db'
 import { category, expense, expenseSplit, spaceMember } from './db/schema'
-import { expenseInputSchema, periodFilterSchema, uuidSchema } from './guards'
+import {
+  expenseInputSchema,
+  isoDateSchema,
+  periodFilterSchema,
+  uuidSchema,
+} from './guards'
 import { BP_TOTAL, allocate, parseAmountToMinor } from './money'
 import { settle } from './settle'
+import type { Db } from './db'
 import type { SQL } from 'drizzle-orm'
 import type { Settlement } from './settle'
 
@@ -135,6 +141,47 @@ async function splitsFor(
 
 // ── writes ────────────────────────────────────────────────────────────────
 
+/**
+ * Throw unless every given member row belongs to `spaceId`.
+ *
+ * The database cannot enforce this: `expense_split.member_id` references
+ * `space_member.id`, and nothing in the schema connects that member to the
+ * expense's own space. So the check is the application's job, and it has to
+ * happen on *every* path that writes a member reference — which is the whole
+ * point of having it in one function.
+ *
+ * What the gap looked like when it was only checked on create: `updateExpense`
+ * took `paidByMemberId` and `splits[].memberId` straight from the client, so a
+ * member of any household could name a member of *another* one and invent a debt
+ * for them. Confirmed against a real Postgres — the insert succeeded and the
+ * victim's balance query reported the fabricated share. The database said yes
+ * because the constraint it was given does not mention spaces.
+ *
+ * `label` distinguishes the payer from a split participant in the message. Both
+ * are rejections of the same kind, but "Payer is not a member of this household"
+ * is the one that tells somebody what to fix.
+ */
+async function assertMembersInSpace(
+  db: Db,
+  spaceId: string,
+  memberIds: ReadonlyArray<string>,
+  label = 'Split participant',
+) {
+  const ids = [...new Set(memberIds)]
+  if (ids.length === 0) return
+
+  const found = await db
+    .select({ id: spaceMember.id })
+    .from(spaceMember)
+    .where(and(eq(spaceMember.spaceId, spaceId), inArray(spaceMember.id, ids)))
+  const known = new Set(found.map((f) => f.id))
+
+  const stranger = ids.find((id) => !known.has(id))
+  if (stranger) {
+    throw new Error(`${label} is not a member of this space`)
+  }
+}
+
 export const createExpense = createServerFn({ method: 'POST' })
   .inputValidator(expenseInputSchema)
   .handler(async ({ data }) => {
@@ -192,26 +239,13 @@ export const createExpense = createServerFn({ method: 'POST' })
       seen.add(s.memberId)
     }
 
-    // Every split participant must be a member of this space — checked in one
-    // query rather than one per row.
-    const participants = await db
-      .select({ id: spaceMember.id })
-      .from(spaceMember)
-      .where(
-        and(
-          eq(spaceMember.spaceId, data.spaceId),
-          inArray(
-            spaceMember.id,
-            splits.map((s) => s.memberId),
-          ),
-        ),
-      )
-    const known = new Set(participants.map((p) => p.id))
-    for (const s of splits) {
-      if (!known.has(s.memberId)) {
-        throw new Error('Split participant is not a member of this space')
-      }
-    }
+    // Every split participant must belong to this space. Checked after the
+    // weight and duplicate checks so the message names the actual problem.
+    await assertMembersInSpace(
+      db,
+      data.spaceId,
+      splits.map((s) => s.memberId),
+    )
 
     const shares = allocate(
       amountMinor,
@@ -305,6 +339,45 @@ export const updateExpense = createServerFn({ method: 'POST' })
         : existing.amountMinor
     const paidByMemberId = data.paidByMemberId ?? existing.paidByMemberId
 
+    /**
+     * Both of these reference a member row, and the database will happily write
+     * one belonging to another household — see assertMembersInSpace. This was
+     * the one write path in the app with no such check, which made it possible
+     * to invent a debt in somebody else's ledger by editing an expense of your
+     * own.
+     *
+     * The payer is validated whenever the client sends one, not only when it
+     * changes: the check has to cover the value that is actually written, and
+     * an expense can already carry a stale reference from before this existed.
+     * Archived members are allowed, because `paid_by_member_id` is restrict and
+     * archiving somebody must not make their old expenses uneditable.
+     */
+    await assertMembersInSpace(db, data.spaceId, [paidByMemberId], 'Payer')
+
+    if (data.categoryId) {
+      const cat = await db
+        .select({ id: category.id })
+        .from(category)
+        .where(
+          and(
+            eq(category.id, data.categoryId),
+            eq(category.spaceId, data.spaceId),
+          ),
+        )
+        .limit(1)
+      if (!cat[0]) throw new Error('Category is not in this space')
+    }
+
+    if (data.spentOn !== undefined) {
+      // Deliberately lax in the schema here and strict here. `z.string().trim()`
+      // accepts "next tuesday", and Postgres rejects it — but as an unhandled
+      // 500 with the SQL error attached, rather than as a field-level message.
+      const parsedDate = isoDateSchema.safeParse(data.spentOn)
+      if (!parsedDate.success) {
+        throw new Error('That is not a real date')
+      }
+    }
+
     return db.transaction(async (tx) => {
       const [row] = await tx
         .update(expense)
@@ -353,6 +426,15 @@ export const updateExpense = createServerFn({ method: 'POST' })
             }
             seen.add(s.memberId)
           }
+
+          // The same cross-household check the create path does. Without it this
+          // is a write of expense_split rows naming strangers, which is the
+          // whole of the vulnerability.
+          await assertMembersInSpace(
+            db,
+            data.spaceId,
+            splits.map((s) => s.memberId),
+          )
         }
 
         const shares =

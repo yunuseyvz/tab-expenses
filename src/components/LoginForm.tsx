@@ -15,6 +15,7 @@ import { APP_NAME } from '#/lib/app-meta'
 import { Button } from '#/components/ui/Button'
 import { Input, Label } from '#/components/ui/Input'
 import { authClient } from '#/lib/auth-client'
+import { emailIsRegistered } from '#/lib/auth.functions'
 
 const RESEND_COOLDOWN = 30
 
@@ -38,6 +39,36 @@ export function LoginForm({ redirectTo }: { redirectTo?: string }) {
   async function sendCode(target = email) {
     setSending(true)
     setError(null)
+
+    // Check the address exists before asking for a code. Better Auth sends
+    // nothing for an unknown address and reports success anyway, so without this
+    // the form cheerfully moves to the code step for an address that can never
+    // receive one, and the person is left staring at six boxes.
+    //
+    // This makes the form an account-existence oracle, which it deliberately was
+    // not before. See emailIsRegistered in #/lib/auth.functions for why that
+    // costs so little here, and for the rate limit that keeps it from being
+    // used to sweep a list of addresses.
+    const lookup = await emailIsRegistered({ data: { email: target } }).catch(
+      // Thrown means the call itself failed — offline, or the server
+      // unreachable. Treated as "don't know", which is what the old
+      // unconditional behaviour was, and is the right fallback: the send is
+      // attempted anyway and will surface anything real.
+      () => null,
+    )
+
+    if (lookup?.status === 'limited') {
+      setSending(false)
+      setError('Too many attempts. Wait a minute and try again.')
+      return
+    }
+
+    if (lookup?.status === 'ok' && !lookup.registered) {
+      setSending(false)
+      setError('No account uses that address.')
+      return
+    }
+
     const { error: err } = await authClient.emailOtp.sendVerificationOtp({
       email: target,
       type: 'sign-in',
@@ -50,9 +81,6 @@ export function LoginForm({ redirectTo }: { redirectTo?: string }) {
     setStep('code')
     setCode(emptyCode())
     setCooldown(RESEND_COOLDOWN)
-    // No "code sent" confirmation here. Better Auth deliberately sends nothing
-    // for an address with no account, and saying so would turn the login form
-    // into an account-existence oracle.
   }
 
   async function verify() {
@@ -170,16 +198,27 @@ export function LoginForm({ redirectTo }: { redirectTo?: string }) {
         )}
       </AnimatePresence>
 
+      {/*
+       * The register link follows an error, and is suppressed when the error is
+       * the rate limit — offering to create an account in response to "too many
+       * attempts" would be nonsense. The rate-limit message is the only one that
+       * does not get the link.
+       */}
       {error && (
         <p role="alert" className="mt-4 text-sm text-oxblood-ink">
-          {error}{' '}
-          <Link
-            to="/register"
-            search={{ email }}
-            className="underline underline-offset-4"
-          >
-            Create an account
-          </Link>
+          {error}
+          {!error.startsWith('Too many') && (
+            <>
+              {' '}
+              <Link
+                to="/register"
+                search={{ email }}
+                className="underline underline-offset-4"
+              >
+                Create an account
+              </Link>
+            </>
+          )}
         </p>
       )}
 

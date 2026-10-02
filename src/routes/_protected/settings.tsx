@@ -596,6 +596,7 @@ function SettingsRoute() {
           email={me.data.user.email}
           staying={consequences.data?.staying ?? 0}
           going={consequences.data?.going ?? 0}
+          orphaned={consequences.data?.orphaned ?? 0}
           // The counts are about households this page has not loaded, so there is
           // nothing on the client to fall back on. Say so rather than defaulting
           // to zero, which would read as "nothing is lost".

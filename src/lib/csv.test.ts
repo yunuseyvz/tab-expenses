@@ -13,6 +13,53 @@ describe('csvEscape', () => {
     expect(csvEscape('He said "hi"')).toBe('"He said ""hi"""')
     expect(csvEscape('line1\nline2')).toBe('"line1\nline2"')
   })
+
+  /**
+   * Formula injection. A member types the purpose, the export writes it, and
+   * the owner's spreadsheet evaluates it on open. Quoting does not help: these
+   * are still formula cells.
+   */
+  it('neutralises a field a spreadsheet would treat as a formula', () => {
+    expect(csvEscape('=1+1')).toBe("'=1+1")
+    expect(csvEscape('+1')).toBe("'+1")
+    expect(csvEscape('-1')).toBe("'-1")
+    expect(csvEscape('@SUM(A1)')).toBe("'@SUM(A1)")
+    expect(csvEscape('=HYPERLINK("http://evil.example","click")')).toBe(
+      `"'=HYPERLINK(""http://evil.example"",""click"")"`,
+    )
+  })
+
+  it('leaves an equals sign that is not in first position alone', () => {
+    expect(csvEscape('2 = 2')).toBe('2 = 2')
+    expect(csvEscape('Paid €10, split 50/50')).toBe('"Paid €10, split 50/50"')
+    expect(csvEscape('flat-3b')).toBe('flat-3b')
+  })
+
+  /**
+   * The round trip that actually matters: neutralising must not corrupt the
+   * value, so it has to come back out of the parser unchanged.
+   */
+  it('round-trips a hostile field through toCsv and parseCsv', () => {
+    const payload = "=cmd|' /c calc'!A1"
+    const csv = toCsv([
+      {
+        date: '2026-09-01',
+        purpose: payload,
+        amount: '10.00',
+        category: 'Home',
+        paid_by: 'Sam',
+        note: '',
+      },
+    ])
+    // The written file is inert: the apostrophe leads the field, so no
+    // spreadsheet reads it as a formula. Not quoted — this payload has no comma,
+    // quote or newline in it, so the guard is the only thing acting.
+    expect(csv).toContain(`,'${payload},`)
+    // ...and the value survives for whoever reads it programmatically.
+    const parsed = parseCsv(csv)
+    expect(parsed.errors).toHaveLength(0)
+    expect(parsed.rows[0]?.purpose).toBe(`'${payload}`)
+  })
 })
 
 describe('splitCsvLine', () => {

@@ -132,6 +132,81 @@ export const listMySpaces = createServerFn({ method: 'GET' }).handler(
 )
 
 /**
+ * Does this address have an account?
+ *
+ * Exists so the sign-in form can say "no account for this address, create one"
+ * instead of asking for a code that will never arrive and never work. That is a
+ * deliberate reversal of what this function used to be careful about — see the
+ * note on sendVerificationOTP below, which deliberately stays silent about
+ * unknown addresses — and it is worth being straight about the cost.
+ *
+ * This *is* an account-existence oracle: anyone can POST an address and learn
+ * whether it is registered here. What that is worth depends entirely on what
+ * else the app does with an address, and here it is almost nothing: there are no
+ * password resets, no third-party logins, no email-based identity to hijack, and
+ * a login code goes only to the address itself. So the worst case is somebody
+ * learning which of their housemates have accounts here, on a self-hosted
+ * household app.
+ *
+ * It is bounded so it cannot be used to sweep a list. Better Auth's own rate
+ * limiter covers its endpoints, not this server function, so the limit below is
+ * ours: five lookups a minute, keyed on the caller's IP. A shared NAT address can
+ * exhaust that and lock the form out for a minute, which is a nuisance rather
+ * than a failure, and is the honest trade for not letting one client walk an
+ * address book.
+ *
+ * Returns a boolean and nothing else — no name, no id, no verification state.
+ */
+export const emailIsRegistered = createServerFn({ method: 'POST' })
+  .inputValidator(z.object({ email: z.email() }))
+  .handler(async ({ data }) => {
+    const ip = clientIp()
+    const now = Date.now()
+    const hits = (LOOKUP_BUDGET.get(ip) ?? []).filter((t) => now - t < 60_000)
+
+    // A status, not an exception. It first threw, and the client treated a
+    // failed lookup as "don't know" and carried on to send a code — so hitting
+    // the limit produced a confusing downstream failure instead of the message
+    // explaining itself. Anything the caller is meant to *react* to differently
+    // has to arrive as a value.
+    if (hits.length >= LOOKUP_LIMIT) {
+      return { status: 'limited' as const }
+    }
+    LOOKUP_BUDGET.set(ip, [...hits, now])
+
+    const ctx = await auth.$context
+    const existing = await ctx.internalAdapter.findUserByEmail(
+      data.email.trim().toLowerCase(),
+    )
+    // `!= null` covers both null and undefined in one go, which is the only
+    // reason to prefer it: the adapter's return type is not precise enough for
+    // TypeScript to prove which of the two an absent user comes back as, and it
+    // has been both.
+    return { status: 'ok' as const, registered: existing != null }
+  })
+
+/** How many existence lookups one address may make per minute. */
+const LOOKUP_LIMIT = 5
+
+/**
+ * Recent lookups, keyed by caller.
+ *
+ * In-process and therefore per-replica, which is fine: it is a courtesy limit
+ * against a casual sweep, not a security control. The thing that actually
+ * prevents abuse is that a lookup tells you nothing you could not already learn
+ * by trying to sign in.
+ */
+const LOOKUP_BUDGET = new Map<string, Array<number>>()
+
+/** The caller's IP, for the lookup budget. Best effort, never throws. */
+function clientIp(): string {
+  const headers = getRequestHeaders()
+  const forwarded = headers.get('x-forwarded-for')
+  if (forwarded) return forwarded.split(',')[0]?.trim() ?? 'unknown'
+  return headers.get('x-real-ip')?.trim() ?? 'unknown'
+}
+
+/**
  * Begin registration: name + email in, a code in the inbox out.
  *
  * Better Auth's email-OTP plugin is configured with `disableSignUp: true`, so

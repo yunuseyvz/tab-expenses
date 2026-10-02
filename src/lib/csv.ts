@@ -19,9 +19,27 @@ export const CSV_HEADER = [
   'note',
 ] as const
 
-/** Quote a field only when it needs it, doubling embedded quotes. */
+/**
+ * Quote a field only when it needs it, doubling embedded quotes.
+ *
+ * Quoting is not enough on its own, and this is the one place in the app where
+ * that matters: a field that begins with `=`, `+`, `-` or `@` is a formula to
+ * Excel, LibreOffice and Google Sheets, and they evaluate it when the file is
+ * opened. Quoting does not stop that — it is still a formula cell, just quoted.
+ *
+ * `purpose` and `note` are typed by any member of a household, so this is
+ * attacker-influenced within a space and lands on a desktop outside the app's
+ * control. A `=HYPERLINK(...)` purpose becomes a clickable lure in a file the
+ * owner opened expecting their own ledger.
+ *
+ * Prefixing with an apostrophe is the standard neutraliser: spreadsheets treat it
+ * as "this is text, not a formula" and hide it. It only applies to the four
+ * leading characters, so ordinary values and values that merely *contain* an
+ * equals sign ("2 = 2") are untouched.
+ */
 export function csvEscape(value: string): string {
-  return /[",\n\r]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value
+  const guarded = /^[=+\-@]/.test(value) ? `'${value}` : value
+  return /[",\n\r]/.test(guarded) ? `"${guarded.replace(/"/g, '""')}"` : guarded
 }
 
 export function toCsv(
