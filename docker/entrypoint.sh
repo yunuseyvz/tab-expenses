@@ -37,6 +37,45 @@ if [ -n "$DB_HOST" ]; then
     sleep 1
   done
   log "postgres reachable"
+
+  # Now actually authenticate. The loop above only proves a TCP socket opened,
+  # which is why a wrong password reaches the migration step and fails there:
+  # drizzle-kit exits 1 and prints no error at all, so the log shows a progress
+  # spinner cut off mid-draw and nothing else.
+  #
+  # That is not hypothetical. A `pgdata` volume keeps the password it was created
+  # with, and when the directory already exists Postgres logs "Skipping
+  # initialization" and ignores POSTGRES_PASSWORD. So changing the password after
+  # the first deploy silently invalidates it and the next boot dies at the
+  # migration step with no diagnosis available.
+  #
+  # `postgres` rather than `pg`: that is the driver the app itself uses, so it is
+  # resolvable at the top level of node_modules. `pg` is not — it exists only
+  # inside drizzle-kit's own dependency tree, which the Dockerfile's pruning step
+  # can move, and reaching for it here produced MODULE_NOT_FOUND.
+  #
+  # Nothing is sent to /dev/null: these messages are the entire point.
+  if ! node -e '
+    const postgres = require("postgres");
+    const sql = postgres(process.env.DATABASE_URL, { max: 1, connect_timeout: 10 });
+    sql`select 1`
+      .then(() => { console.log("[entrypoint] database credentials accepted"); return sql.end(); })
+      .catch((e) => {
+        const m = String((e && e.message) || e);
+        if (/password authentication failed|no pg_hba\.conf entry|does not exist/.test(m)) {
+          console.error("[entrypoint] THE DATABASE REJECTED THE CREDENTIALS: " + m);
+          console.error("[entrypoint] If POSTGRES_PASSWORD was changed after the first deploy,");
+          console.error("[entrypoint] the pgdata volume still holds the original one, and Postgres");
+          console.error("[entrypoint] ignores the new value because the directory already exists.");
+          console.error("[entrypoint] Set it back to the original, or delete the volume for a fresh db.");
+        } else {
+          console.error("[entrypoint] could not connect to the database: " + m);
+        }
+        process.exit(2);
+      });
+  '; then
+    exit 2
+  fi
 fi
 
 # ── validate configuration before migrating ──────────────────────────────
