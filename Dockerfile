@@ -60,8 +60,11 @@ COPY --from=build --chown=node:node /app/dist ./dist
 COPY --from=build --chown=node:node /app/drizzle ./drizzle
 COPY --from=build --chown=node:node /app/drizzle.config.ts ./drizzle.config.ts
 COPY --from=build --chown=node:node /app/package.json ./package.json
-# The schema is read at runtime by both the app and drizzle-kit.
+# The schema is read at runtime by the app.
 COPY --from=build --chown=node:node /app/src/lib/db ./src/lib/db
+# The boot-time migrator. Kept in docker/ beside the entrypoint that runs it,
+# rather than in scripts/, because it is a deploy concern and not project code.
+COPY --chown=node:node docker/migrate.mjs ./migrate.mjs
 
 # Trim the build-and-test toolchain out of the runtime image.
 #
@@ -72,10 +75,12 @@ COPY --from=build --chown=node:node /app/src/lib/db ./src/lib/db
 # Prisma/better-sqlite3 (present only because drizzle-orm lists them as optional
 # peers).
 #
-# esbuild is the exception and is deliberately KEPT: drizzle-kit requires it to
-# load the TypeScript schema, and an earlier version of this file deleted it.
-# The container smoke test in CI applies migrations on every build, which is
-# what turned that mistake into a red build rather than a broken deploy.
+# esbuild is the exception and is deliberately KEPT. Boot-time migrations no
+# longer go through drizzle-kit (see docker/migrate.mjs: the CLI exits 1 with
+# no message when it fails, which is undiagnosable), so nothing at boot needs
+# esbuild any more. It stays because deleting it before has broken the image,
+# it is still needed for `drizzle-kit generate` when authoring a migration, and
+# the saving is a few megabytes. Prune it when there is a reason to.
 RUN set -eux; \
     for pkg in \
       '@playwright' 'playwright-core' 'playwright' \

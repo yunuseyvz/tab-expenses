@@ -3,7 +3,7 @@
 #
 # Migrations run on boot. That is safe for the single-instance deployment this
 # is written for. If you ever run more than one replica, move this to a
-# separate one-shot job — concurrent `drizzle-kit migrate` runs can race on the
+# separate one-shot job — concurrent migration runs can race on the
 # migrations table.
 set -e
 
@@ -38,16 +38,17 @@ if [ -n "$DB_HOST" ]; then
   done
   log "postgres reachable"
 
-  # Now actually authenticate. The loop above only proves a TCP socket opened,
-  # which is why a wrong password reaches the migration step and fails there:
-  # drizzle-kit exits 1 and prints no error at all, so the log shows a progress
-  # spinner cut off mid-draw and nothing else.
+  # Now actually authenticate. The loop above only proves a TCP socket opened, so
+  # it reports success for a password that can never log in. That mistake already
+  # cost a deploy cycle here.
   #
-  # That is not hypothetical. A `pgdata` volume keeps the password it was created
-  # with, and when the directory already exists Postgres logs "Skipping
-  # initialization" and ignores POSTGRES_PASSWORD. So changing the password after
-  # the first deploy silently invalidates it and the next boot dies at the
-  # migration step with no diagnosis available.
+  # The extra check exists for the hint, not the detection: migrate.mjs already
+  # reports "password authentication failed". What it cannot know is why the
+  # password is wrong. A `pgdata` volume keeps the password it was created with,
+  # and when the directory already exists Postgres logs "Skipping initialization"
+  # and ignores POSTGRES_PASSWORD entirely. So changing the password after the
+  # first deploy silently invalidates it, and that is the single most likely
+  # reason for a mismatch on a redeploy.
   #
   # `postgres` rather than `pg`: that is the driver the app itself uses, so it is
   # resolvable at the top level of node_modules. `pg` is not — it exists only
@@ -101,26 +102,41 @@ node -e "
 # Without them this step failed silently on a deploy and the cause was a
 # three-hour guessing game: the container died partway through, `restart:
 # unless-stopped` started it again, it died at the same place, and the only
-# evidence was a progress spinner cut off mid-draw. The spinner writes its own
-# ANSI erase codes to stderr, so the log showed `[applying migrations...KG` — which
-# reads like the tail of "Killed" and is not. It is `2K` and `1G` from the spinner
-# redrawing itself.
+# evidence was a progress spinner cut off mid-draw.
 #
-# So: show the commands, report the code, and print the kernel's own verdict if
-# the process was killed from outside. A killed process returns 137, and 137 is
-# the only number that distinguishes "ran out of memory on the host" from "drizzle
-# failed", and those need completely different fixes.
 # `cmd || RC=$?` rather than `cmd; RC=$?`: this script runs under `set -e`, so a
 # bare failing command exits the container on the spot and the exit code is never
 # read. Handling it in the `||` arm is what keeps the reporting below reachable.
+#
+# The CLI is gone from this path on purpose. `drizzle-kit migrate` exits 1 and
+# prints nothing when it fails, so the log ends mid-spinner with a fragment of
+# ANSI codes and no cause — which is what made a deploy failure cost a full
+# diagnosis cycle from the outside. docker/migrate.mjs runs the same migration
+# through the same journal, but inside a try/catch that reports the error.
 log "applying migrations"
 MIGRATE_RC=0
 set -x
-./node_modules/.bin/drizzle-kit migrate || MIGRATE_RC=$?
+node ./migrate.mjs || MIGRATE_RC=$?
 set +x
 
 if [ "$MIGRATE_RC" -ne 0 ]; then
-  log "ERROR: drizzle-kit migrate exited ${MIGRATE_RC}"
+  log "ERROR: migrations failed, rc=${MIGRATE_RC} (see [migrate] lines above)"
+
+  # The migrator now names its own failure, so what is left is the context it
+  # cannot see: the host's disk and memory. A full filesystem makes a
+  # file-writing process die without a message, and this image is large.
+  log "disk:"
+  df -h / /tmp /app 2>&1 | sed "s/^/[entrypoint]   /"
+  log "memory:"
+  free -m 2>&1 | sed "s/^/[entrypoint]   /" || echo "[entrypoint]   free unavailable"
+  log "migrations on disk:"
+  ls /app/drizzle/*.sql 2>&1 | sed "s/^/[entrypoint]   /"
+  if touch /app/drizzle/.write-test 2>&1; then
+    log "drizzle folder is writable"
+    rm -f /app/drizzle/.write-test
+  else
+    log "drizzle folder is NOT writable"
+  fi
   if [ "$MIGRATE_RC" -ge 128 ]; then
     log "that is 128+signal ${MIGRATE_RC}, i.e. signal $((MIGRATE_RC - 128)):"
     case $((MIGRATE_RC - 128)) in
