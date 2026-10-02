@@ -13,5 +13,11 @@ dist
 coverage
 test-results
 playwright-report
-/drizzle/meta/_journal.json
 /screenshots
+# /drizzle/meta/_journal.json was ignored here and had to be committed instead.
+# It is the ordered index of migrations: `migrate()` reads it to decide what to
+# apply, and every SQL file's entry refers back to its tag. Without it a fresh
+# clone has the .sql files and no manifest, so the boot migrator dies with
+# "Can't find meta/_journal.json file". Locally it went unnoticed for the
+# opposite reason: the file existed on disk from having run `db:generate` here,
+# so only a clean checkout — i.e. every deploy — ever saw the failure.
