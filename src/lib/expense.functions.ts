@@ -63,7 +63,7 @@ export interface ExpenseRow {
   paidByMemberId: string
   paidByName: string
   paidByColor: string
-  createdByUserId: string
+  createdByUserId: string | null
   createdAt: string
   splits: Array<SplitRow>
 }

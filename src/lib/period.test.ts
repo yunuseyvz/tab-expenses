@@ -10,19 +10,19 @@ import { groupByDay, presetToPeriod, toISODate } from './period'
 import { settle } from './settle'
 
 describe('settle', () => {
-  it('balances the plan’s 60/40 WG scenario to zero', () => {
-    // You paid €100 and 60% is yours, 40% is Vale's.
-    // paid: you 100, Vale 0. shares: you 60, Vale 40.
-    // nets: you +40, Vale −40.
+  it('balances the plan’s 60/40 shared-flat scenario to zero', () => {
+    // You paid €100 and 60% is yours, 40% is Kai's.
+    // paid: you 100, Kai 0. shares: you 60, Kai 40.
+    // nets: you +40, Kai −40.
     const settlements = settle([
       { memberId: 'me', displayName: 'Me', netMinor: 4000 },
-      { memberId: 'vale', displayName: 'Vale', netMinor: -4000 },
+      { memberId: 'kai', displayName: 'Kai', netMinor: -4000 },
     ])
 
     expect(settlements).toEqual([
       {
-        fromMemberId: 'vale',
-        fromName: 'Vale',
+        fromMemberId: 'kai',
+        fromName: 'Kai',
         toMemberId: 'me',
         toName: 'Me',
         amountMinor: 4000,

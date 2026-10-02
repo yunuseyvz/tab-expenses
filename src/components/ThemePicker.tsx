@@ -2,13 +2,19 @@
  * Light / dark / system toggle.
  *
  * Dark mode is a separate art pass, so the choice is explicit and persisted
- * rather than inferred — and the OS preference is respected until overridden.
+ * rather than inferred. Light is the default rather than the OS preference; see
+ * DEFAULT_THEME in #/lib/theme.
  */
 import { useEffect, useState } from 'react'
 
 import type { Theme } from '#/lib/theme'
 import { cn } from '#/lib/cn'
-import { applyTheme, readStoredTheme, setTheme } from '#/lib/theme'
+import {
+  DEFAULT_THEME,
+  applyTheme,
+  readStoredTheme,
+  setTheme,
+} from '#/lib/theme'
 
 const OPTIONS: Array<{ value: Theme; label: string; hint: string }> = [
   { value: 'light', label: 'Light', hint: 'Paper in daylight' },
@@ -19,7 +25,7 @@ const OPTIONS: Array<{ value: Theme; label: string; hint: string }> = [
 export function ThemePicker({ heading = true }: { heading?: boolean } = {}) {
   // Render neutral on the server and the first client render, then read the
   // stored value. Reading localStorage during render would break hydration.
-  const [theme, setThemeState] = useState<Theme>('system')
+  const [theme, setThemeState] = useState<Theme>(DEFAULT_THEME)
   const [ready, setReady] = useState(false)
 
   useEffect(() => {

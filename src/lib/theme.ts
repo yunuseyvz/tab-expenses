@@ -7,10 +7,24 @@
  * the inline script in the root document (see ThemeScript) so there is no flash
  * of the wrong theme.
  *
- * 'system' follows the OS. 'light' and 'dark' are explicit overrides, and the
- * choice persists in localStorage.
+ * Light is the default, not the OS preference. Dark was the fallback until it
+ * was pointed out that an app which assumes dark mode because the machine is
+ * dark is an app that shows a stranger the rarer of its two designs first. Light
+ * is the one the palette was drawn for and the one every screenshot in the README
+ * is of. 'system' is still offered as a deliberate choice — following the device
+ * is a real preference — but it is now something you pick rather than something
+ * that happens to you.
  */
 export type Theme = 'system' | 'light' | 'dark'
+
+/**
+ * What an app with no stored preference shows. See the note above.
+ *
+ * Widened to `Theme` rather than left as the literal `'light'` on purpose:
+ * THEME_BOOTSTRAP has to ask whether this is dark at runtime, and a narrowed
+ * literal makes that comparison a type error rather than an answer.
+ */
+export const DEFAULT_THEME = 'light' as Theme
 
 export const THEME_KEY = 'tab:theme'
 
@@ -25,9 +39,11 @@ export function resolveTheme(theme: Theme): 'light' | 'dark' {
 }
 
 export function readStoredTheme(): Theme {
-  if (typeof localStorage === 'undefined') return 'system'
+  if (typeof localStorage === 'undefined') return DEFAULT_THEME
   const raw = localStorage.getItem(THEME_KEY)
-  return raw === 'light' || raw === 'dark' || raw === 'system' ? raw : 'system'
+  return raw === 'light' || raw === 'dark' || raw === 'system'
+    ? raw
+    : DEFAULT_THEME
 }
 
 export function applyTheme(theme: Theme) {
@@ -58,10 +74,13 @@ export function setTheme(theme: Theme) {
 export const THEME_BOOTSTRAP = `(() => {
   try {
     var stored = localStorage.getItem('${THEME_KEY}')
-    var theme = stored === 'light' || stored === 'dark' ? stored : null
-    var dark = theme
-      ? theme === 'dark'
-      : window.matchMedia('(prefers-color-scheme: dark)').matches
+    var dark = stored === 'dark'
+      ? true
+      : stored === 'light'
+        ? false
+        : stored === 'system'
+          ? window.matchMedia('(prefers-color-scheme: dark)').matches
+          : ${DEFAULT_THEME === 'dark'}
     if (dark) document.documentElement.classList.add('dark')
     document.documentElement.style.colorScheme = dark ? 'dark' : 'light'
   } catch (e) {

@@ -180,8 +180,8 @@ describe('avatarSrc', () => {
   })
 
   it('resolves a photo key to a vendored path', () => {
-    expect(photoUrl('photo:vale')).toBe('/avatars/vale.svg')
-    expect(avatarSrc('photo:vale', 'u').kind).toBe('photo')
+    expect(photoUrl('photo:kai')).toBe('/avatars/kai.svg')
+    expect(avatarSrc('photo:kai', 'u').kind).toBe('photo')
   })
 
   it('refuses a photo key that tries to escape the assets directory', () => {

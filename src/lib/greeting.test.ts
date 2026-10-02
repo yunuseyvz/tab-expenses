@@ -24,15 +24,15 @@ describe('partOfDay', () => {
 
 describe('greeting', () => {
   it('opens with the time of day and the first name', () => {
-    expect(greeting('Vale', 9)).toBe('Good morning, Vale')
-    expect(greeting('Vale', 14)).toBe('Good afternoon, Vale')
-    expect(greeting('Vale', 19)).toBe('Good evening, Vale')
+    expect(greeting('Kai', 9)).toBe('Good morning, Kai')
+    expect(greeting('Kai', 14)).toBe('Good afternoon, Kai')
+    expect(greeting('Kai', 19)).toBe('Good evening, Kai')
   })
 
   it('says hello rather than good night before five', () => {
     // Someone opening an app at 2am is not going to bed, and "Good night"
     // reads as a farewell rather than a welcome.
-    expect(greeting('Vale', 2)).toBe('Hello, Vale')
+    expect(greeting('Kai', 2)).toBe('Hello, Kai')
   })
 
   it('falls back to the bare greeting without a name', () => {
@@ -44,13 +44,13 @@ describe('greeting', () => {
   })
 
   it('takes the first token of a full name', () => {
-    expect(greeting('Anna Maria', 9)).toBe('Good morning, Anna')
+    expect(greeting('Rowan Ellis', 9)).toBe('Good morning, Rowan')
     // Never wrong, sometimes short — see the note in greeting().
     expect(greeting('Dr Ana Reyes', 9)).toBe('Good morning, Dr')
   })
 
   it('tolerates ragged whitespace', () => {
-    expect(greeting('  Vale  ', 9)).toBe('Good morning, Vale')
+    expect(greeting('  Kai  ', 9)).toBe('Good morning, Kai')
   })
 
   it("defaults to the reader's own clock", () => {
@@ -63,6 +63,6 @@ describe('greeting', () => {
       evening: 'Good evening',
       night: 'Hello',
     }[partOfDay(new Date().getHours())]
-    expect(greeting('Vale')).toBe(`${word}, Vale`)
+    expect(greeting('Kai')).toBe(`${word}, Kai`)
   })
 })

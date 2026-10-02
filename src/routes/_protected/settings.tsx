@@ -17,6 +17,7 @@ import { IconPicker } from '#/components/IconPicker'
 import { InvitePanel } from '#/components/InvitePanel'
 import { ImportCard } from '#/components/settings/ImportCard'
 import { ConfirmRemoval } from '#/components/settings/ConfirmRemoval'
+import { ConfirmAccountDeletion } from '#/components/settings/ConfirmAccountDeletion'
 import { SettingsGroup, SettingsRow } from '#/components/settings/SettingsGroup'
 import { Button } from '#/components/ui/Button'
 import { Input, Label, Select } from '#/components/ui/Input'
@@ -38,6 +39,7 @@ import {
 } from '#/lib/session'
 import { ThemePicker } from '#/components/ThemePicker'
 import { exportCsv } from '#/lib/csv.functions'
+import { accountDeletionPreview, deleteAccount } from '#/lib/account.functions'
 
 /**
  * Settings: one screen, four groups, nothing hidden behind a tap.
@@ -109,6 +111,7 @@ function SettingsRoute() {
   const queryClient = useQueryClient()
 
   const [signingOut, setSigningOut] = useState(false)
+  const [deletingAccount, setDeletingAccount] = useState(false)
   const [open, setOpen] = useState<Open>(null)
   const [avatarSheet, setAvatarSheet] = useState(false)
   const [importSheet, setImportSheet] = useState(false)
@@ -128,6 +131,14 @@ function SettingsRoute() {
   const [personalOwner, setPersonalOwner] = useState('')
 
   const me = useQuery({ queryKey: ['session'], queryFn: () => getSession() })
+  // Only fetched once the dialog is open. It is a per-account query about
+  // households this page has not loaded, and there is no reason to pay for it
+  // on every visit to Settings.
+  const consequences = useQuery({
+    queryKey: ['account-deletion'],
+    queryFn: () => accountDeletionPreview(),
+    enabled: deletingAccount,
+  })
   const members = useQuery({
     ...membersQuery(spaceId ?? ''),
     enabled: Boolean(spaceId),
@@ -152,6 +163,23 @@ function SettingsRoute() {
     await authClient.signOut()
     window.location.href = '/login'
   }
+
+  /**
+   * Delete the account, then leave.
+   *
+   * A full navigation for the same reason as sign-out: the session is gone, so
+   * every loader is keyed to something that no longer exists. An in-app transition
+   * would render a frame of a signed-in app for an account that no longer is.
+   */
+  const removeAccount = useMutation({
+    mutationFn: (email: string) =>
+      deleteAccount({ data: { confirmEmail: email } }),
+    onSuccess: () => {
+      window.location.href = '/login'
+    },
+    onError: (err) =>
+      toast.error(err instanceof Error ? err.message : 'Could not delete'),
+  })
 
   const saveAvatar = useMutation({
     mutationFn: (avatar: string | null) => updateProfile({ data: { avatar } }),
@@ -306,7 +334,7 @@ function SettingsRoute() {
                   autoFocus
                   value={memberName}
                   onChange={(e) => setMemberName(e.target.value)}
-                  placeholder="Vater"
+                  placeholder="Noor"
                 />
               </div>
               <SwatchField
@@ -498,6 +526,14 @@ function SettingsRoute() {
               Sign out
             </Button>
           </SettingsRow>
+          {/* Last row on the page, and the only irreversible thing in it. It gets
+              no button of its own to mis-click: the row is the target, the
+              dialog is the confirmation, and the dialog asks for the address. */}
+          <SettingsRow
+            label="Delete account"
+            hint="Cannot be undone"
+            onClick={() => setDeletingAccount(true)}
+          />
         </SettingsGroup>
       </main>
 
@@ -553,6 +589,22 @@ function SettingsRoute() {
         <Sheet open onClose={() => setInviteSheet(false)} title="Invite people">
           <InvitePanel spaceId={spaceId} />
         </Sheet>
+      )}
+
+      {deletingAccount && me.data && (
+        <ConfirmAccountDeletion
+          email={me.data.user.email}
+          staying={consequences.data?.staying ?? 0}
+          going={consequences.data?.going ?? 0}
+          // The counts are about households this page has not loaded, so there is
+          // nothing on the client to fall back on. Say so rather than defaulting
+          // to zero, which would read as "nothing is lost".
+          loading={consequences.isPending}
+          failed={consequences.isError}
+          busy={removeAccount.isPending}
+          onCancel={() => setDeletingAccount(false)}
+          onConfirm={(email) => removeAccount.mutate(email)}
+        />
       )}
     </AppShell>
   )

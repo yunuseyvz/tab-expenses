@@ -1,5 +1,5 @@
 /**
- * Seed a demo space with a household's worth of history.
+ * Seed a demo space with a shared flat's worth of history.
  *
  * Idempotent: re-running replaces the seeded rows for the demo user rather
  * than duplicating them. Safe to run against a dev database.
@@ -85,7 +85,7 @@ async function main() {
       await db.delete(space).where(eq(space.id, s.id))
     }
 
-    const [wg] = await db
+    const [flat] = await db
       .insert(space)
       .values({
         name: 'Flat 3B',
@@ -93,12 +93,12 @@ async function main() {
         createdByUserId: demoUserId,
       })
       .returning()
-    if (!wg) throw new Error('failed to insert space')
+    if (!flat) throw new Error('failed to insert space')
 
     const [me] = await db
       .insert(spaceMember)
       .values({
-        spaceId: wg.id,
+        spaceId: flat.id,
         userId: demoUserId,
         displayName: 'Sam',
         color: 'terracotta',
@@ -106,10 +106,10 @@ async function main() {
         role: 'owner',
       })
       .returning()
-    const [vater] = await db
+    const [noor] = await db
       .insert(spaceMember)
       .values({
-        spaceId: wg.id,
+        spaceId: flat.id,
         userId: null, // virtual member — carries a share, never registers
         displayName: 'Alex',
         color: 'sage',
@@ -117,10 +117,10 @@ async function main() {
         role: 'member',
       })
       .returning()
-    const [mila] = await db
+    const [robin] = await db
       .insert(spaceMember)
       .values({
-        spaceId: wg.id,
+        spaceId: flat.id,
         userId: null,
         displayName: 'Robin',
         color: 'indigo',
@@ -129,7 +129,7 @@ async function main() {
       })
       .returning()
 
-    if (!me || !vater || !mila) throw new Error('failed to insert members')
+    if (!me || !noor || !robin) throw new Error('failed to insert members')
 
     // ── categories ──────────────────────────────────────────────────────
     const shared = [
@@ -141,7 +141,11 @@ async function main() {
     const sharedRows = await db
       .insert(category)
       .values(
-        shared.map((c) => ({ ...c, spaceId: wg.id, scope: 'shared' as const })),
+        shared.map((c) => ({
+          ...c,
+          spaceId: flat.id,
+          scope: 'shared' as const,
+        })),
       )
       .returning()
     const byName = new Map(sharedRows.map((c) => [c.name, c]))
@@ -149,17 +153,17 @@ async function main() {
     // A personal category: excluded from shared views, still counted in Robin's
     // own balance.
     await db.insert(category).values({
-      spaceId: wg.id,
+      spaceId: flat.id,
       name: 'Robin — hobby budget',
       color: 'plum',
       icon: 'palette',
       scope: 'personal',
-      ownerMemberId: mila.id,
+      ownerMemberId: robin.id,
       sortOrder: 4,
     })
 
     // ── expenses ────────────────────────────────────────────────────────
-    // Deliberately includes the plan's 60/40 WG case, an odd-cent split, and
+    // Deliberately includes the plan's 60/40 shared-flat case, an odd-cent split, and
     // a period with nothing in it, so the filters and the balance maths have
     // something real to work against.
     const today = new Date()
@@ -186,7 +190,7 @@ async function main() {
         payer: me,
         weights: [
           [me, 6000],
-          [vater, 4000],
+          [noor, 4000],
         ],
       },
       {
@@ -194,10 +198,10 @@ async function main() {
         purpose: 'Electricity',
         minor: 8450,
         category: 'Utilities',
-        payer: vater,
+        payer: noor,
         weights: [
           [me, 5000],
-          [vater, 5000],
+          [noor, 5000],
         ],
       },
       {
@@ -208,7 +212,7 @@ async function main() {
         payer: me,
         weights: [
           [me, 6000],
-          [vater, 4000],
+          [noor, 4000],
         ],
       },
       // Odd cent: 5c at 50/30/20 → 3/1/1. The payer absorbs the odd cent.
@@ -217,11 +221,11 @@ async function main() {
         purpose: 'Bread',
         minor: 5,
         category: 'Groceries',
-        payer: vater,
+        payer: noor,
         weights: [
           [me, 5000],
-          [vater, 3000],
-          [mila, 2000],
+          [noor, 3000],
+          [robin, 2000],
         ],
       },
       {
@@ -232,7 +236,7 @@ async function main() {
         payer: me,
         weights: [
           [me, 5000],
-          [vater, 5000],
+          [noor, 5000],
         ],
       },
       {
@@ -243,7 +247,7 @@ async function main() {
         payer: me,
         weights: [
           [me, 6000],
-          [vater, 4000],
+          [noor, 4000],
         ],
       },
       // Last month, so the period selector has something to switch to.
@@ -255,7 +259,7 @@ async function main() {
         payer: me,
         weights: [
           [me, 5000],
-          [vater, 5000],
+          [noor, 5000],
         ],
       },
       {
@@ -263,10 +267,10 @@ async function main() {
         purpose: 'Internet',
         minor: 3999,
         category: 'Utilities',
-        payer: vater,
+        payer: noor,
         weights: [
           [me, 5000],
-          [vater, 5000],
+          [noor, 5000],
         ],
       },
       // Personal category: only in Robin's own totals.
@@ -275,8 +279,8 @@ async function main() {
         purpose: 'Watercolours',
         minor: 3200,
         category: 'Robin — hobby budget',
-        payer: mila,
-        weights: [[mila, 10000]],
+        payer: robin,
+        weights: [[robin, 10000]],
       },
     ]
 
@@ -293,7 +297,7 @@ async function main() {
       const [row] = await db
         .insert(expense)
         .values({
-          spaceId: wg.id,
+          spaceId: flat.id,
           categoryId: e.category ? (byName.get(e.category)?.id ?? null) : null,
           paidByMemberId: e.payer.id,
           spentOn: iso(e.daysAgo),
@@ -337,7 +341,7 @@ async function main() {
       )
     }
 
-    console.log(`Seeded space "${wg.name}" (${wg.id})`)
+    console.log(`Seeded space "${flat.name}" (${flat.id})`)
     console.log(`  members:    Sam (you), Alex, Robin`)
     console.log(`  categories: ${shared.length} shared + 1 personal`)
     console.log(`  expenses:   ${plan.length}, split invariant verified`)

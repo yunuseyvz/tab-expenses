@@ -106,7 +106,7 @@ export function InvitePanel({ spaceId }: { spaceId: string }) {
             autoComplete="off"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="vale@example.com"
+            placeholder="kai@example.com"
             className="flex-1 min-w-0"
           />
           {/* `h-auto` and `self-stretch`, in that order.

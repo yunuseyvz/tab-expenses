@@ -71,7 +71,7 @@ for (const scheme of ['light', 'dark']) {
   await page.getByRole('button', { name: 'New expense' }).click()
   await page.getByLabel('Amount').fill('100.00')
   await page.getByLabel('What was it for').fill('Weekly groceries')
-  await page.getByLabel('Paid by').selectOption({ label: 'Vale' })
+  await page.getByLabel('Paid by').selectOption({ label: 'Kai' })
   await page.getByRole('switch', { name: /Split between members/ }).click()
   await page.waitForTimeout(500)
   await page.screenshot({ path: `${OUT}/split-sheet-light-mobile.png` })

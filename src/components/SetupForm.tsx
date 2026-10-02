@@ -161,7 +161,7 @@ export function SetupForm({
             required
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
-            placeholder="Vale"
+            placeholder="Kai"
           />
         </div>
 

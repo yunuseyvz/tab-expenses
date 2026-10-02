@@ -258,8 +258,8 @@ export const getSpace = createServerFn({ method: 'GET' })
 // ── members ───────────────────────────────────────────────────────────────
 
 /**
- * Members of a space. `userId` is null for a virtual member — Vater or Vale
- * carrying a share without ever registering.
+ * Members of a space. `userId` is null for a virtual member — someone carrying a
+ * share without ever registering.
  */
 export const listMembers = createServerFn({ method: 'GET' })
   .inputValidator(z.object({ spaceId: uuidSchema }))

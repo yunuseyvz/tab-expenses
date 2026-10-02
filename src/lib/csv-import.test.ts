@@ -56,12 +56,12 @@ describe.runIf(await describeIfDatabase())('csv import', () => {
       {
         spaceId: sid,
         userId: uid,
-        displayName: 'Vale',
+        displayName: 'Kai',
         color: 'terracotta',
         role: 'owner',
       },
       // A virtual member: no user, carries a share, named in paid_by.
-      { spaceId: sid, displayName: 'Vater', color: 'sage' },
+      { spaceId: sid, displayName: 'Noor', color: 'sage' },
     ])
   })
 
@@ -79,7 +79,7 @@ describe.runIf(await describeIfDatabase())('csv import', () => {
         purpose: 'Shop',
         amount: '12.34',
         category: 'Home',
-        paid_by: 'Vater',
+        paid_by: 'Noor',
         note: '',
       },
       {
@@ -87,7 +87,7 @@ describe.runIf(await describeIfDatabase())('csv import', () => {
         purpose: 'Rent',
         amount: '1450.00',
         category: 'Home',
-        paid_by: 'vale',
+        paid_by: 'kai',
         note: 'march',
       },
     ])
@@ -99,9 +99,9 @@ describe.runIf(await describeIfDatabase())('csv import', () => {
   it('a malformed row blocks the whole file rather than importing the rest', () => {
     const bad = [
       CSV_HEADER.join(','),
-      '2026-03-01,Good,10.00,Home,Vater,',
-      'nope,Bad,10.00,Home,Vater,',
-      '2026-03-03,Also good,5.00,Home,Vater,',
+      '2026-03-01,Good,10.00,Home,Noor,',
+      'nope,Bad,10.00,Home,Noor,',
+      '2026-03-03,Also good,5.00,Home,Noor,',
     ].join('\n')
     // The parser reports the line and keeps the good rows, but the server
     // function refuses to commit when problems.length > 0.
@@ -114,7 +114,7 @@ describe.runIf(await describeIfDatabase())('csv import', () => {
       .select()
       .from(spaceMember)
       .where(
-        sql`${spaceMember.spaceId} = ${sid} and ${spaceMember.displayName} = 'Vater'`,
+        sql`${spaceMember.spaceId} = ${sid} and ${spaceMember.displayName} = 'Noor'`,
       )
       .limit(1)
 

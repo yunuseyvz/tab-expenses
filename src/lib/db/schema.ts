@@ -44,9 +44,16 @@ export const space = pgTable('space', {
    * has a distinct mark rather than a blank one.
    */
   icon: text('icon'),
-  createdByUserId: text('created_by_user_id')
-    .notNull()
-    .references(() => user.id, { onDelete: 'restrict' }),
+  /**
+   * Who set this household up. Provenance, not authority: who can *manage* the
+   * space is `space_member.role`, and that is the row that decides it. Which is
+   * why this one is nullable and set to null when the account is deleted rather
+   * than restricting the delete — an account must be deletable, and "we don't
+   * remember who typed this in" is the true answer.
+   */
+  createdByUserId: text('created_by_user_id').references(() => user.id, {
+    onDelete: 'set null',
+  }),
   createdAt: timestamp('created_at', { withTimezone: true })
     .defaultNow()
     .notNull(),
@@ -55,9 +62,15 @@ export const space = pgTable('space', {
 /**
  * A row in a space's roster.
  *
- * `userId` is NULL for a **virtual member** — Vater or Vale carrying a share
- * without ever registering. The partial unique index keeps one row per real
- * user while allowing any number of virtual members.
+ * `userId` is NULL for a **virtual member** — someone carrying a share without
+ * ever registering. The partial unique index keeps one row per real user while
+ * allowing any number of virtual members.
+ *
+ * Deleting an account sets `userId` to NULL rather than removing the row, which
+ * leaves a former member looking exactly like a virtual one. That is the intent:
+ * the person is gone, but every split that referenced them keeps their name and
+ * their share, and `expense_split.member_id` restricts deletion precisely so a
+ * ledger cannot quietly lose track of who paid for what.
  */
 export const spaceMember = pgTable(
   'space_member',
@@ -143,9 +156,15 @@ export const expense = pgTable(
     purpose: text('purpose').notNull(),
     amountMinor: integer('amount_minor').notNull(),
     note: text('note'),
-    createdByUserId: text('created_by_user_id')
-      .notNull()
-      .references(() => user.id, { onDelete: 'restrict' }),
+    /**
+     * Who typed this in. Provenance only — the payer is `paidByMemberId`, and
+     * that is the row the ledger cares about. Nullable and set null on account
+     * deletion for the same reason as `space.createdByUserId`: deleting your own
+     * account has to actually work.
+     */
+    createdByUserId: text('created_by_user_id').references(() => user.id, {
+      onDelete: 'set null',
+    }),
     createdAt: timestamp('created_at', { withTimezone: true })
       .defaultNow()
       .notNull(),

@@ -57,7 +57,7 @@ describe('toCsv', () => {
         purpose: 'Bread, milk and "jam"',
         amount: '4.05',
         category: 'Home',
-        paid_by: 'Vater',
+        paid_by: 'Noor',
         note: 'weekly',
       },
     ]

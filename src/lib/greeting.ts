@@ -39,11 +39,11 @@ const OPENING: Record<PartOfDay, string> = {
  * "there" or inventing one. A missing name is a registration that predates the
  * field, not an error to paper over.
  *
- * The first name is taken from the first whitespace-separated token, which is
- * what "Vater" and "Vale" want and what "Anna Maria Weiss" will not get right —
- * a full given name is the better answer when someone has written two words, and
- * there is no way to know which is which, so the first token is the only choice
- * that is never *wrong*, merely sometimes short.
+ * The first name is taken from the first whitespace-separated token: a single
+ * name comes back unchanged, and "Rowan Ellis" becomes "Rowan". That is the
+ * wrong answer for someone whose given name is two words, and there is no way to
+ * know which is which from a form that asks for "your name", so the first token
+ * is the only choice that is never *wrong*, merely sometimes short.
  */
 export function greeting(
   name?: string | null,
