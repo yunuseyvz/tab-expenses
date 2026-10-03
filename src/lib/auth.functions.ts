@@ -118,10 +118,6 @@ export const listMySpaces = createServerFn({ method: 'GET' }).handler(
         icon: space.icon,
         role: spaceMember.role,
         memberId: spaceMember.id,
-        // Whether members may edit each other's expenses. It rides along on the
-        // list every screen already has, rather than costing a query per route
-        // that needs to decide whether to offer an edit affordance.
-        editableByMembers: space.editableByMembers,
         // The household's settlement cadence. Carried here rather than fetched
         // per screen because every screen with a period filter needs it to know
         // what "the default" is.
@@ -381,14 +377,33 @@ export const getRememberedSpaceId = createServerFn({ method: 'POST' }).handler(
  * shares. The only reachable row is the one the session came from.
  */
 export const updateProfile = createServerFn({ method: 'POST' })
-  .inputValidator(z.object({ avatar: z.string().trim().max(60).nullable() }))
+  .inputValidator(
+    z.object({
+      avatar: z.string().trim().max(60).nullable().optional(),
+      // The account name shown in the app. Household display names are per
+      // space and stay untouched — this is only what "you" reads as.
+      name: z
+        .string()
+        .trim()
+        .min(1, 'Tell us what to call you')
+        .max(80)
+        .optional(),
+    }),
+  )
   .handler(async ({ data }) => {
     const session = await ensureSession()
     const db = getDb()
 
+    if (data.avatar === undefined && data.name === undefined) {
+      throw new Error('Nothing to save')
+    }
+
     const [row] = await db
       .update(user)
-      .set({ avatar: data.avatar })
+      .set({
+        ...(data.avatar !== undefined ? { avatar: data.avatar } : {}),
+        ...(data.name !== undefined ? { name: data.name } : {}),
+      })
       .where(eq(user.id, session.user.id))
       .returning({ id: user.id, avatar: user.avatar })
 

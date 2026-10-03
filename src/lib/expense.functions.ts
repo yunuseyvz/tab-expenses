@@ -8,7 +8,19 @@
  * commit, so a bug in `allocate` cannot silently corrupt the ledger.
  */
 import { createServerFn } from '@tanstack/react-start'
-import { and, asc, desc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm'
+import {
+  and,
+  asc,
+  desc,
+  count as drizzleCount,
+  eq,
+  gte,
+  inArray,
+  isNull,
+  lte,
+  sql,
+} from 'drizzle-orm'
+import { alias } from 'drizzle-orm/pg-core'
 import { z } from 'zod'
 
 import { ensureSession, requireSpaceMember } from './auth.functions'
@@ -16,8 +28,8 @@ import { getDb } from './db'
 import {
   category,
   expense,
+  expenseNote,
   expenseSplit,
-  space,
   spaceMember,
   user,
 } from './db/schema'
@@ -85,9 +97,35 @@ export interface ExpenseRow {
   paidByArchivedAt: Date | null
   /** The payer's account avatar, or null — then derive one from paidByMemberId. */
   paidByAvatar: string | null
+  /**
+   * Whether the author locked this entry against edits by anyone else. The
+   * author's own edit rights are unaffected.
+   */
+  locked: boolean
   createdByUserId: string | null
+  /** Whoever typed it in, or null once their account is gone. */
+  createdByName: string | null
+  createdByAvatar: string | null
   createdAt: string
   splits: Array<SplitRow>
+  /** How many notes are attached, for the list's marker. Not the notes. */
+  noteCount: number
+}
+
+export interface NoteRow {
+  id: string
+  expenseId: string
+  body: string
+  /**
+   * A snapshot of the name at the time, so a note outlives the account that
+   * wrote it. Never null — unlike `authorUserId`, which is.
+   */
+  authorName: string
+  /** Null once the author's account is deleted; then the name carries it alone. */
+  authorAvatar: string | null
+  /** False for a note whose author has deleted their account. */
+  authorActive: boolean
+  createdAt: string
 }
 
 /** Shared SELECT: expenses joined to their category and payer. */
@@ -112,10 +150,24 @@ function expenseSelect() {
     // a column of names. Null for a virtual payer, who then gets an identicon
     // derived from the member id.
     paidByAvatar: user.avatar,
+    locked: expense.locked,
     createdByUserId: expense.createdByUserId,
+    // Who typed it in, by name — not just by id. "Entered by Alex" is what makes
+    // a read-only expense legible; an id says nothing to the person looking at
+    // it. Left-joined like the payer's avatar, because deleting an account nulls
+    // the id and the entry must still render.
+    createdByName: author.name,
+    createdByAvatar: author.avatar,
     createdAt: expense.createdAt,
   }
 }
+
+/**
+ * `user` twice in one query: once as the payer, once as whoever entered the
+ * entry. Drizzle needs distinct table handles for that, and a second alias with
+ * no name would collide with the first in the generated SQL.
+ */
+const author = alias(user, 'expense_author')
 
 /** Splits for a set of expenses, in one query rather than N. */
 async function splitsFor(
@@ -215,55 +267,36 @@ async function assertMembersInSpace(
 /**
  * Whether this caller may change an expense they did not enter.
  *
- * Three ways to pass, in order:
+ * One rule: the author decides.
  *
- *   1. You entered it. Always yours to correct — a typo in your own entry is
- *      yours to fix and nobody else's to be protected from.
- *   2. You own the household. An owner who cannot fix a bad entry is an owner
- *      with a broken household, and they already have strictly larger powers
- *      (deleting it, archiving whoever entered it).
- *   3. The household has opened its ledger to each other.
+ *   - You entered it. Always yours to correct — a typo in your own entry is
+ *     yours to fix and nobody else's to be protected from, and a locked entry
+ *     does not lock its author out of it.
+ *   - You did not, and they locked it. No.
+ *   - You did not, and they did not. Yes.
  *
- * Otherwise: no. A shared ledger where any member can rewrite anyone else's
- * entries is one where nobody can trust what they are shown they spent, and the
- * household setting exists so a group that *wants* to work that way can say so
- * once instead of every row carrying its own permission.
+ * The household-wide switch this replaced had to be set to the most cautious
+ * value anybody in the household ever wanted, which made it useless for every
+ * entry that did not need it. The owner override, likewise, made the author's
+ * lock a suggestion — the person it is about could not be the one to overrule it.
+ * Both are gone, and `mayEditExpense` in ./may-edit is the same rule for the UI.
  *
  * Throws rather than returning a boolean, because every caller here is a write
  * and there is nothing to do with a false.
  *
  * `createdByUserId` is read from the row rather than passed in: it is the one
- * value the client must not be able to influence.
+ * value the client must not be able to influence. Note that this function is
+ * pure now — the lock is on the row the caller already selected, so the space and
+ * role lookup it used to do is not merely redundant, it is gone.
  */
-async function assertMayEdit(
-  db: Db,
+function assertMayEdit(
+  existing: { createdByUserId: string | null; locked: boolean },
   userId: string,
-  spaceId: string,
-  existing: { createdByUserId: string | null },
 ) {
   if (existing.createdByUserId === userId) return
-
-  const [household] = await db
-    .select({
-      editableByMembers: space.editableByMembers,
-      role: spaceMember.role,
-    })
-    .from(space)
-    .innerJoin(
-      spaceMember,
-      and(
-        eq(spaceMember.spaceId, space.id),
-        eq(spaceMember.userId, userId),
-        isNull(spaceMember.archivedAt),
-      ),
-    )
-    .where(eq(space.id, spaceId))
-    .limit(1)
-
-  if (!household) throw new Error('Not found')
-  if (household.role === 'owner' || household.editableByMembers) return
-
-  throw new Error('This expense was added by someone else')
+  if (existing.locked) {
+    throw new Error('This expense was added by someone else')
+  }
 }
 
 export const createExpense = createServerFn({ method: 'POST' })
@@ -417,7 +450,7 @@ export const updateExpense = createServerFn({ method: 'POST' })
       .limit(1)
     if (!existing) throw new Error('Not found')
 
-    await assertMayEdit(db, session.user.id, data.spaceId, existing)
+    assertMayEdit(existing, session.user.id)
 
     const amountMinor =
       data.amount !== undefined
@@ -582,14 +615,17 @@ export const deleteExpense = createServerFn({ method: 'POST' })
      * the check.
      */
     const [existing] = await db
-      .select({ createdByUserId: expense.createdByUserId })
+      .select({
+        createdByUserId: expense.createdByUserId,
+        locked: expense.locked,
+      })
       .from(expense)
       .where(
         and(eq(expense.id, data.expenseId), eq(expense.spaceId, data.spaceId)),
       )
       .limit(1)
     if (!existing) throw new Error('Not found')
-    await assertMayEdit(db, session.user.id, data.spaceId, existing)
+    assertMayEdit(existing, session.user.id)
 
     // expense_split rows cascade; scoping the delete by spaceId stops a
     // guessed id from removing another space's expense.
@@ -603,6 +639,226 @@ export const deleteExpense = createServerFn({ method: 'POST' })
     if (deleted.length === 0) throw new Error('Not found')
     return { ok: true }
   })
+
+/**
+ * Lock or unlock one entry. The author only.
+ *
+ * Its own function rather than a field on `updateExpense`, because the rule is
+ * not the rule for everything else in the entry: anybody who may edit an expense
+ * can change its amount, and only the person who entered it can decide whether
+ * the rest of the household may. Folding it into the update payload would have
+ * made the second rule reachable by the first one's callers — the household
+ * setting is gone precisely so that "may edit" and "may grant editing" are not
+ * the same permission.
+ *
+ * Locking is therefore checked against `createdByUserId` and nothing else. Not
+ * the owner, not an editor: the person it is about does not get to overrule it.
+ * The cost of that is stated on the column and it is a real one — a locked entry
+ * whose author leaves the household can never be fixed by anybody — but the
+ * alternative is a lock that means "unless".
+ */
+export const setExpenseLock = createServerFn({ method: 'POST' })
+  .inputValidator(
+    z.object({
+      spaceId: uuidSchema,
+      expenseId: uuidSchema,
+      locked: z.boolean(),
+    }),
+  )
+  .handler(async ({ data }) => {
+    const session = await ensureSession()
+    await requireSpaceMember(session.user.id, data.spaceId)
+    const db = getDb()
+
+    const [existing] = await db
+      .select({
+        createdByUserId: expense.createdByUserId,
+        locked: expense.locked,
+      })
+      .from(expense)
+      .where(
+        and(eq(expense.id, data.expenseId), eq(expense.spaceId, data.spaceId)),
+      )
+      .limit(1)
+    if (!existing) throw new Error('Not found')
+
+    if (existing.createdByUserId !== session.user.id) {
+      throw new Error('Only the person who added this can lock it')
+    }
+    if (existing.locked === data.locked) return { locked: existing.locked }
+
+    const [row] = await db
+      .update(expense)
+      .set({ locked: data.locked })
+      .where(
+        and(eq(expense.id, data.expenseId), eq(expense.spaceId, data.spaceId)),
+      )
+      .returning({ locked: expense.locked })
+
+    if (!row) throw new Error('Not found')
+    return { locked: row.locked }
+  })
+
+// ── notes ─────────────────────────────────────────────────────────────────
+
+/**
+ * Leave a note on an expense.
+ *
+ * Membership is the only requirement. `requireSpaceMember` and nothing else —
+ * deliberately *not* `assertMayEdit`, because a note is not an edit: it changes
+ * nothing about the amount, the split, or who paid. Someone who cannot touch
+ * this expense is precisely the person who most needs to be able to write "this
+ * was the deposit, not the full rent" underneath it, and a household where that
+ * is impossible is a household that argues in the room instead.
+ *
+ * `authorName` is written here, from the session, rather than joined at read
+ * time: it is a snapshot, so a note still says who left it after that person has
+ * deleted their account. See the column for why that is the app's rule.
+ */
+export const addExpenseNote = createServerFn({ method: 'POST' })
+  .inputValidator(
+    z.object({
+      spaceId: uuidSchema,
+      expenseId: uuidSchema,
+      // Trimmed by the schema, so a note of pure whitespace is rejected as a
+      // validation error naming the field rather than as a constraint violation.
+      // The column refuses it too, for writes that did not come through here.
+      body: z
+        .string()
+        .trim()
+        .min(1, 'Write something first')
+        .max(2000, 'That is longer than a note'),
+    }),
+  )
+  .handler(async ({ data }) => {
+    const session = await ensureSession()
+    await requireSpaceMember(session.user.id, data.spaceId)
+    const db = getDb()
+
+    // Scoped by space as well as by id, so a note cannot be attached to another
+    // household's expense by guessing its id.
+    const [target] = await db
+      .select({ id: expense.id })
+      .from(expense)
+      .where(
+        and(eq(expense.id, data.expenseId), eq(expense.spaceId, data.spaceId)),
+      )
+      .limit(1)
+    if (!target) throw new Error('Not found')
+
+    const [row] = await db
+      .insert(expenseNote)
+      .values({
+        spaceId: data.spaceId,
+        expenseId: data.expenseId,
+        body: data.body,
+        authorUserId: session.user.id,
+        authorName: session.user.name,
+      })
+      .returning({
+        id: expenseNote.id,
+        expenseId: expenseNote.expenseId,
+        body: expenseNote.body,
+        authorName: expenseNote.authorName,
+        createdAt: expenseNote.createdAt,
+      })
+    if (!row) throw new Error('Could not save the note')
+
+    return {
+      ...row,
+      authorAvatar: session.user.avatar ?? null,
+      // The author of a note they just wrote is by definition still here.
+      authorActive: true,
+      createdAt:
+        row.createdAt instanceof Date
+          ? row.createdAt.toISOString()
+          : String(row.createdAt),
+    }
+  })
+
+/**
+ * The notes on one expense, oldest first.
+ *
+ * Oldest first because that is the order they were left in, and a conversation
+ * read backwards is not a conversation. `spaceId` is part of the WHERE clause
+ * rather than trusted from the caller, so a guessed expense id from another
+ * household returns nothing instead of somebody else's notes.
+ */
+export const listExpenseNotes = createServerFn({ method: 'GET' })
+  .inputValidator(z.object({ spaceId: uuidSchema, expenseId: uuidSchema }))
+  .handler(async ({ data }): Promise<Array<NoteRow>> => {
+    const session = await ensureSession()
+    await requireSpaceMember(session.user.id, data.spaceId)
+    const db = getDb()
+
+    const rows = await db
+      .select({
+        id: expenseNote.id,
+        expenseId: expenseNote.expenseId,
+        body: expenseNote.body,
+        authorName: expenseNote.authorName,
+        authorAvatar: user.avatar,
+        authorUserId: expenseNote.authorUserId,
+        createdAt: expenseNote.createdAt,
+      })
+      .from(expenseNote)
+      // Left, not inner: a deleted author must not take their note with them.
+      .leftJoin(user, eq(expenseNote.authorUserId, user.id))
+      .where(
+        and(
+          eq(expenseNote.expenseId, data.expenseId),
+          eq(expenseNote.spaceId, data.spaceId),
+        ),
+      )
+      .orderBy(asc(expenseNote.createdAt), asc(expenseNote.id))
+
+    return rows.map((r) => ({
+      id: r.id,
+      expenseId: r.expenseId,
+      body: r.body,
+      authorName: r.authorName,
+      authorAvatar: r.authorAvatar,
+      // The account's existence, not the avatar's: plenty of people never pick
+      // one, and the identicon fallback covers them. Reading "no avatar" as
+      // "account deleted" would mark half the notes as written by ghosts.
+      authorActive: r.authorUserId !== null,
+      createdAt:
+        r.createdAt instanceof Date
+          ? r.createdAt.toISOString()
+          : String(r.createdAt),
+    }))
+  })
+
+/**
+ * How many notes each of these expenses has, in one grouped query.
+ *
+ * Counts and not the notes themselves: a list of two hundred expenses would
+ * otherwise ship every note body in the period, for a marker that only needs to
+ * know whether there is anything to look at. The sheet fetches the real thing
+ * when it opens.
+ */
+async function noteCountsFor(
+  db: Db,
+  spaceId: string,
+  expenseIds: ReadonlyArray<string>,
+): Promise<Map<string, number>> {
+  const out = new Map<string, number>()
+  if (expenseIds.length === 0) return out
+
+  const rows = await db
+    .select({ expenseId: expenseNote.expenseId, total: drizzleCount() })
+    .from(expenseNote)
+    .where(
+      and(
+        eq(expenseNote.spaceId, spaceId),
+        inArray(expenseNote.expenseId, [...expenseIds]),
+      ),
+    )
+    .groupBy(expenseNote.expenseId)
+
+  for (const r of rows) out.set(r.expenseId, r.total)
+  return out
+}
 
 // ── reads ─────────────────────────────────────────────────────────────────
 
@@ -646,11 +902,19 @@ export const listExpenses = createServerFn({ method: 'GET' })
       // column of names. Left, not inner: a virtual payer has no account row, and
       // an inner join here would drop every expense they paid.
       .leftJoin(user, eq(spaceMember.userId, user.id))
+      // And a second alias for whoever typed the entry in, which is a different
+      // person from the payer as often as not.
+      .leftJoin(author, eq(expense.createdByUserId, author.id))
       .where(and(...conditions))
       .orderBy(desc(expense.spentOn), desc(expense.createdAt))
       .limit(data.limit)
 
     const splitMap = await splitsFor(
+      data.spaceId,
+      rows.map((r) => r.id),
+    )
+    const noteMap = await noteCountsFor(
+      db,
       data.spaceId,
       rows.map((r) => r.id),
     )
@@ -665,6 +929,7 @@ export const listExpenses = createServerFn({ method: 'GET' })
           ? r.createdAt.toISOString()
           : String(r.createdAt),
       splits: splitMap.get(r.id) ?? [],
+      noteCount: noteMap.get(r.id) ?? 0,
     }))
   })
 

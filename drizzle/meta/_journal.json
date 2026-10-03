@@ -57,6 +57,13 @@
       "when": 1791056050439,
       "tag": "0007_breezy_mauler",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1791062575077,
+      "tag": "0008_flippant_pride",
+      "breakpoints": true
     }
   ]
 }

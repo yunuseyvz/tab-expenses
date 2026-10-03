@@ -104,12 +104,6 @@ export const updateSpace = createServerFn({ method: 'POST' })
       currency: currencySchema.optional(),
       icon: avatarKeySchema.nullable().optional(),
       /**
-       * Whether members may edit each other's expenses. Owner-only, and read
-       * back in the UI so the switch shows the stored value rather than an
-       * optimistic local one that a rejected write would leave lying.
-       */
-      editableByMembers: z.boolean().optional(),
-      /**
        * How often this household settles up. Validated against the preset list
        * rather than taken as a string: an unknown key would fall through
        * `presetToPeriod`'s switch to "no bounds", which is "all time" — a
@@ -142,9 +136,6 @@ export const updateSpace = createServerFn({ method: 'POST' })
         name: data.name,
         ...(data.currency !== undefined ? { currency: data.currency } : {}),
         ...(data.icon !== undefined ? { icon: data.icon } : {}),
-        ...(data.editableByMembers !== undefined
-          ? { editableByMembers: data.editableByMembers }
-          : {}),
         ...(data.cycle !== undefined ? { cycle: data.cycle } : {}),
       })
       // Scoped by id only because requireSpaceOwner has already established

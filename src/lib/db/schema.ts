@@ -46,19 +46,6 @@ export const space = pgTable('space', {
    */
   icon: text('icon'),
   /**
-   * Whether a member may edit an expense somebody else entered.
-   *
-   * False by default, so an expense is only editable by whoever typed it in.
-   * The alternative — anyone in the household can rewrite anyone's entries —
-   * means one person can quietly change what another person is shown they paid,
-   * which in a shared ledger is worse than the extra friction of a toggle.
-   *
-   * Owner-set, per household, rather than per expense: the question is whether
-   * this household trusts each other with each other's entries, and that is one
-   * answer for the whole ledger rather than a decision to make 300 times.
-   */
-  editableByMembers: boolean('editable_by_members').default(false).notNull(),
-  /**
    * How often this household settles up, as a preset key from
    * `src/lib/period.ts`. A text column rather than an enum because the list is
    * UI copy that will grow and the value is never queried by SQL — only read
@@ -212,6 +199,28 @@ export const expense = pgTable(
     amountMinor: integer('amount_minor').notNull(),
     note: text('note'),
     /**
+     * Whether anybody but the person who typed this in may change it.
+     *
+     * Per expense, not per household. It was a household-wide toggle once, on the
+     * reasoning that "do we trust each other with each other's entries" is one
+     * question — but it is not, really: a rent transfer you had to correct
+     * yourself and a grocery round you would rather nobody touched are the same
+     * size of edit and not the same amount of comfort. One switch over the whole
+     * ledger has to be the most cautious setting anybody ever needs, which makes
+     * it useless for everything else.
+     *
+     * Only the author sets it (see `setExpenseLock`), so this is their call about
+     * their own entry and nobody else's. Note what that implies, because it is a
+     * deliberate reading of "only the creator can set it": a locked expense stays
+     * locked for the household owner too. An owner who needs it changed has to
+     * ask the author. That is the trade for a lock that means something — a lock
+     * the owner can walk past is not a lock.
+     *
+     * False by default, so an expense is editable by the household until its
+     * author says otherwise.
+     */
+    locked: boolean('locked').default(false).notNull(),
+    /**
      * Who typed this in. Provenance only — the payer is `paidByMemberId`, and
      * that is the row the ledger cares about. Nullable and set null on account
      * deletion for the same reason as `space.createdByUserId`: deleting your own
@@ -270,6 +279,63 @@ export const expenseSplit = pgTable(
       sql`${t.weightBp} between 1 and ${bpTotal}`,
     ),
     check('expense_split_share_nonneg', sql`${t.shareMinor} >= 0`),
+  ],
+)
+
+/**
+ * A note somebody left on an expense — the sticky-note conversation under a line
+ * of the ledger.
+ *
+ * APPEND-ONLY, and deliberately a different thing from `expense.note`. That
+ * column is a field of the entry: it is typed in beside the amount, it is saved
+ * with it, and it is editable or not exactly as the entry is. A note here is a
+ * separate remark *about* the entry, in the order it was left, and it is never
+ * rewritten — which is the whole point of leaving one. Someone who disagrees with
+ * what an expense says can say so without being able to change what it says.
+ *
+ * EVERY MEMBER CAN LEAVE ONE, edit rights notwithstanding. Editing is about the
+ * numbers; a conversation is not. Someone who cannot change the amount is exactly
+ * the person who most needs to be able to write "this was the deposit, not the
+ * full rent" underneath it.
+ *
+ * `authorName` is a snapshot, not a join. The principle is the one the roster
+ * already follows — leaving or deleting an account never erases who somebody was
+ * — and here it has a second payoff: a note left by somebody who has since
+ * deleted their account still reads as theirs rather than as "unknown", which is
+ * the difference between a record and a gap. The avatar is joined live, since a
+ * missing face has an identicon to fall back on.
+ */
+export const expenseNote = pgTable(
+  'expense_note',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    // The expense decides the space, but it is repeated here so a read can be
+    // scoped by household in the same WHERE clause as the expense id. Without it,
+    // "notes for this expense" is a query that trusts an id alone.
+    spaceId: uuid('space_id')
+      .notNull()
+      .references(() => space.id, { onDelete: 'cascade' }),
+    expenseId: uuid('expense_id')
+      .notNull()
+      .references(() => expense.id, { onDelete: 'cascade' }),
+    body: text('body').notNull(),
+    authorUserId: text('author_user_id').references(() => user.id, {
+      onDelete: 'set null',
+    }),
+    authorName: text('author_name').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [
+    // The read order is by expense then time, and the list's count is by expense
+    // alone, so this index serves both.
+    index('expense_note_expense_created_idx').on(t.expenseId, t.createdAt),
+    // A blank note is a note nobody left. Refused in the column rather than only
+    // in the request validator, for the same reason as the amount ceiling: this
+    // is the check that holds if the write arrives from somewhere else.
+    check('expense_note_body_not_blank', sql`length(btrim(${t.body})) > 0`),
+    check('expense_note_body_length', sql`length(${t.body}) <= 2000`),
   ],
 )
 

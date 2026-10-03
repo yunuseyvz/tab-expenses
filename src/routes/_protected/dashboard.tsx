@@ -7,7 +7,6 @@ import {
 } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 
-import { toast } from 'sonner'
 import type { ExpenseRow } from '#/lib/expense.functions'
 import type { ListFilter } from '#/lib/session'
 import type { PeriodPreset } from '#/lib/period'
@@ -29,7 +28,6 @@ import {
 import { asCycleKey, periodLabel, resolvePeriod } from '#/lib/period'
 import { resolveSpaceId } from '#/lib/space-preference'
 import { useCurrentSpace } from '#/hooks/useCurrentSpace'
-import { useMayEditExpense } from '#/hooks/useMayEditExpense'
 
 export const Route = createFileRoute('/_protected/dashboard')({
   validateSearch: (s: Record<string, unknown>) => ({
@@ -101,18 +99,11 @@ function DashboardRoute() {
     setEditing(null)
     setSheetOpen(true)
   }
-  const mayEdit = useMayEditExpense(spaceId)
   /**
-   * Guarded on the way in, same rule and same reason as the expenses list: see
-   * useMayEditExpense. The server decides; this exists so a member is told on the
-   * tap rather than after filling in the form.
+   * Always opens, same as the expenses list: a read-only entry is still
+   * viewable, with the reason stated inside the sheet.
    */
   const openEdit = (row: ExpenseRow) => {
-    const edit = mayEdit(row)
-    if (!edit.canEdit) {
-      toast.error(edit.reason ?? 'You cannot edit this expense')
-      return
-    }
     setEditing(row)
     setSheetOpen(true)
   }

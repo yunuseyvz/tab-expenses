@@ -516,11 +516,14 @@ export function Sheet({
   open,
   onClose,
   title,
+  headerAction,
   children,
 }: {
   open: boolean
   onClose: () => void
   title: string
+  /** Optional control at the top-right, beside the title — a lock toggle. */
+  headerAction?: React.ReactNode
   children: React.ReactNode
 }) {
   // document does not exist during SSR. `open` is false on the server, so this
@@ -602,8 +605,11 @@ export function Sheet({
              * title belongs anyway. The drag handle is what says "this is
              * dismissible" on a phone, and the backdrop says it everywhere else.
              */}
-            <div className="px-5 py-2.5 shrink-0">
-              <h2 className="text-xl tracking-tight">{title}</h2>
+            <div className="px-5 py-2.5 shrink-0 flex items-center gap-3">
+              <h2 className="text-xl tracking-tight flex-1 min-w-0 truncate">
+                {title}
+              </h2>
+              {headerAction}
             </div>
             {/* No bottom padding here. A sticky footer pins to the bottom of
                 this box, so padding on it becomes a visible gap between the

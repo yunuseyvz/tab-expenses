@@ -84,6 +84,7 @@ export function SplitEditor({
   drafts,
   onPaidByChange,
   onDraftsChange,
+  disabled = false,
 }: {
   members: Array<MemberListItem>
   amountMinor: number
@@ -92,6 +93,8 @@ export function SplitEditor({
   drafts: Array<SplitDraft>
   onPaidByChange: (memberId: string) => void
   onDraftsChange: (next: Array<SplitDraft>) => void
+  /** Read-only: figures stay legible, every control goes inert. */
+  disabled?: boolean
 }) {
   const remainderBp = useMemo(
     () => 10_000 - drafts.reduce((s, d) => s + d.weightBp, 0),
@@ -226,17 +229,18 @@ export function SplitEditor({
               return (
                 <label
                   key={m.id}
-                  className="flex items-center gap-3 cursor-pointer select-none
+                  className={`flex items-center gap-3 select-none
                     rounded-[var(--radius-sm)] px-2 py-1.5 -mx-2
-                    transition-colors duration-150 hover:bg-[var(--color-paper-sunk)]"
+                    transition-colors duration-150 ${disabled ? '' : 'cursor-pointer hover:bg-[var(--color-paper-sunk)]'}`}
                 >
                   <input
                     type="checkbox"
                     checked={included}
                     onChange={() => toggle(m.id)}
+                    disabled={disabled}
                     aria-label={`${m.displayName} is part of this expense`}
                     className="size-[1.15rem] rounded accent-[var(--color-terracotta)]
-                      shrink-0 cursor-pointer"
+                      shrink-0 cursor-pointer disabled:cursor-default disabled:opacity-50"
                   />
                   <MemberAvatar
                     memberId={m.id}
@@ -320,6 +324,7 @@ export function SplitEditor({
                         min={0}
                         max={100}
                         step={1}
+                        disabled={disabled}
                       />
                     </span>
                   </div>
@@ -330,11 +335,12 @@ export function SplitEditor({
                     max={100}
                     step={1}
                     value={pct}
+                    disabled={disabled}
                     onChange={(e) =>
                       setWeight(member.id, Number(e.target.value) * 100)
                     }
                     aria-label={`${member.displayName} split`}
-                    className="range-tactile"
+                    className="range-tactile disabled:opacity-50"
                     // --fill drives the whole track, so filled and unfilled
                     // lengths cannot drift apart the way two values in a
                     // background gradient could.
@@ -349,14 +355,16 @@ export function SplitEditor({
             <button
               type="button"
               onClick={presetEvenPairs}
-              className="text-xs text-terracotta-ink underline underline-offset-2"
+              disabled={disabled}
+              className="text-xs text-terracotta-ink underline underline-offset-2 disabled:opacity-40 disabled:no-underline"
             >
               First two only
             </button>
             <button
               type="button"
               onClick={presetEqual}
-              className="text-xs text-terracotta-ink underline underline-offset-2"
+              disabled={disabled}
+              className="text-xs text-terracotta-ink underline underline-offset-2 disabled:opacity-40 disabled:no-underline"
             >
               Equal
             </button>

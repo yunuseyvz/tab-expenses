@@ -163,7 +163,10 @@ export function SettingsRow({
               {value}
             </span>
           )}
-          {to && (
+          {/* A tappable row says so. `to` rows always had one; `onClick` rows
+              did not, so the profile row — avatar, name, address — read as a
+              status line rather than as the way to change any of it. */}
+          {(to || onClick) && (
             <ChevronRight
               size={16}
               aria-hidden

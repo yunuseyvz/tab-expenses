@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 
 import { createFileRoute, useNavigate, useSearch } from '@tanstack/react-router'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
-import { toast } from 'sonner'
+import { Lock, StickyNote } from 'lucide-react'
 import type { ExpenseRow } from '#/lib/expense.functions'
 
 import type { PeriodPreset } from '#/lib/period'
@@ -113,7 +113,7 @@ function ExpensesRoute() {
 
   const groups = useMemo(() => groupByDay(expenses.data ?? []), [expenses.data])
   const currency = space?.currency ?? 'EUR'
-  const mayEdit = useMayEditExpense(spaceId)
+  const mayEdit = useMayEditExpense()
 
   // One sheet for both jobs. `editing === null` means "new"; otherwise the row
   // that was tapped comes with it, already filled in.
@@ -125,20 +125,11 @@ function ExpensesRoute() {
     setSheetOpen(true)
   }
   /**
-   * Guarded on the way in, not just by the server.
-   *
-   * `mayEdit` is the same three-way rule the server applies (see
-   * useMayEditExpense). It is duplicated deliberately: this copy decides only
-   * whether to open the sheet, so a member cannot start editing somebody else's
-   * entry and discover the refusal after filling in the form. The server's check
-   * is the one that counts — this one is so the failure is a row that is simply
-   * not tappable rather than an error toast.
+   * Always opens. An entry you cannot edit still opens — read-only, with the
+   * reason stated inside — because a row that refuses to open reads as broken,
+   * while a sheet that says whose entry this is reads as somebody else's.
    */
   const openEdit = (row: ExpenseRow) => {
-    if (!mayEdit(row).canEdit) {
-      toast.error(mayEdit(row).reason ?? 'You cannot edit this expense')
-      return
-    }
     setEditing(row)
     setSheetOpen(true)
   }
@@ -236,7 +227,7 @@ function ExpensesRoute() {
                         aria-label={
                           edit.canEdit
                             ? `Edit ${e.purpose}, ${formatMoney(e.amountMinor, currency)}`
-                            : `${e.purpose}, ${formatMoney(e.amountMinor, currency)}. ${edit.reason}`
+                            : `View ${e.purpose}, ${formatMoney(e.amountMinor, currency)}. ${edit.reason}`
                         }
                         className="w-full flex items-center gap-3 px-4 py-3 text-left
                         border-b border-rule last:border-b-0
@@ -278,6 +269,23 @@ function ExpensesRoute() {
                             </span>
                           </span>
                         </span>
+                        {/* Read-only and conversation markers, beside the amount
+                            rather than under it: the row's job is to say at a
+                            glance whether this opens editable, and whether there
+                            is anything to read under it. */}
+                        {!edit.canEdit && (
+                          <Lock
+                            size={13}
+                            aria-hidden
+                            className="shrink-0 text-ink-faint"
+                          />
+                        )}
+                        {e.noteCount > 0 && (
+                          <span className="flex items-center gap-1 shrink-0 text-ink-faint">
+                            <StickyNote size={13} aria-hidden />
+                            <span className="text-xs tnum">{e.noteCount}</span>
+                          </span>
+                        )}
                         <span className="tnum text-sm font-medium shrink-0">
                           {formatMoney(e.amountMinor, currency)}
                         </span>

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { createFileRoute, useSearch } from '@tanstack/react-router'
 import {
+  Crown,
   DoorOpen,
   FileDown,
   FileUp,
@@ -125,7 +126,11 @@ function SettingsRoute() {
   const [signingOut, setSigningOut] = useState(false)
   const [deletingAccount, setDeletingAccount] = useState(false)
   const [open, setOpen] = useState<Open>(null)
-  const [avatarSheet, setAvatarSheet] = useState(false)
+  const [profileSheet, setProfileSheet] = useState(false)
+  const [profileName, setProfileName] = useState<string | null>(null)
+  const [profileAvatar, setProfileAvatar] = useState<string | null | undefined>(
+    undefined,
+  )
   const [importSheet, setImportSheet] = useState(false)
   const [inviteSheet, setInviteSheet] = useState(false)
   const [removing, setRemoving] = useState<{
@@ -194,24 +199,6 @@ function SettingsRoute() {
   })
 
   /**
-   * Who may change whose entries. Owner-only, and it invalidates the space list
-   * because every screen reads `editableByMembers` from there to decide whether
-   * to offer an edit affordance — a toggle that saved but did not change any
-   * button on screen would look broken.
-   */
-  const setPermissions = useMutation({
-    mutationFn: (patch: { editableByMembers: boolean }) =>
-      updateSpace({
-        data: { spaceId: spaceId!, name: space!.name, ...patch },
-      }),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: spaceKeys.mySpaces })
-    },
-    onError: (e) =>
-      toast.error(e instanceof Error ? e.message : 'Could not save'),
-  })
-
-  /**
    * The household's settlement cadence.
    *
    * Invalidates the space list because `useCurrentSpace` reads the cycle off it,
@@ -230,16 +217,31 @@ function SettingsRoute() {
       toast.error(e instanceof Error ? e.message : 'Could not save'),
   })
 
-  const saveAvatar = useMutation({
-    mutationFn: (avatar: string | null) => updateProfile({ data: { avatar } }),
+  /**
+   * Your own name and face. One save for both, from local state seeded when the
+   * sheet opens — the picker and the field are drafts until then, not writes.
+   */
+  const saveProfile = useMutation({
+    mutationFn: (patch: { name?: string; avatar?: string | null }) =>
+      updateProfile({ data: patch }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['session'] })
-      toast.success('Avatar updated')
-      setAvatarSheet(false)
+      // Household rosters carry your display name per space, which is separate
+      // and stays as it is — this is only the account name.
+      toast.success('Profile updated')
+      setProfileSheet(false)
+      setProfileName(null)
+      setProfileAvatar(undefined)
     },
     onError: (err) =>
       toast.error(err instanceof Error ? err.message : 'Could not save'),
   })
+
+  const openProfile = () => {
+    setProfileName(me.data?.user.name ?? '')
+    setProfileAvatar(me.data?.user.avatar ?? null)
+    setProfileSheet(true)
+  }
 
   const addMember = useMutation({
     mutationFn: () =>
@@ -387,38 +389,20 @@ function SettingsRoute() {
           hint={space ? `${space.name} · ${space.currency}` : undefined}
         >
           {/*
-            First row, above the roster, because it is a property of the whole
-            household rather than of anybody on it — it answers "how much do we
-            trust each other here", and the list underneath is the people that
-            answer applies to. It was down in Data, next to import and export,
-            which is where the eye goes to move data in and out rather than to
-            decide who may change it.
-            *
-            * Off by default, and owner-only: in a shared ledger, letting anyone
-            * rewrite anyone else's entries means one person can change what
-            * another is shown they spent, which is worse than the extra friction.
+            No household-wide permission switch here any more, and that is the
+            point rather than an absence. "Members can edit each other's
+            expenses" was one answer to a question that is not one question: a
+            deposit you had to correct yourself and a grocery round you would
+            rather nobody touched are the same size of edit and not the same
+            amount of comfort. Set once for the whole ledger, the switch had to
+            be the most cautious value anybody in the household ever needed,
+            which made it useless for every entry that did not need it.
+
+            Each entry now carries its own lock instead — the padlock at the top
+            of an expense, set by whoever added it. The column, and the cost of
+            an owner not being able to overrule it, are documented on
+            `expense.locked`.
           */}
-          {isOwner && (
-            <SettingsRow
-              label="Members can edit each other's expenses"
-              hint={
-                space.editableByMembers
-                  ? 'Anyone can change any entry'
-                  : 'Only whoever added it'
-              }
-            >
-              <Switch
-                ariaLabel="Members can edit each other's expenses"
-                // `checked` stays the stored value rather than an optimistic
-                // local one: the write can be refused, and a switch that springs
-                // over and then springs back is worse than one that waits.
-                checked={space.editableByMembers}
-                onChange={(next) =>
-                  setPermissions.mutate({ editableByMembers: next })
-                }
-              />
-            </SettingsRow>
-          )}
           {(members.data ?? []).map((m) => (
             <SettingsRow
               key={m.id}
@@ -436,9 +420,21 @@ function SettingsRoute() {
                     style={{ background: swatchColor(m.color) }}
                   />
                   <span className="truncate">{m.displayName}</span>
+                  {/* The crown carries the role, so the value column does not
+                      also have to spell it out. A mark beside the name says
+                      "owner of this household" without making the reader parse a
+                      word in a status column, and it travels with the name
+                      instead of sitting at the far end of the row. */}
+                  {m.role === 'owner' && (
+                    <Crown
+                      size={14}
+                      aria-label="Owner of this household"
+                      className="shrink-0 text-[var(--color-terracotta)]"
+                    />
+                  )}
                 </span>
               }
-              value={`${m.userId ? 'registered' : 'virtual'} · ${m.role}`}
+              value={m.userId ? 'registered' : 'virtual'}
             >
               {canRemove(m) && (
                 <RemoveButton
@@ -707,11 +703,15 @@ function SettingsRoute() {
                   name={me.data?.user.name}
                   size={26}
                 />
-                <span className="truncate">{me.data?.user.name}</span>
+                <span className="min-w-0">
+                  <span className="block truncate">{me.data?.user.name}</span>
+                  <span className="block truncate text-xs text-ink-faint">
+                    {me.data?.user.email}
+                  </span>
+                </span>
               </span>
             }
-            value={me.data?.user.email}
-            onClick={() => setAvatarSheet(true)}
+            onClick={openProfile}
           />
           <SettingsRow label="Appearance">
             <ThemePicker heading={false} />
@@ -742,19 +742,68 @@ function SettingsRoute() {
         </SettingsGroup>
       </main>
 
-      {avatarSheet && (
-        <Sheet open onClose={() => setAvatarSheet(false)} title="Your avatar">
-          <div className="pb-4">
-            <p className="text-xs text-ink-faint mb-3 leading-relaxed">
-              Pick one, or keep the generated mark.
-            </p>
-            <AvatarPicker
-              value={me.data?.user.avatar ?? null}
-              seed={me.data?.user.id ?? 'anonymous'}
-              name={me.data?.user.name}
-              onChange={(next) => saveAvatar.mutate(next)}
-              label="Your avatar"
-            />
+      {profileSheet && (
+        <Sheet open onClose={() => setProfileSheet(false)} title="Your profile">
+          <div className="pb-4 space-y-4">
+            <div>
+              <Label htmlFor="profile-name">Name</Label>
+              <Input
+                id="profile-name"
+                autoFocus
+                value={profileName ?? ''}
+                onChange={(e) => setProfileName(e.target.value)}
+                placeholder="What should we call you"
+                maxLength={80}
+              />
+              <p className="text-xs text-ink-faint mt-1.5 leading-relaxed">
+                Your household nicknames are per space and stay as they are.
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-ink-faint mb-3 leading-relaxed">
+                Pick one, or keep the generated mark.
+              </p>
+              <AvatarPicker
+                value={profileAvatar ?? null}
+                seed={me.data?.user.id ?? 'anonymous'}
+                name={profileName ?? me.data?.user.name}
+                onChange={setProfileAvatar}
+                label="Your avatar"
+              />
+            </div>
+            <div>
+              <span className="block text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted mb-1.5">
+                Sign-in address
+              </span>
+              <p className="text-sm tnum truncate">{me.data?.user.email}</p>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                disabled={
+                  saveProfile.isPending ||
+                  !(profileName ?? '').trim() ||
+                  ((profileName ?? '').trim() === (me.data?.user.name ?? '') &&
+                    (profileAvatar ?? null) === (me.data?.user.avatar ?? null))
+                }
+                onClick={() =>
+                  saveProfile.mutate({
+                    name: (profileName ?? '').trim(),
+                    avatar: profileAvatar ?? null,
+                  })
+                }
+                className="flex-1"
+              >
+                {saveProfile.isPending ? 'Saving…' : 'Save profile'}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setProfileSheet(false)}
+              >
+                Cancel
+              </Button>
+            </div>
           </div>
         </Sheet>
       )}

@@ -1,6 +1,7 @@
 import { useNavigate } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { motion } from 'motion/react'
+import { Lock, StickyNote } from 'lucide-react'
 
 import type { Category } from '#/lib/db/schema'
 import type { PeriodPreset } from '#/lib/period'
@@ -20,6 +21,7 @@ import { CategoryBars } from '#/components/dashboard/CategoryBars'
 import { balancesQuery, expensesQuery, totalsQuery } from '#/lib/session'
 import { formatMoney } from '#/lib/money'
 import { swatchColor } from '#/lib/swatches'
+import { useMayEditExpense } from '#/hooks/useMayEditExpense'
 
 /**
  * The dashboard: total spend, your share beside it, the category donut, the
@@ -57,6 +59,7 @@ export function Dashboard({
   }
 }) {
   const navigate = useNavigate()
+  const mayEdit = useMayEditExpense()
 
   const totals = useQuery({
     ...totalsQuery(spaceId ?? '', filter),
@@ -186,63 +189,83 @@ export function Dashboard({
           <p className="text-sm text-ink-faint py-2">Nothing here yet.</p>
         ) : (
           <div>
-            {recentRows.map((e, i) => (
-              // Ledger rows stagger in at ~24ms, capped at 8 rows. Beyond that
-              // it stops reading as a flourish and starts as a wait.
-              <motion.div
-                key={e.id}
-                initial={{ opacity: 0, y: 4 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{
-                  delay: Math.min(i * 0.024, 0.192),
-                  type: 'spring',
-                  stiffness: 300,
-                  damping: 30,
-                }}
-              >
-                <button
-                  type="button"
-                  onClick={() => onEdit?.(e)}
-                  aria-label={`Edit ${e.purpose}, ${formatMoney(e.amountMinor, currency)}`}
-                  className="w-full text-left transition-colors duration-150"
+            {recentRows.map((e, i) => {
+              const edit = mayEdit(e)
+              return (
+                // Ledger rows stagger in at ~24ms, capped at 8 rows. Beyond that
+                // it stops reading as a flourish and starts as a wait.
+                <motion.div
+                  key={e.id}
+                  initial={{ opacity: 0, y: 4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{
+                    delay: Math.min(i * 0.024, 0.192),
+                    type: 'spring',
+                    stiffness: 300,
+                    damping: 30,
+                  }}
                 >
-                  <Row>
-                    <span
-                      aria-hidden
-                      className="h-8 w-1 rounded-sm shrink-0"
-                      style={{
-                        background:
-                          e.categoryColor !== null
-                            ? swatchColor(e.categoryColor)
-                            : 'var(--color-rule)',
-                      }}
-                    />
-                    <span className="min-w-0 flex-1">
-                      <span className="truncate text-sm font-medium block">
-                        {e.purpose}
+                  <button
+                    type="button"
+                    onClick={() => onEdit?.(e)}
+                    aria-label={
+                      edit.canEdit
+                        ? `Edit ${e.purpose}, ${formatMoney(e.amountMinor, currency)}`
+                        : `View ${e.purpose}, ${formatMoney(e.amountMinor, currency)}. ${edit.reason}`
+                    }
+                    className="w-full text-left transition-colors duration-150"
+                  >
+                    <Row>
+                      <span
+                        aria-hidden
+                        className="h-8 w-1 rounded-sm shrink-0"
+                        style={{
+                          background:
+                            e.categoryColor !== null
+                              ? swatchColor(e.categoryColor)
+                              : 'var(--color-rule)',
+                        }}
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="truncate text-sm font-medium block">
+                          {e.purpose}
+                        </span>
+                        <span className="flex items-center gap-1.5 min-w-0 mt-0.5">
+                          <MemberAvatar
+                            memberId={e.paidByMemberId}
+                            avatar={e.paidByAvatar}
+                            name={e.paidByName}
+                            size={15}
+                          />
+                          <span className="truncate text-xs text-ink-faint">
+                            {e.paidByName}
+                          </span>
+                          <span className="truncate text-xs text-ink-faint/70 tnum">
+                            {e.categoryName ?? 'Uncategorised'} · {e.spentOn}
+                          </span>
+                        </span>
                       </span>
-                      <span className="flex items-center gap-1.5 min-w-0 mt-0.5">
-                        <MemberAvatar
-                          memberId={e.paidByMemberId}
-                          avatar={e.paidByAvatar}
-                          name={e.paidByName}
-                          size={15}
+                      {!edit.canEdit && (
+                        <Lock
+                          size={13}
+                          aria-hidden
+                          className="shrink-0 text-ink-faint"
                         />
-                        <span className="truncate text-xs text-ink-faint">
-                          {e.paidByName}
+                      )}
+                      {e.noteCount > 0 && (
+                        <span className="flex items-center gap-1 shrink-0 text-ink-faint">
+                          <StickyNote size={13} aria-hidden />
+                          <span className="text-xs tnum">{e.noteCount}</span>
                         </span>
-                        <span className="truncate text-xs text-ink-faint/70 tnum">
-                          {e.categoryName ?? 'Uncategorised'} · {e.spentOn}
-                        </span>
+                      )}
+                      <span className="tnum text-sm font-medium shrink-0">
+                        {formatMoney(e.amountMinor, currency)}
                       </span>
-                    </span>
-                    <span className="tnum text-sm font-medium shrink-0">
-                      {formatMoney(e.amountMinor, currency)}
-                    </span>
-                  </Row>
-                </button>
-              </motion.div>
-            ))}
+                    </Row>
+                  </button>
+                </motion.div>
+              )
+            })}
           </div>
         )}
       </Card>

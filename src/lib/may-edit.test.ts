@@ -1,5 +1,5 @@
 /**
- * Who may change an expense, and how a removed member is named.
+ * Who may change an expense.
  *
  * Two pure rules, both of which the UI depends on to decide whether to offer an
  * edit at all — so a wrong answer here means either a button that leads to a
@@ -10,100 +10,128 @@
  * copy decides what to offer. They are written out separately on purpose, so the
  * server's version stays a guard rather than a shared helper, and the test is
  * what keeps them from drifting.
+ *
+ * One rule now, not three: *the author decides.* An unlocked entry is editable
+ * by anyone in the household; a locked one is editable by its author and nobody
+ * else — not even an owner. There is no household-wide switch any more, because
+ * one answer for a whole ledger had to be the most cautious value anybody ever
+ * needed, which made it useless for everything else.
  */
 import { describe, expect, it } from 'vitest'
 
 import { displayMemberName } from './member-name'
-import { editBlockedReason, mayEditExpense } from './may-edit'
+import { editBlockedReason, isExpenseAuthor, mayEditExpense } from './may-edit'
 
-const HOUSEHOLD = { editableByMembers: false }
-const OPEN_HOUSEHOLD = { editableByMembers: true }
-
-const OWNER = { userId: 'user-owner', role: 'owner' }
-const MEMBER = { userId: 'user-member', role: 'member' }
-const OTHER_MEMBER = { userId: 'user-other', role: 'member' }
-const SIGNED_OUT = { userId: null, role: null }
+const ME = { userId: 'user-member' }
+const OTHER = { userId: 'user-other' }
+const SIGNED_OUT = { userId: null }
 
 describe('mayEditExpense', () => {
-  it('lets you change what you entered', () => {
+  it('lets you change what you entered, locked or not', () => {
     expect(
-      mayEditExpense({ createdByUserId: 'user-member' }, MEMBER, HOUSEHOLD),
+      mayEditExpense({ createdByUserId: 'user-member', locked: false }, ME),
+    ).toBe(true)
+    expect(
+      mayEditExpense({ createdByUserId: 'user-member', locked: true }, ME),
     ).toBe(true)
   })
 
-  it("stops a member changing somebody else's entry", () => {
+  it("lets anyone change somebody else's unlocked entry", () => {
     expect(
-      mayEditExpense({ createdByUserId: 'user-other' }, MEMBER, HOUSEHOLD),
+      mayEditExpense({ createdByUserId: 'user-other', locked: false }, ME),
+    ).toBe(true)
+  })
+
+  it("stops anyone changing somebody else's locked entry", () => {
+    expect(
+      mayEditExpense({ createdByUserId: 'user-other', locked: true }, ME),
     ).toBe(false)
     expect(
-      editBlockedReason({ createdByUserId: 'user-other' }, MEMBER, HOUSEHOLD),
-    ).toBe('Entered by someone else')
-  })
-
-  it('lets an owner change anything, regardless of who entered it', () => {
-    expect(
-      mayEditExpense({ createdByUserId: 'user-other' }, OWNER, HOUSEHOLD),
-    ).toBe(true)
-    expect(
-      mayEditExpense({ createdByUserId: 'user-owner' }, OWNER, HOUSEHOLD),
-    ).toBe(true)
-  })
-
-  it('opens up when the household says so', () => {
-    expect(
-      mayEditExpense(
-        { createdByUserId: 'user-other' },
-        OTHER_MEMBER,
-        OPEN_HOUSEHOLD,
+      editBlockedReason(
+        { createdByUserId: 'user-other', locked: true },
+        ME,
+        'Alex',
       ),
-    ).toBe(true)
+    ).toBe('Alex locked this, so only they can change it')
+  })
+
+  it('names the author when the reason needs one', () => {
+    expect(
+      editBlockedReason(
+        { createdByUserId: 'user-other', locked: true },
+        ME,
+        'Alex',
+      ),
+    ).toContain('Alex')
+    expect(
+      editBlockedReason(
+        { createdByUserId: 'user-other', locked: true },
+        ME,
+        null,
+      ),
+    ).toBe('The person who added this locked it')
   })
 
   /**
    * Deleting an account nulls `created_by_user_id`, so an entry whose author is
-   * gone has an unknown author. Read as "not yours": an owner can still fix it,
-   * and nobody else can, which is the safe reading of not knowing.
+   * gone has an unknown author. Read as "not yours": a locked one stays locked
+   * for everybody, which is the safe reading of not knowing — and the only one
+   * that does not quietly hand authorship to whoever is left.
    */
-  it('treats an entry with no author as unowned by nobody', () => {
-    expect(mayEditExpense({ createdByUserId: null }, MEMBER, HOUSEHOLD)).toBe(
+  it('treats an entry with no author as editable only while unlocked', () => {
+    expect(mayEditExpense({ createdByUserId: null, locked: false }, ME)).toBe(
+      true,
+    )
+    expect(mayEditExpense({ createdByUserId: null, locked: true }, ME)).toBe(
       false,
     )
     expect(
-      editBlockedReason({ createdByUserId: null }, MEMBER, HOUSEHOLD),
-    ).toBe('Entered by someone who has since deleted their account')
-    // An owner can still correct it.
-    expect(mayEditExpense({ createdByUserId: null }, OWNER, HOUSEHOLD)).toBe(
-      true,
-    )
+      editBlockedReason({ createdByUserId: null, locked: true }, ME, 'Alex'),
+    ).toBe('Alex entered this and has since deleted their account')
   })
 
   it('offers nothing to a signed-out viewer', () => {
     expect(
-      mayEditExpense({ createdByUserId: null }, SIGNED_OUT, OPEN_HOUSEHOLD),
+      mayEditExpense(
+        { createdByUserId: 'user-member', locked: false },
+        SIGNED_OUT,
+      ),
     ).toBe(false)
     expect(
       mayEditExpense(
-        { createdByUserId: 'user-member' },
+        { createdByUserId: 'user-other', locked: false },
         SIGNED_OUT,
-        OPEN_HOUSEHOLD,
       ),
     ).toBe(false)
   })
 
-  /**
-   * The load-order case. Every input can be briefly absent on a re-render, and
-   * the answer has to fail closed or the affordance flickers.
-   */
-  it('fails closed while the viewer or the household is still unknown', () => {
-    const unknown = { userId: null, role: null }
+  it('fails closed while the viewer is still unknown', () => {
     expect(
-      mayEditExpense({ createdByUserId: 'user-member' }, unknown, HOUSEHOLD),
+      mayEditExpense(
+        { createdByUserId: 'user-member', locked: false },
+        {
+          userId: null,
+        },
+      ),
     ).toBe(false)
+  })
+})
+
+describe('isExpenseAuthor', () => {
+  it('is true only for the author', () => {
+    expect(isExpenseAuthor({ createdByUserId: 'user-member' }, ME)).toBe(true)
+    expect(isExpenseAuthor({ createdByUserId: 'user-other' }, ME)).toBe(false)
+    expect(isExpenseAuthor({ createdByUserId: null }, ME)).toBe(false)
     expect(
-      mayEditExpense({ createdByUserId: 'user-member' }, unknown, {
-        editableByMembers: false,
-      }),
+      isExpenseAuthor({ createdByUserId: 'user-member' }, SIGNED_OUT),
     ).toBe(false)
+  })
+
+  it('does not follow the lock', () => {
+    // An author can always edit, so "can I edit" is true for them either way —
+    // while "is this mine to lock" is a different fact that must not move with
+    // the toggle.
+    expect(isExpenseAuthor({ createdByUserId: 'user-other' }, OTHER)).toBe(true)
   })
 })
 

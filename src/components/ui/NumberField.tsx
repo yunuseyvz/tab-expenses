@@ -35,6 +35,7 @@ export function NumberField({
   label,
   className,
   size = 'sm',
+  disabled = false,
 }: {
   id?: string
   /** Raw text. Callers own it so a half-typed value is representable. */
@@ -48,11 +49,13 @@ export function NumberField({
   label?: string
   className?: string
   size?: 'sm' | 'md'
+  /** Inert but still legible, so a read-only split keeps its figures. */
+  disabled?: boolean
 }) {
   const fallbackId = useId()
   const numeric = Number.parseFloat(value)
-  const atMin = Number.isFinite(numeric) && numeric <= min
-  const atMax = Number.isFinite(numeric) && numeric >= max
+  const atMin = disabled || (Number.isFinite(numeric) && numeric <= min)
+  const atMax = disabled || (Number.isFinite(numeric) && numeric >= max)
 
   function nudge(direction: 1 | -1) {
     const base = Number.isFinite(numeric) ? numeric : 0
@@ -74,13 +77,18 @@ export function NumberField({
         'group/nf inline-flex items-center rounded-full',
         'transition-[background-color,box-shadow] duration-200',
         'ease-[var(--ease-out-soft)]',
-        'hover:bg-[var(--color-paper-sunk)]',
+        !disabled && 'hover:bg-[var(--color-paper-sunk)]',
         'focus-within:bg-[var(--color-paper-sunk)]',
         'focus-within:shadow-[var(--shadow-deboss)]',
+        disabled && 'opacity-50',
         className,
       )}
     >
-      <StepButton onClick={() => nudge(-1)} disabled={atMin} label="Decrease">
+      <StepButton
+        onClick={() => nudge(-1)}
+        disabled={atMin || disabled}
+        label="Decrease"
+      >
         <Minus size={14} aria-hidden strokeWidth={2.25} />
       </StepButton>
 
@@ -91,6 +99,7 @@ export function NumberField({
           inputMode="decimal"
           value={value}
           aria-label={label}
+          disabled={disabled}
           onChange={(e) => onChange(e.target.value)}
           className={cn(
             'tnum bg-transparent text-ink text-center appearance-none',
@@ -108,7 +117,11 @@ export function NumberField({
         )}
       </span>
 
-      <StepButton onClick={() => nudge(1)} disabled={atMax} label="Increase">
+      <StepButton
+        onClick={() => nudge(1)}
+        disabled={atMax || disabled}
+        label="Increase"
+      >
         <Plus size={14} aria-hidden strokeWidth={2.25} />
       </StepButton>
     </div>
