@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { Check } from 'lucide-react'
 
 import type { AvatarKind } from '#/lib/avatars'
-import { AVATAR_ICONS, avatarLabel, isAvatarIcon } from '#/lib/avatars'
+import { AVATAR_GROUPS, avatarLabel, isAvatarIcon } from '#/lib/avatars'
 import { usePopoverPlacement } from '#/hooks/usePopoverPlacement'
 import { Avatar } from '#/components/Avatar'
 import { cn } from '#/lib/cn'
@@ -165,44 +165,64 @@ export function AvatarPicker({
               </span>
             </div>
 
-            <ul className="grid grid-cols-8 gap-1 border-t border-rule pt-2">
-              {AVATAR_ICONS.map(
-                ({ name: key, label: iconLabel, icon: Icon }) => {
-                  const selected = current === key
-                  return (
-                    <li key={key}>
-                      <button
-                        type="button"
-                        role="option"
-                        aria-selected={selected}
-                        aria-label={iconLabel}
-                        title={iconLabel}
-                        onClick={() => {
-                          onChange(key)
-                          setOpen(false)
-                        }}
-                        className={cn(
-                          'relative grid place-items-center size-9 rounded-[var(--radius-sm)]',
-                          'text-ink-muted transition-[background-color,color] duration-150',
-                          'hover:bg-[var(--color-paper-sunk)] hover:text-ink',
-                          selected &&
-                            'bg-[var(--color-terracotta)] text-[var(--color-ink)]',
-                        )}
-                      >
-                        <Icon size={17} aria-hidden />
-                        {selected && (
-                          <Check
-                            size={10}
-                            aria-hidden
-                            className="absolute -right-0.5 -bottom-0.5 rounded-full bg-[var(--color-paper-raised)] p-[1px]"
-                          />
-                        )}
-                      </button>
-                    </li>
-                  )
-                },
-              )}
-            </ul>
+            {/*
+              Grouped rather than one long grid. There are a hundred-odd icons
+              now, and an undifferentiated wall of them is a scanning exercise
+              rather than a choice. Headings also make the panel navigable by
+              reading order rather than by hunting — and `role="group"` with a
+              label per group means a screen reader announces which section a
+              tile is in.
+            */}
+            {AVATAR_GROUPS.map((g, gi) => (
+              <div
+                key={g.group}
+                role="group"
+                aria-label={g.group}
+                className={gi === 0 ? 'border-t border-rule pt-2' : 'pt-3'}
+              >
+                <h3 className="px-1 pb-1.5 text-[11px] font-medium uppercase tracking-wide text-ink-faint">
+                  {g.group}
+                </h3>
+                <ul className="grid grid-cols-8 gap-1">
+                  {g.icons.map(
+                    ({ name: key, label: iconLabel, icon: Icon }) => {
+                      const selected = current === key
+                      return (
+                        <li key={key}>
+                          <button
+                            type="button"
+                            role="option"
+                            aria-selected={selected}
+                            aria-label={iconLabel}
+                            title={iconLabel}
+                            onClick={() => {
+                              onChange(key)
+                              setOpen(false)
+                            }}
+                            className={cn(
+                              'relative grid place-items-center size-9 rounded-[var(--radius-sm)]',
+                              'text-ink-muted transition-[background-color,color] duration-150',
+                              'hover:bg-[var(--color-paper-sunk)] hover:text-ink',
+                              selected &&
+                                'bg-[var(--color-terracotta)] text-[var(--color-ink)]',
+                            )}
+                          >
+                            <Icon size={17} aria-hidden />
+                            {selected && (
+                              <Check
+                                size={10}
+                                aria-hidden
+                                className="absolute -right-0.5 -bottom-0.5 rounded-full bg-[var(--color-paper-raised)] p-[1px]"
+                              />
+                            )}
+                          </button>
+                        </li>
+                      )
+                    },
+                  )}
+                </ul>
+              </div>
+            ))}
           </div>,
           document.body,
         )}

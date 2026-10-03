@@ -8,6 +8,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  AVATAR_GROUPS,
   AVATAR_ICONS,
   avatarSrc,
   identicon,
@@ -207,5 +208,51 @@ describe('the icon set', () => {
       expect(isAvatarIcon(name)).toBe(true)
       expect(typeof icon).toBe('object')
     }
+  })
+
+  /**
+   * The flat list and the grouped list are two views of one set, and the flat one
+   * is what the validator and the resolver read. They drifting apart would mean
+   * an icon that renders nowhere but validates, or the reverse.
+   */
+  it('flattens to exactly what the groups contain', () => {
+    const grouped = AVATAR_GROUPS.flatMap((g) => g.icons.map((i) => i.name))
+    expect(AVATAR_ICONS.map((i) => i.name)).toEqual(grouped)
+  })
+
+  /**
+   * The set grew by adding lucide glyphs, and some of them are tempting twice:
+   * Cherry is both a fruit and a nature symbol, Wheat is both a plant and a loaf.
+   * Reusing a glyph under two names is fine visually but means the *label* — what
+   * a screen reader announces and what the picker shows as the tooltip — is
+   * ambiguous, so the same key resolves to whichever was defined last.
+   */
+  it('reuses a glyph at most once, so every name has one label', () => {
+    const byIcon = new Map<unknown, Array<string>>()
+    for (const { name, icon } of AVATAR_ICONS) {
+      const seen = byIcon.get(icon) ?? []
+      seen.push(name)
+      byIcon.set(icon, seen)
+    }
+    const reused = [...byIcon.entries()].filter(([, names]) => names.length > 1)
+    expect(reused.map(([, names]) => names)).toEqual([])
+  })
+
+  it('offers the person-shaped icons people ask for by name', () => {
+    // Someone choosing an avatar for a household wants to find "Man" and "Woman"
+    // without hunting. If these go, the picker has lost the reason it was
+    // enlarged.
+    for (const name of ['venus', 'mars', 'user', 'users', 'user-round']) {
+      expect(isAvatarIcon(name)).toBe(true)
+    }
+  })
+
+  it('groups every icon under a non-empty heading', () => {
+    for (const g of AVATAR_GROUPS) {
+      expect(g.group.trim().length).toBeGreaterThan(0)
+      expect(g.icons.length).toBeGreaterThan(0)
+    }
+    // At least the groups a person would look in first.
+    expect(AVATAR_GROUPS.map((g) => g.group)).toContain('People')
   })
 })
