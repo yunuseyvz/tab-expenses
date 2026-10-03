@@ -325,12 +325,7 @@ describe('periodControlLabel', () => {
     // than as its dates, so the test is that the two are *distinguishable* — if
     // they ever came out identical the control would be describing the wrong
     // thing without looking wrong.
-    for (const key of [
-      'thisWeek',
-      'lastBiweek',
-      'thisMonth',
-      'thisQuarter',
-    ] as Array<PeriodPreset>) {
+    for (const key of ['thisMonth', 'lastMonth'] as Array<PeriodPreset>) {
       const resolved = resolvePeriod(key)
       expect(resolved.from, key).not.toBeNull()
       expect(periodControlLabel(key)).not.toBe(periodLabel(resolved))

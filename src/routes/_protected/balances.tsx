@@ -15,7 +15,7 @@ import {
 import { balancesQuery, rememberedSpaceQuery, spaceKeys } from '#/lib/session'
 import { listMySpaces } from '#/lib/auth.functions'
 import { formatMoney } from '#/lib/money'
-import { asCycleKey, resolvePeriod } from '#/lib/period'
+import { resolvePeriod } from '#/lib/period'
 import { MemberAvatar } from '#/components/MemberAvatar'
 import { swatchColor } from '#/lib/swatches'
 import { useCurrentSpace } from '#/hooks/useCurrentSpace'
@@ -26,9 +26,9 @@ export const Route = createFileRoute('/_protected/balances')({
   validateSearch: (s: Record<string, unknown>) => ({
     space: typeof s.space === 'string' ? s.space : undefined,
     // Undefined when the URL says nothing, which is not the same as "all": it
-    // means "whatever this household settles on". Distinguishing the two is the
-    // whole point of a per-household cycle — without it, arriving without a
-    // period param is indistinguishable from having asked for all time.
+    // means "the default", and the component resolves that to this month. A
+    // period param is cast rather than checked — an unrecognised key resolves to
+    // no bounds, which `presetToPeriod`'s default branch handles deliberately.
     period:
       typeof s.period === 'string' ? (s.period as PeriodPreset) : undefined,
     // Balances had no custom range at all: two screens offered it and one did
@@ -51,12 +51,10 @@ export const Route = createFileRoute('/_protected/balances')({
     )
     if (!spaceId) return
 
-    const cycle =
-      asCycleKey(spaces.find((s) => s.id === spaceId)?.cycle) ?? 'thisMonth'
     await qc.ensureQueryData(
       balancesQuery(
         spaceId,
-        resolvePeriod(deps.period ?? cycle, deps.from, deps.to),
+        resolvePeriod(deps.period ?? 'thisMonth', deps.from, deps.to),
       ),
     )
   },
@@ -79,12 +77,13 @@ function BalancesRoute() {
     void navigate({ to: '/balances', search: { ...search, ...patch } })
   }
 
-  // Same resolution as the loader, from the same source. The household's cycle is
-  // the default here because this is the screen where a cycle means something:
-  // it is the settlement, and a household that settles fortnightly does not want
-  // a month of expenses on it by default.
-  const effectivePreset =
-    search.period ?? asCycleKey(space?.cycle) ?? 'thisMonth'
+  // Same resolution as the loader, from the same source: the URL, else this
+  // month. A settlement cycle was tried here — one setting saying how often the
+  // household settles, so Balances opened on a fortnight rather than a month —
+  // and it was reverted. The screen was one click from any other window anyway,
+  // so the setting bought a default and cost a column, a settings group and a
+  // second list of the same names to keep in step.
+  const effectivePreset = search.period ?? 'thisMonth'
   const period = useMemo(
     () => resolvePeriod(effectivePreset, search.from, search.to),
     [effectivePreset, search.from, search.to],

@@ -18,7 +18,6 @@ import {
   requireSpaceMember,
   requireSpaceOwner,
 } from './auth.functions'
-import { CYCLE_KEY_TUPLE } from './period'
 import { getDb } from './db'
 import {
   category,
@@ -103,14 +102,6 @@ export const updateSpace = createServerFn({ method: 'POST' })
       name: z.string().trim().min(1, 'name is required').max(80),
       currency: currencySchema.optional(),
       icon: avatarKeySchema.nullable().optional(),
-      /**
-       * How often this household settles up. Validated against the preset list
-       * rather than taken as a string: an unknown key would fall through
-       * `presetToPeriod`'s switch to "no bounds", which is "all time" — a
-       * household that settles fortnightly would quietly be shown every expense
-       * ever entered. That failure is silent and looks like a feature.
-       */
-      cycle: z.enum(CYCLE_KEY_TUPLE).optional(),
     }),
   )
   .handler(async ({ data }) => {
@@ -136,7 +127,6 @@ export const updateSpace = createServerFn({ method: 'POST' })
         name: data.name,
         ...(data.currency !== undefined ? { currency: data.currency } : {}),
         ...(data.icon !== undefined ? { icon: data.icon } : {}),
-        ...(data.cycle !== undefined ? { cycle: data.cycle } : {}),
       })
       // Scoped by id only because requireSpaceOwner has already established
       // that this caller owns exactly this space.

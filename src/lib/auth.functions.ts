@@ -118,10 +118,6 @@ export const listMySpaces = createServerFn({ method: 'GET' }).handler(
         icon: space.icon,
         role: spaceMember.role,
         memberId: spaceMember.id,
-        // The household's settlement cadence. Carried here rather than fetched
-        // per screen because every screen with a period filter needs it to know
-        // what "the default" is.
-        cycle: space.cycle,
       })
       .from(spaceMember)
       .innerJoin(space, eq(spaceMember.spaceId, space.id))

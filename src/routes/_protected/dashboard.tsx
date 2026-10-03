@@ -25,16 +25,15 @@ import {
   spaceKeys,
   totalsQuery,
 } from '#/lib/session'
-import { asCycleKey, periodLabel, resolvePeriod } from '#/lib/period'
+import { periodLabel, resolvePeriod } from '#/lib/period'
 import { resolveSpaceId } from '#/lib/space-preference'
 import { useCurrentSpace } from '#/hooks/useCurrentSpace'
 
 export const Route = createFileRoute('/_protected/dashboard')({
   validateSearch: (s: Record<string, unknown>) => ({
     space: typeof s.space === 'string' ? s.space : undefined,
-    // Undefined means "this household's cycle" rather than a fixed month, so a
-    // household that settles fortnightly is not looking at a month on the screen
-    // that summarises the same thing Balances settles.
+    // Undefined means "the default" rather than a fixed month. The component
+    // resolves it to this month; see the note in balances.tsx.
     period:
       typeof s.period === 'string' ? (s.period as PeriodPreset) : undefined,
     cats: typeof s.cats === 'string' ? s.cats : undefined,
@@ -61,9 +60,7 @@ export const Route = createFileRoute('/_protected/dashboard')({
 
     // A custom range wins over the preset; the two coexist in the URL so
     // switching back to a preset does not discard the custom dates.
-    const cycle =
-      asCycleKey(spaces.find((s) => s.id === spaceId)?.cycle) ?? 'thisMonth'
-    const period = resolvePeriod(deps.period ?? cycle, deps.from, deps.to)
+    const period = resolvePeriod(deps.period ?? 'thisMonth', deps.from, deps.to)
 
     const categories = await qc.ensureQueryData(categoriesQuery(spaceId))
     const allIds = categories.map((c: { id: string }) => c.id)
@@ -112,8 +109,9 @@ function DashboardRoute() {
   // rather than a second round trip.
   const { user } = useRouteContext({ from: '/_protected' })
 
-  const effectivePreset =
-    search.period ?? asCycleKey(space?.cycle) ?? 'thisMonth'
+  // The URL, else this month. See the note in balances.tsx: a settlement cycle
+  // was tried here and reverted.
+  const effectivePreset = search.period ?? 'thisMonth'
   const period = useMemo(
     () => resolvePeriod(effectivePreset, search.from, search.to),
     [effectivePreset, search.from, search.to],
@@ -177,10 +175,9 @@ function DashboardRoute() {
           categories={categories.data ?? []}
           allCategoryIds={allIds}
           selectedCategoryIds={selectedIds}
-          // The resolved preset, not the raw URL param: Dashboard reads
-          // this back when a filter change re-navigates, and passing the
-          // undefined-through version would drop the household's cycle from the
-          // very next link it builds.
+          // The resolved preset, not the raw URL param: Dashboard reads this
+          // back when a filter change re-navigates, and passing the undefined
+          // through would drop the default from the very next link it builds.
           search={{ ...search, period: effectivePreset }}
           onEdit={openEdit}
         />
