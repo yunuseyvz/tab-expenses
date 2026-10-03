@@ -59,6 +59,20 @@ export const space = pgTable('space', {
    */
   editableByMembers: boolean('editable_by_members').default(false).notNull(),
   /**
+   * How often this household settles up, as a preset key from
+   * `src/lib/period.ts`. A text column rather than an enum because the list is
+   * UI copy that will grow and the value is never queried by SQL — only read
+   * whole and handed to `presetToPeriod`.
+   *
+   * Monthly is the default because it is the cadence most households share
+   * costs on, and because changing it for everybody who has not asked to change
+   * it would be a worse surprise than leaving the existing default alone.
+   *
+   * This is a *default*, not a restriction: every screen still offers the whole
+   * set of presets, so anybody can look at a fortnight or a quarter on demand.
+   */
+  cycle: text('cycle').default('thisMonth').notNull(),
+  /**
    * Who set this household up. Provenance, not authority: who can *manage* the
    * space is `space_member.role`, and that is the row that decides it. Which is
    * why this one is nullable and set to null when the account is deleted rather

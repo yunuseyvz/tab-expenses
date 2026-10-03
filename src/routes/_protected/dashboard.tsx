@@ -26,7 +26,7 @@ import {
   spaceKeys,
   totalsQuery,
 } from '#/lib/session'
-import { periodLabel, resolvePeriod } from '#/lib/period'
+import { asCycleKey, periodLabel, resolvePeriod } from '#/lib/period'
 import { resolveSpaceId } from '#/lib/space-preference'
 import { useCurrentSpace } from '#/hooks/useCurrentSpace'
 import { useMayEditExpense } from '#/hooks/useMayEditExpense'
@@ -34,9 +34,11 @@ import { useMayEditExpense } from '#/hooks/useMayEditExpense'
 export const Route = createFileRoute('/_protected/dashboard')({
   validateSearch: (s: Record<string, unknown>) => ({
     space: typeof s.space === 'string' ? s.space : undefined,
-    period: (typeof s.period === 'string'
-      ? s.period
-      : 'thisMonth') as PeriodPreset,
+    // Undefined means "this household's cycle" rather than a fixed month, so a
+    // household that settles fortnightly is not looking at a month on the screen
+    // that summarises the same thing Balances settles.
+    period:
+      typeof s.period === 'string' ? (s.period as PeriodPreset) : undefined,
     cats: typeof s.cats === 'string' ? s.cats : undefined,
     from: typeof s.from === 'string' ? s.from : undefined,
     to: typeof s.to === 'string' ? s.to : undefined,
@@ -61,7 +63,9 @@ export const Route = createFileRoute('/_protected/dashboard')({
 
     // A custom range wins over the preset; the two coexist in the URL so
     // switching back to a preset does not discard the custom dates.
-    const period = resolvePeriod(deps.period, deps.from, deps.to)
+    const cycle =
+      asCycleKey(spaces.find((s) => s.id === spaceId)?.cycle) ?? 'thisMonth'
+    const period = resolvePeriod(deps.period ?? cycle, deps.from, deps.to)
 
     const categories = await qc.ensureQueryData(categoriesQuery(spaceId))
     const allIds = categories.map((c: { id: string }) => c.id)
@@ -117,9 +121,11 @@ function DashboardRoute() {
   // rather than a second round trip.
   const { user } = useRouteContext({ from: '/_protected' })
 
+  const effectivePreset =
+    search.period ?? asCycleKey(space?.cycle) ?? 'thisMonth'
   const period = useMemo(
-    () => resolvePeriod(search.period, search.from, search.to),
-    [search.period, search.from, search.to],
+    () => resolvePeriod(effectivePreset, search.from, search.to),
+    [effectivePreset, search.from, search.to],
   )
 
   const categories = useQuery({
@@ -165,7 +171,7 @@ function DashboardRoute() {
         />
 
         <PeriodFilter
-          current={search.period}
+          current={effectivePreset}
           from={search.from}
           to={search.to}
           onChange={(patch) =>
@@ -180,7 +186,11 @@ function DashboardRoute() {
           categories={categories.data ?? []}
           allCategoryIds={allIds}
           selectedCategoryIds={selectedIds}
-          search={search}
+          // The resolved preset, not the raw URL param: Dashboard reads
+          // this back when a filter change re-navigates, and passing the
+          // undefined-through version would drop the household's cycle from the
+          // very next link it builds.
+          search={{ ...search, period: effectivePreset }}
           onEdit={openEdit}
         />
 

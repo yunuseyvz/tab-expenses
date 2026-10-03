@@ -43,6 +43,13 @@
       "when": 1791051139911,
       "tag": "0005_omniscient_nehzno",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791054247065,
+      "tag": "0006_clammy_mongoose",
+      "breakpoints": true
     }
   ]
 }

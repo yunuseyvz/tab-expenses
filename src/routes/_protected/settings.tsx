@@ -4,7 +4,7 @@ import { FileDown, FileUp, LogOut, Plus, UserPlus, X } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
-import type { PeriodPreset } from '#/lib/period'
+import type { CycleKey, PeriodPreset } from '#/lib/period'
 import type { CategoryIconName } from '#/lib/category-icons'
 import type { RemovalKind } from '#/components/settings/ConfirmRemoval'
 import { iconFor } from '#/lib/category-icons'
@@ -25,6 +25,7 @@ import { Input, Label, Select } from '#/components/ui/Input'
 import { Switch } from '#/components/ui/Switch'
 import { SWATCHES, swatchColor } from '#/lib/swatches'
 import { useCurrentSpace } from '#/hooks/useCurrentSpace'
+import { CYCLE_KEYS, asCycleKey, cycleLabel } from '#/lib/period'
 import { resolveSpaceId } from '#/lib/space-preference'
 import {
   archiveCategory,
@@ -194,6 +195,25 @@ function SettingsRoute() {
     mutationFn: (patch: { editableByMembers: boolean }) =>
       updateSpace({
         data: { spaceId: spaceId!, name: space!.name, ...patch },
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: spaceKeys.mySpaces })
+    },
+    onError: (e) =>
+      toast.error(e instanceof Error ? e.message : 'Could not save'),
+  })
+
+  /**
+   * The household's settlement cadence.
+   *
+   * Invalidates the space list because `useCurrentSpace` reads the cycle off it,
+   * and the balances screen defaults its period from there. A toggle that saved
+   * but left every other screen on the old window would look broken.
+   */
+  const setCycle = useMutation({
+    mutationFn: (cycle: CycleKey) =>
+      updateSpace({
+        data: { spaceId: spaceId!, name: space!.name, cycle },
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: spaceKeys.mySpaces })
@@ -564,6 +584,41 @@ function SettingsRoute() {
             <AddRow
               label="Add a category"
               onClick={() => setOpen('category')}
+            />
+          )}
+        </SettingsGroup>
+
+        <SettingsGroup
+          title="Housekeeping"
+          hint={space ? `How often ${space.name} settles up` : undefined}
+        >
+          {/*
+            A default, not a restriction. Every screen still offers the whole set
+            of periods, so anybody can look at a fortnight or a quarter on
+            demand — this only decides what the balances open on, which is the
+            question that is genuinely a household's rather than a person's.
+          */}
+          {isOwner && (
+            <SettingsRow label="Settlement cycle">
+              <Select
+                aria-label="Settlement cycle"
+                className="w-auto"
+                value={asCycleKey(space.cycle) ?? 'thisMonth'}
+                disabled={setCycle.isPending}
+                onChange={(e) => setCycle.mutate(e.target.value as CycleKey)}
+              >
+                {CYCLE_KEYS.map((key) => (
+                  <option key={key} value={key}>
+                    {cycleLabel(key)}
+                  </option>
+                ))}
+              </Select>
+            </SettingsRow>
+          )}
+          {!isOwner && space && (
+            <SettingsRow
+              label="Settlement cycle"
+              value={cycleLabel(asCycleKey(space.cycle) ?? 'thisMonth')}
             />
           )}
         </SettingsGroup>

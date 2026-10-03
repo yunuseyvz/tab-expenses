@@ -1,0 +1,1 @@
+ALTER TABLE "space" ADD COLUMN "cycle" text DEFAULT 'thisMonth' NOT NULL;

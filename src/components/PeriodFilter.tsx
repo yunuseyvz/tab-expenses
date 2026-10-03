@@ -1,14 +1,18 @@
 import { useEffect, useRef, useState } from 'react'
 
 import type { PeriodPreset } from '#/lib/period'
+import { PERIOD_PRESETS } from '#/lib/period'
 import { DateField } from '#/components/ui/DateField'
 import { usePopoverPlacement } from '#/hooks/usePopoverPlacement'
 import { cn } from '#/lib/cn'
 
+/**
+ * From `PERIOD_PRESETS`, so the label here and the one in Settings cannot
+ * disagree. Custom is not in that list — it is a disclosure rather than a
+ * window, and it goes last.
+ */
 const PRESETS: Array<{ key: PeriodPreset; label: string }> = [
-  { key: 'thisMonth', label: 'This month' },
-  { key: 'lastMonth', label: 'Last month' },
-  { key: 'all', label: 'All' },
+  ...PERIOD_PRESETS.map(({ key, label }) => ({ key, label })),
   { key: 'custom', label: 'Custom' },
 ]
 

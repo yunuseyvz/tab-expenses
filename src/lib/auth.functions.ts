@@ -122,6 +122,10 @@ export const listMySpaces = createServerFn({ method: 'GET' }).handler(
         // list every screen already has, rather than costing a query per route
         // that needs to decide whether to offer an edit affordance.
         editableByMembers: space.editableByMembers,
+        // The household's settlement cadence. Carried here rather than fetched
+        // per screen because every screen with a period filter needs it to know
+        // what "the default" is.
+        cycle: space.cycle,
       })
       .from(spaceMember)
       .innerJoin(space, eq(spaceMember.spaceId, space.id))
