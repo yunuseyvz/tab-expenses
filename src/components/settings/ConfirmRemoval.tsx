@@ -18,7 +18,7 @@
 import { Sheet } from '#/components/AppShell'
 import { Button } from '#/components/ui/Button'
 
-export type RemovalKind = 'member' | 'category' | 'leave'
+export type RemovalKind = 'member' | 'category' | 'leave' | 'expense'
 
 export function ConfirmRemoval({
   kind,
@@ -38,6 +38,7 @@ export function ConfirmRemoval({
 }) {
   const isMember = kind === 'member'
   const isLeave = kind === 'leave'
+  const isExpense = kind === 'expense'
 
   return (
     <Sheet
@@ -48,7 +49,9 @@ export function ConfirmRemoval({
           ? `Leave ${name}?`
           : isMember
             ? `Remove ${name}?`
-            : `Archive ${name}?`
+            : isExpense
+              ? `Delete ${name}?`
+              : `Archive ${name}?`
       }
     >
       <div className="pb-4 space-y-4">
@@ -64,6 +67,11 @@ export function ConfirmRemoval({
               <strong className="text-ink font-medium">{name}</strong> will stop
               being assignable to new expenses, and will no longer be offered in
               the payer or split lists.
+            </>
+          ) : isExpense ? (
+            <>
+              <strong className="text-ink font-medium">{name}</strong> leaves
+              the ledger entirely: the entry, its split and every note under it.
             </>
           ) : (
             <>
@@ -84,6 +92,11 @@ export function ConfirmRemoval({
             <>
               Your name stays on every expense you were part of. Nothing in the
               ledger is rewritten, and no history is lost.
+            </>
+          ) : isExpense ? (
+            <>
+              Totals and balances update. Everything else stays exactly as it
+              is.
             </>
           ) : isMember ? (
             <>
@@ -128,12 +141,16 @@ export function ConfirmRemoval({
             {busy
               ? isLeave
                 ? 'Leaving…'
-                : 'Removing…'
+                : isExpense
+                  ? 'Deleting…'
+                  : 'Removing…'
               : isLeave
                 ? 'Leave household'
                 : isMember
                   ? 'Remove member'
-                  : 'Archive category'}
+                  : isExpense
+                    ? 'Delete expense'
+                    : 'Archive category'}
           </Button>
           <Button
             type="button"

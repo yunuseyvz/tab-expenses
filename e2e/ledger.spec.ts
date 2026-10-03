@@ -4,8 +4,6 @@
  */
 import { expect, test } from '@playwright/test'
 
-import { chooseOption } from './helpers'
-
 test.describe('ledger', () => {
   // These run against the session established in global-setup.
   test('shows the seeded dashboard totals', async ({ page }) => {
@@ -93,10 +91,11 @@ test.describe('ledger', () => {
     const purpose = `E2E save ${Date.now()}`
     await page.getByLabel('Amount').fill('100.00')
     await page.getByLabel('What was it for').fill(purpose)
-    await chooseOption(page, page.getByLabel('Paid by'), 'Sam')
+    await page.getByRole('radio', { name: 'Sam paid' }).check()
 
-    // No split: the payer takes 100% and the save button is immediately live.
-    await expect(page.getByRole('status')).toHaveCount(0)
+    // No split: picking the payer ticks him alone at 100%, so the save button
+    // is immediately live.
+    await expect(page.getByRole('status')).toHaveText('Sam covered all of it')
     await sheet.getByRole('button', { name: 'Save expense' }).click()
 
     // The sheet closes and the new row is in the recent-entries list.

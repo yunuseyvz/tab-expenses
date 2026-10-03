@@ -121,7 +121,6 @@ describe.runIf(await describeIfDatabase())('deleting a space', () => {
         purpose: `${label} ${suffix}`,
         amountMinor: 4_200,
         spentOn: '2026-09-01',
-        note: label,
         createdByUserId: ownerId,
       })
       .returning()

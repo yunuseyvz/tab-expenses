@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { Eye, Lock, LockOpen, StickyNote, Trash2 } from 'lucide-react'
+import { Eye, Lock, LockOpen, Plus, StickyNote, Trash2, X } from 'lucide-react'
 
 import type { Category } from '#/lib/db/schema'
 import type { MemberListItem } from '#/lib/space.functions'
@@ -9,6 +9,7 @@ import type { SplitDraft } from '#/components/expense/SplitEditor'
 import type { ExpenseRow } from '#/lib/expense.functions'
 import { Sheet } from '#/components/AppShell'
 import { Avatar } from '#/components/Avatar'
+import { ConfirmRemoval } from '#/components/settings/ConfirmRemoval'
 import { Button } from '#/components/ui/Button'
 import { DateField } from '#/components/ui/DateField'
 import { Input, Label, Textarea } from '#/components/ui/Input'
@@ -19,10 +20,12 @@ import {
   addExpenseNote,
   createExpense,
   deleteExpense,
+  deleteExpenseNote,
   listExpenseNotes,
   setExpenseLock,
   updateExpense,
 } from '#/lib/expense.functions'
+import { getSession } from '#/lib/auth.functions'
 import {
   MAX_AMOUNT,
   MAX_AMOUNT_MINOR,
@@ -75,16 +78,21 @@ export function ExpenseSheet({
 }) {
   const queryClient = useQueryClient()
   const getEdit = useMayEditExpense()
+  const me = useQuery({ queryKey: ['session'], queryFn: () => getSession() })
 
   const [amount, setAmount] = useState('')
   const [purpose, setPurpose] = useState('')
-  const [note, setNote] = useState('')
+  // The note field on a NEW expense only. It is sent with the create and stored
+  // as the entry's first note — there is no second place to write the same
+  // thing any more. Edits never touch it: remarks live in the notes section.
+  const [firstNote, setFirstNote] = useState('')
   const [categoryId, setCategoryId] = useState<string>('')
   const [spentOn, setSpentOn] = useState(today)
   const [paidByMemberId, setPaidByMemberId] = useState<string>('')
   const [drafts, setDrafts] = useState<Array<SplitDraft>>([])
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [noteBody, setNoteBody] = useState('')
+  const [deletingNoteId, setDeletingNoteId] = useState<string | null>(null)
   // The lock as last seen from the server, so the toggle reflects a write
   // without waiting for the list to refetch — the parent holds a row snapshot,
   // not a live subscription, so `editing.locked` goes stale the moment this
@@ -116,16 +124,17 @@ export function ExpenseSheet({
       // and wipe what the user is typing.
       setAmount('')
       setPurpose('')
-      setNote('')
+      setFirstNote('')
       setCategoryId('')
       setPaidByMemberId('')
       setDrafts([])
-      setLocked(false)
+      // New entries start locked: the author decides whether the household may
+      // change them. See `expense.locked`.
+      setLocked(true)
       return
     }
     setAmount((editing.amountMinor / 100).toFixed(2))
     setPurpose(editing.purpose)
-    setNote(editing.note ?? '')
     setCategoryId(editing.categoryId ?? '')
     setSpentOn(editing.spentOn)
     setPaidByMemberId(editing.paidByMemberId)
@@ -209,7 +218,6 @@ export function ExpenseSheet({
               expenseId: editingId,
               amount,
               purpose: purpose.trim(),
-              note: note.trim() || null,
               categoryId: categoryId || null,
               paidByMemberId,
               spentOn,
@@ -224,7 +232,8 @@ export function ExpenseSheet({
               spaceId: spaceId!,
               amount,
               purpose: purpose.trim(),
-              note: note.trim() || null,
+              note: firstNote.trim() || null,
+              locked,
               categoryId: categoryId || null,
               paidByMemberId,
               spentOn,
@@ -261,7 +270,6 @@ export function ExpenseSheet({
       toast.error(
         err instanceof Error ? err.message : 'Could not delete the expense',
       )
-      setConfirmingDelete(false)
     },
   })
 
@@ -296,6 +304,26 @@ export function ExpenseSheet({
   })
   const noteList = notes.data ?? []
 
+  const removeNote = useMutation({
+    mutationFn: (noteId: string) =>
+      deleteExpenseNote({
+        data: { spaceId: spaceId!, expenseId: editingId!, noteId },
+      }),
+    onMutate: (noteId) => setDeletingNoteId(noteId),
+    onSettled: () => setDeletingNoteId(null),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: ['spaces', spaceId, 'notes', editingId],
+      })
+      invalidateLedger()
+    },
+    onError: (err) => {
+      toast.error(
+        err instanceof Error ? err.message : 'Could not delete the note',
+      )
+    },
+  })
+
   const leaveNote = useMutation({
     mutationFn: (body: string) =>
       addExpenseNote({
@@ -320,12 +348,14 @@ export function ExpenseSheet({
   function reset() {
     setAmount('')
     setPurpose('')
-    setNote('')
+    setFirstNote('')
     setCategoryId('')
     setPaidByMemberId('')
     setDrafts([])
+    setLocked(true)
     setConfirmingDelete(false)
     setNoteBody('')
+    setDeletingNoteId(null)
   }
 
   if (!open) return null
@@ -337,20 +367,28 @@ export function ExpenseSheet({
       : 'Edit expense'
 
   return (
-    <Sheet
-      open={open}
-      onClose={onClose}
-      title={title}
-      headerAction={
-        editing ? (
+    <>
+      <Sheet
+        open={open}
+        onClose={onClose}
+        title={title}
+        headerAction={
+          // On a new expense the toggle is local state that rides along with
+          // the create: you are the author of what you are typing, so it is
+          // always yours to press. On an existing one it writes through
+          // `setExpenseLock`, author-only.
           <button
             type="button"
-            disabled={!editState.isAuthor || flipLock.isPending}
-            onClick={() => flipLock.mutate(!locked)}
+            disabled={
+              editing ? !editState.isAuthor || flipLock.isPending : false
+            }
+            onClick={() =>
+              editing ? flipLock.mutate(!locked) : setLocked(!locked)
+            }
             aria-label={locked ? 'Unlock this expense' : 'Lock this expense'}
             aria-pressed={locked}
             title={
-              editState.isAuthor
+              !editing || editState.isAuthor
                 ? locked
                   ? 'Locked — only you can change this'
                   : 'Unlocked — anyone can change this'
@@ -373,247 +411,286 @@ export function ExpenseSheet({
               <LockOpen size={17} aria-hidden />
             )}
           </button>
-        ) : undefined
-      }
-    >
-      <form
-        onSubmit={(e) => {
-          e.preventDefault()
-          if (!readOnly) save.mutate()
-        }}
-        className="space-y-4 pb-1"
+        }
       >
-        {/* Whose entry this is, when it is not yours. The row already refused
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            if (!readOnly) save.mutate()
+          }}
+          className="space-y-4 pb-1"
+        >
+          {/* Whose entry this is, when it is not yours. The row already refused
             nothing — it opened — so this banner is what makes "read-only"
             obvious rather than a form that silently does nothing. */}
-        {readOnly && editing && (
-          <div
-            role="status"
-            className="flex items-center gap-2.5 rounded-[var(--radius-md)]
+          {readOnly && editing && (
+            <div
+              role="status"
+              className="flex items-center gap-2.5 rounded-[var(--radius-md)]
               border border-rule bg-[var(--color-paper-sunk)] p-3"
-          >
-            <Avatar
-              avatarKey={editing.createdByAvatar}
-              seed={
-                editing.createdByUserId ?? editing.createdByName ?? 'unknown'
-              }
-              name={editing.createdByName ?? undefined}
-              size={26}
-            />
-            <p className="text-sm leading-snug min-w-0 flex-1">
-              <span className="flex items-center gap-1.5 font-medium">
-                <Eye
-                  size={13}
-                  aria-hidden
-                  className="shrink-0 text-ink-faint"
-                />
-                {authorName
-                  ? `${authorName}'s expense`
-                  : "Someone else's expense"}
-              </span>
-              <span className="block text-xs text-ink-muted mt-0.5">
-                {editState.reason ??
-                  'You can look, but only they can change it.'}
-              </span>
-            </p>
-          </div>
-        )}
-
-        <div>
-          <Label htmlFor="amount">Amount</Label>
-          <Input
-            id="amount"
-            // inputMode numeric gives a number pad on a phone without
-            // blocking a comma decimal separator on a desktop keyboard.
-            inputMode="decimal"
-            autoComplete="off"
-            required
-            disabled={readOnly}
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            placeholder="0.00"
-            // `max` does nothing for a text-mode numeric field on every browser,
-            // so the cap is enforced in the validator and in the database. It is
-            // here as the hint a numeric keypad offers on some platforms.
-            max={MAX_AMOUNT}
-            aria-invalid={
-              amount !== '' && (amountMinor === 0 || amountTooLarge)
-            }
-            // Sans, matching the figures it will become. A serif at this size
-            // fought the field it sits in rather than characterising it.
-            className="tnum text-2xl font-medium tracking-tight"
-          />
-          {amountTooLarge && (
-            <p role="alert" className="text-sm text-oxblood-ink mt-1.5">
-              That is more than {formatMoney(MAX_AMOUNT_MINOR, currency)}. Check
-              for a units slip — a total typed in cents, say.
-            </p>
+            >
+              <Avatar
+                avatarKey={editing.createdByAvatar}
+                seed={
+                  editing.createdByUserId ?? editing.createdByName ?? 'unknown'
+                }
+                name={editing.createdByName ?? undefined}
+                size={26}
+              />
+              <p className="text-sm leading-snug min-w-0 flex-1">
+                <span className="flex items-center gap-1.5 font-medium">
+                  <Eye
+                    size={13}
+                    aria-hidden
+                    className="shrink-0 text-ink-faint"
+                  />
+                  {authorName
+                    ? `${authorName}'s expense`
+                    : "Someone else's expense"}
+                </span>
+                <span className="block text-xs text-ink-muted mt-0.5">
+                  {editState.reason ??
+                    'You can look, but only they can change it.'}
+                </span>
+              </p>
+            </div>
           )}
-        </div>
 
-        <div>
-          <Label htmlFor="purpose">What was it for</Label>
-          <Input
-            id="purpose"
-            required
-            disabled={readOnly}
-            value={purpose}
-            onChange={(e) => setPurpose(e.target.value)}
-            placeholder="Weekly shop"
-          />
-        </div>
+          <div>
+            <Label htmlFor="amount">Amount</Label>
+            <Input
+              id="amount"
+              // inputMode numeric gives a number pad on a phone without
+              // blocking a comma decimal separator on a desktop keyboard.
+              inputMode="decimal"
+              autoComplete="off"
+              required
+              disabled={readOnly}
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder="0.00"
+              // `max` does nothing for a text-mode numeric field on every browser,
+              // so the cap is enforced in the validator and in the database. It is
+              // here as the hint a numeric keypad offers on some platforms.
+              max={MAX_AMOUNT}
+              aria-invalid={
+                amount !== '' && (amountMinor === 0 || amountTooLarge)
+              }
+              // Sans, matching the figures it will become. A serif at this size
+              // fought the field it sits in rather than characterising it.
+              className="tnum text-2xl font-medium tracking-tight"
+            />
+            {amountTooLarge && (
+              <p role="alert" className="text-sm text-oxblood-ink mt-1.5">
+                That is more than {formatMoney(MAX_AMOUNT_MINOR, currency)}.
+                Check for a units slip — a total typed in cents, say.
+              </p>
+            )}
+          </div>
 
-        {/* The two that belong together: when this expense happened, and what it
+          <div>
+            <Label htmlFor="purpose">What was it for</Label>
+            <Input
+              id="purpose"
+              required
+              disabled={readOnly}
+              value={purpose}
+              onChange={(e) => setPurpose(e.target.value)}
+              placeholder="Weekly shop"
+            />
+          </div>
+
+          {/* The two that belong together: when this expense happened, and what it
             was for. */}
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <Label htmlFor="spent-on">Date</Label>
-            <DateField
-              id="spent-on"
-              label="Date of the expense"
-              value={spentOn}
-              onChange={setSpentOn}
-              disabled={readOnly}
-            />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label htmlFor="spent-on">Date</Label>
+              <DateField
+                id="spent-on"
+                label="Date of the expense"
+                value={spentOn}
+                onChange={setSpentOn}
+                disabled={readOnly}
+              />
+            </div>
+            <div>
+              <Label htmlFor="category">Category</Label>
+              <Listbox
+                id="category"
+                // The <Label htmlFor> above names the *trigger*; the panel is a
+                // separate element in a portal and needs naming too, or it reaches a
+                // screen reader as an unnamed list of choices.
+                label="Category"
+                value={categoryId}
+                onChange={setCategoryId}
+                disabled={readOnly}
+                options={[
+                  { value: '', label: 'Uncategorised' },
+                  ...categoryOptions.map((c) => ({
+                    value: c.id,
+                    label: `${c.name}${
+                      c.scope === 'personal' ? ' (personal)' : ''
+                    }`,
+                    leading: <CategoryDot color={c.color} />,
+                  })),
+                ]}
+              />
+            </div>
           </div>
-          <div>
-            <Label htmlFor="category">Category</Label>
-            <Listbox
-              id="category"
-              // The <Label htmlFor> above names the *trigger*; the panel is a
-              // separate element in a portal and needs naming too, or it reaches a
-              // screen reader as an unnamed list of choices.
-              label="Category"
-              value={categoryId}
-              onChange={setCategoryId}
-              disabled={readOnly}
-              options={[
-                { value: '', label: 'Uncategorised' },
-                ...categoryOptions.map((c) => ({
-                  value: c.id,
-                  label: `${c.name}${
-                    c.scope === 'personal' ? ' (personal)' : ''
-                  }`,
-                  leading: <CategoryDot color={c.color} />,
-                })),
-              ]}
-            />
-          </div>
-        </div>
 
-        <hr className="border-rule" />
+          <hr className="border-rule" />
 
-        <SplitEditor
-          members={members}
-          amountMinor={amountMinor}
-          currency={currency}
-          paidByMemberId={paidByMemberId}
-          drafts={drafts}
-          onPaidByChange={setPaidByMemberId}
-          onDraftsChange={setDrafts}
-          disabled={readOnly}
-        />
-
-        <div>
-          <Label htmlFor="note">Note (optional)</Label>
-          <Textarea
-            id="note"
-            rows={2}
+          <SplitEditor
+            members={members}
+            amountMinor={amountMinor}
+            currency={currency}
+            paidByMemberId={paidByMemberId}
+            drafts={drafts}
+            onPaidByChange={setPaidByMemberId}
+            onDraftsChange={setDrafts}
             disabled={readOnly}
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
           />
-        </div>
 
-        {/* Sticky notes: the conversation under the entry. Shown for any saved
+          {/* The note field lives on a new expense only, where it becomes the
+            entry's first note. On an existing expense there is exactly one
+            place to write — the notes below — and this field used to be a
+            second one with different rules and no link between them. */}
+          {!editing && (
+            <div>
+              <Label htmlFor="note">Note (optional)</Label>
+              <Textarea
+                id="note"
+                rows={2}
+                value={firstNote}
+                onChange={(e) => setFirstNote(e.target.value)}
+                placeholder="Receipt in the drawer…"
+              />
+            </div>
+          )}
+
+          {/* Sticky notes: the conversation under the entry. Shown for any saved
             expense, editable or not — leaving one is not editing, and gating it
             on edit rights would silence exactly the person who needs it. */}
-        {editing && (
-          <section aria-label="Notes" className="border-t border-rule pt-4">
-            <h3 className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-ink-muted mb-2.5">
-              <StickyNote size={13} aria-hidden />
-              Notes
-              {noteList.length > 0 && (
-                <span className="tnum">· {noteList.length}</span>
-              )}
-            </h3>
+          {editing && (
+            <section aria-label="Notes" className="border-t border-rule pt-4">
+              <h3 className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-ink-muted mb-2.5">
+                <StickyNote size={13} aria-hidden />
+                Notes
+                {noteList.length > 0 && (
+                  <span className="tnum">· {noteList.length}</span>
+                )}
+              </h3>
 
-            {notes.isPending ? (
-              <p className="text-sm text-ink-faint">Loading notes…</p>
-            ) : notes.isError ? (
-              <p className="text-sm text-oxblood-ink">Could not load notes.</p>
-            ) : noteList.length === 0 ? (
-              <p className="text-sm text-ink-faint">
-                Nothing here yet. Leave the first one.
-              </p>
-            ) : (
-              <ul className="space-y-2">
-                {noteList.map((n) => (
-                  <li
-                    key={n.id}
-                    className="rounded-[var(--radius-md)] border border-rule
+              {notes.isPending ? (
+                <p className="text-sm text-ink-faint">Loading notes…</p>
+              ) : notes.isError ? (
+                <p className="text-sm text-oxblood-ink">
+                  Could not load notes.
+                </p>
+              ) : noteList.length === 0 ? (
+                <p className="text-sm text-ink-faint">
+                  Nothing here yet. Leave the first one.
+                </p>
+              ) : (
+                <ul className="space-y-2">
+                  {noteList.map((n) => {
+                    // Yours to take back, or under your entry to moderate.
+                    // Anyone else's remark on anyone else's entry is not yours
+                    // to touch.
+                    const mayRemoveNote =
+                      (me.data?.user.id != null &&
+                        n.authorUserId === me.data.user.id) ||
+                      editState.isAuthor
+                    return (
+                      <li
+                        key={n.id}
+                        className="rounded-[var(--radius-md)] border border-rule
                       bg-[var(--color-paper-sunk)] px-3 py-2"
-                  >
-                    <p className="text-sm leading-snug whitespace-pre-wrap break-words">
-                      {n.body}
-                    </p>
-                    <p className="flex items-center gap-1.5 mt-1.5 text-xs text-ink-faint">
-                      <Avatar
-                        avatarKey={n.authorAvatar}
-                        seed={n.authorName}
-                        name={n.authorName}
-                        size={16}
-                      />
-                      <span className="truncate font-medium">
-                        {n.authorName}
-                      </span>
-                      <span aria-hidden>·</span>
-                      <time
-                        dateTime={n.createdAt}
-                        className="tnum truncate"
-                        title={new Date(n.createdAt).toLocaleString()}
                       >
-                        {new Date(n.createdAt).toLocaleDateString('en', {
-                          day: 'numeric',
-                          month: 'short',
-                        })}
-                      </time>
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            )}
+                        <p className="text-sm leading-snug whitespace-pre-wrap break-words">
+                          {n.body}
+                        </p>
+                        <p className="flex items-center gap-1.5 mt-1.5 text-xs text-ink-faint">
+                          <Avatar
+                            avatarKey={n.authorAvatar}
+                            seed={n.authorName}
+                            name={n.authorName}
+                            size={16}
+                          />
+                          <span className="truncate font-medium">
+                            {n.authorName}
+                          </span>
+                          <span aria-hidden>·</span>
+                          <time
+                            dateTime={n.createdAt}
+                            className="tnum truncate"
+                            title={new Date(n.createdAt).toLocaleString()}
+                          >
+                            {new Date(n.createdAt).toLocaleDateString('en', {
+                              day: 'numeric',
+                              month: 'short',
+                            })}
+                          </time>
+                          {mayRemoveNote && (
+                            <button
+                              type="button"
+                              onClick={() => removeNote.mutate(n.id)}
+                              disabled={deletingNoteId === n.id}
+                              aria-label={`Delete note by ${n.authorName}`}
+                              title={`Delete note by ${n.authorName}`}
+                              className="ml-auto grid place-items-center size-6 shrink-0
+                              rounded-full text-ink-faint
+                              transition-[color,background-color,opacity] duration-150
+                              hover:text-[var(--color-danger-fill)]
+                              hover:bg-[var(--color-paper-raised)]
+                              disabled:opacity-40"
+                            >
+                              <X size={13} aria-hidden />
+                            </button>
+                          )}
+                        </p>
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
 
-            <div className="flex gap-2 mt-2.5">
-              <Input
-                aria-label="Leave a note"
-                value={noteBody}
-                onChange={(e) => setNoteBody(e.target.value)}
-                placeholder="Leave a note…"
-                maxLength={2000}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault()
-                    const body = noteBody.trim()
-                    if (body && !leaveNote.isPending) leaveNote.mutate(body)
-                  }
-                }}
-              />
-              <Button
-                type="button"
-                variant="secondary"
-                disabled={!noteBody.trim() || leaveNote.isPending}
-                onClick={() => leaveNote.mutate(noteBody.trim())}
-                className="shrink-0"
-              >
-                {leaveNote.isPending ? 'Saving…' : 'Add'}
-              </Button>
-            </div>
-          </section>
-        )}
+              <div className="flex gap-2 mt-2.5">
+                <Input
+                  aria-label="Leave a note"
+                  value={noteBody}
+                  onChange={(e) => setNoteBody(e.target.value)}
+                  placeholder="Leave a note…"
+                  maxLength={2000}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault()
+                      const body = noteBody.trim()
+                      if (body && !leaveNote.isPending) leaveNote.mutate(body)
+                    }
+                  }}
+                />
+                {/* A plus, not a word. The input already says what it does, so a
+                    label beside it repeats the sentence — and a round plus reads
+                    as "add one more", which is what a sticky note is. */}
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="icon"
+                  disabled={!noteBody.trim() || leaveNote.isPending}
+                  onClick={() => leaveNote.mutate(noteBody.trim())}
+                  aria-label="Add note"
+                  title="Add note"
+                  className="shrink-0"
+                >
+                  <Plus size={17} aria-hidden />
+                </Button>
+              </div>
+            </section>
+          )}
 
-        <div
-          className="sticky bottom-0 -mx-5 px-5 pt-3
+          <div
+            className="sticky bottom-0 -mx-5 px-5 pt-3
             bg-[var(--surface-material)]
             backdrop-blur-[var(--material-blur)]
             border-t border-rule
@@ -621,82 +698,86 @@ export function ExpenseSheet({
                of a bottom sheet. Without this the Save button is under it on
                a device that has one. */
             pb-[max(1rem,env(safe-area-inset-bottom))]"
-        >
-          {readOnly ? (
-            <Button
-              type="button"
-              variant="secondary"
-              size="lg"
-              onClick={onClose}
-              className="w-full"
-            >
-              Close
-            </Button>
-          ) : confirmingDelete ? (
-            <div className="flex gap-2.5 items-center">
-              <Button
-                type="button"
-                variant="danger"
-                size="lg"
-                disabled={remove.isPending}
-                onClick={() => remove.mutate()}
-                className="flex-1"
-              >
-                {remove.isPending ? 'Deleting…' : 'Delete this expense?'}
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="lg"
-                disabled={remove.isPending}
-                onClick={() => setConfirmingDelete(false)}
-              >
-                Keep
-              </Button>
-            </div>
-          ) : (
-            <div className="flex gap-2.5">
-              {/* The trash, red and on the left where a destructive action
-                  belongs: before the thing it destroys rather than after it.
-                  Icon-only because the row already says what it deletes, and a
-                  word beside every Save would teach people to read past it. */}
-              {editing && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="lg"
-                  onClick={() => setConfirmingDelete(true)}
-                  aria-label={`Delete ${editing.purpose}`}
-                  title={`Delete ${editing.purpose}`}
-                  className="shrink-0 px-3 text-[var(--color-danger-fill)] hover:text-[var(--color-danger-fill)]"
-                >
-                  <Trash2 size={18} aria-hidden />
-                </Button>
-              )}
-              <Button
-                type="submit"
-                size="lg"
-                className="flex-1"
-                disabled={!canSave || save.isPending}
-              >
-                {save.isPending
-                  ? 'Saving…'
-                  : editing
-                    ? 'Save changes'
-                    : 'Save expense'}
-              </Button>
+          >
+            {readOnly ? (
               <Button
                 type="button"
                 variant="secondary"
                 size="lg"
                 onClick={onClose}
+                className="w-full"
               >
-                Cancel
+                Close
               </Button>
-            </div>
-          )}
-        </div>
-      </form>
-    </Sheet>
+            ) : (
+              <div className="flex gap-2.5">
+                {/* The trash, red and on the left where a destructive action
+                  belongs: before the thing it destroys rather than after it.
+                  Icon-only because the row already says what it deletes, and a
+                  word beside every Save would teach people to read past it.
+                  It opens a separate confirm dialog rather than swapping this
+                  footer in place — and that is load-bearing, not style. The
+                  swap was removed because of what it did: the press that
+                  dismissed it unmounted its own button mid-dispatch, and the
+                  browser completed the gesture on the form's default button
+                  instead, silently saving whatever was typed. A dialog has no
+                  form and no submit button, so there is nothing to complete
+                  onto. */}
+                {editing && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="lg"
+                    onClick={() => setConfirmingDelete(true)}
+                    aria-label={`Delete ${editing.purpose}`}
+                    title={`Delete ${editing.purpose}`}
+                    className="shrink-0 px-3 text-[var(--color-danger-fill)] hover:text-[var(--color-danger-fill)]"
+                  >
+                    <Trash2 size={18} aria-hidden />
+                  </Button>
+                )}
+                <Button
+                  type="submit"
+                  size="lg"
+                  className="flex-1"
+                  disabled={!canSave || save.isPending}
+                >
+                  {save.isPending
+                    ? 'Saving…'
+                    : editing
+                      ? 'Save changes'
+                      : 'Save expense'}
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="lg"
+                  onClick={onClose}
+                >
+                  Cancel
+                </Button>
+              </div>
+            )}
+          </div>
+        </form>
+      </Sheet>
+
+      {/* Outside the form, on purpose. A confirm control inside the expense
+          form is exactly the shape that mis-saved: dismissing it unmounts the
+          pressed button mid-dispatch. This dialog is a separate Sheet with no
+          form and no submit button, so closing it can only ever return to the
+          sheet underneath. */}
+      {confirmingDelete && editing && (
+        <ConfirmRemoval
+          kind="expense"
+          name={editing.purpose}
+          busy={remove.isPending}
+          onCancel={() => {
+            if (!remove.isPending) setConfirmingDelete(false)
+          }}
+          onConfirm={() => remove.mutate()}
+        />
+      )}
+    </>
   )
 }

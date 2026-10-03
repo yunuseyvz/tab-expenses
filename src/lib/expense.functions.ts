@@ -42,6 +42,7 @@ import {
 import { BP_TOTAL, allocate, parseAmountToMinor } from './money'
 import { settle } from './settle'
 import { displayMemberName } from './member-name'
+import { mayDeleteExpenseNote } from './may-edit'
 import type { Db } from './db'
 import type { SQL } from 'drizzle-orm'
 import type { Settlement } from './settle'
@@ -84,7 +85,6 @@ export interface ExpenseRow {
   amountMinor: number
   spentOn: string
   purpose: string
-  note: string | null
   categoryId: string | null
   categoryName: string | null
   categoryColor: string | null
@@ -123,6 +123,8 @@ export interface NoteRow {
   authorName: string
   /** Null once the author's account is deleted; then the name carries it alone. */
   authorAvatar: string | null
+  /** Who left it, for the delete control. Null once their account is gone. */
+  authorUserId: string | null
   /** False for a note whose author has deleted their account. */
   authorActive: boolean
   createdAt: string
@@ -136,7 +138,6 @@ function expenseSelect() {
     amountMinor: expense.amountMinor,
     spentOn: expense.spentOn,
     purpose: expense.purpose,
-    note: expense.note,
     categoryId: expense.categoryId,
     categoryName: category.name,
     categoryColor: category.color,
@@ -379,11 +380,25 @@ export const createExpense = createServerFn({ method: 'POST' })
           spentOn: data.spentOn,
           purpose: data.purpose,
           amountMinor,
-          note: data.note,
+          locked: data.locked,
           createdByUserId: session.user.id,
         })
         .returning()
       if (!row) throw new Error('Failed to create expense')
+
+      // The sheet's note field, written as the first note rather than as a
+      // column. Same transaction as the expense, so an entry never exists
+      // without the remark that came with it — the alternative is a note whose
+      // author is guessing whether it saved.
+      if (data.note?.trim()) {
+        await tx.insert(expenseNote).values({
+          spaceId: data.spaceId,
+          expenseId: row.id,
+          body: data.note.trim(),
+          authorUserId: session.user.id,
+          authorName: session.user.name,
+        })
+      }
 
       await tx.insert(expenseSplit).values(
         splits.map((s, i) => ({
@@ -424,7 +439,6 @@ export const updateExpense = createServerFn({ method: 'POST' })
       paidByMemberId: uuidSchema.optional(),
       spentOn: z.string().trim().optional(),
       purpose: z.string().trim().min(1).max(200).optional(),
-      note: z.string().trim().max(500).nullable().optional(),
       splits: z
         .array(
           z.object({
@@ -509,7 +523,6 @@ export const updateExpense = createServerFn({ method: 'POST' })
           paidByMemberId,
           spentOn: data.spentOn ?? existing.spentOn,
           purpose: data.purpose ?? existing.purpose,
-          note: data.note !== undefined ? data.note : existing.note,
         })
         .where(eq(expense.id, data.expenseId))
         .returning()
@@ -818,6 +831,7 @@ export const listExpenseNotes = createServerFn({ method: 'GET' })
       body: r.body,
       authorName: r.authorName,
       authorAvatar: r.authorAvatar,
+      authorUserId: r.authorUserId,
       // The account's existence, not the avatar's: plenty of people never pick
       // one, and the identicon fallback covers them. Reading "no avatar" as
       // "account deleted" would mark half the notes as written by ghosts.
@@ -827,6 +841,70 @@ export const listExpenseNotes = createServerFn({ method: 'GET' })
           ? r.createdAt.toISOString()
           : String(r.createdAt),
     }))
+  })
+
+/**
+ * Remove one note.
+ *
+ * Two people may: whoever left it, and whoever entered the expense it hangs
+ * under. The first is obvious — your own remark is yours to take back. The
+ * second is the price of the wall being yours: an entry whose notes its author
+ * cannot moderate collects whatever anyone writes under it, and nobody would
+ * leave their entries open to that. Note the asymmetry with editing, which the
+ * expense author cannot grant: removing a remark *about* an entry is not
+ * changing the entry, and the entry's author stays responsible for what stands
+ * under their name.
+ *
+ * A note whose author deleted their account has `authorUserId` null, so the
+ * first rule can never fire for it — only the expense author can clear those,
+ * which is also the only way they ever get cleared.
+ */
+export const deleteExpenseNote = createServerFn({ method: 'POST' })
+  .inputValidator(
+    z.object({
+      spaceId: uuidSchema,
+      expenseId: uuidSchema,
+      noteId: uuidSchema,
+    }),
+  )
+  .handler(async ({ data }) => {
+    const session = await ensureSession()
+    await requireSpaceMember(session.user.id, data.spaceId)
+    const db = getDb()
+
+    // Scoped three ways — note, expense and space — so a guessed id from
+    // another household matches nothing instead of somebody else's remark.
+    const [note] = await db
+      .select({
+        id: expenseNote.id,
+        authorUserId: expenseNote.authorUserId,
+        createdByUserId: expense.createdByUserId,
+      })
+      .from(expenseNote)
+      .innerJoin(expense, eq(expenseNote.expenseId, expense.id))
+      .where(
+        and(
+          eq(expenseNote.id, data.noteId),
+          eq(expenseNote.expenseId, data.expenseId),
+          eq(expenseNote.spaceId, data.spaceId),
+          eq(expense.spaceId, data.spaceId),
+        ),
+      )
+      .limit(1)
+    if (!note) throw new Error('Not found')
+
+    if (
+      !mayDeleteExpenseNote(
+        { authorUserId: note.authorUserId },
+        { createdByUserId: note.createdByUserId },
+        session.user.id,
+      )
+    ) {
+      throw new Error('Only the person who left it can remove it')
+    }
+
+    await db.delete(expenseNote).where(eq(expenseNote.id, data.noteId))
+    return { ok: true }
   })
 
 /**

@@ -1,15 +1,21 @@
 /**
  * Who paid, and how the cost is shared.
  *
- * One control, not two. It used to be a "Paid by" dropdown above a "Split
- * between members" switch, which asked the same question twice and had a third
- * state to reason about: with the switch off the split editor was hidden and the
- * payer took 100%, so ticking two people required discovering a switch first,
- * and the switch said nothing about whether it was the right thing to do.
+ * TWO controls, not one — and that is the fix, not a regression. It used to be
+ * a single checkbox list where ticking elected both the split AND the payer
+ * (whoever was ticked first), with nothing on screen saying so. So "Fede paid,
+ * split with Yunus" required ticking Fede then Yunus, and ticking Yunus then
+ * Fede silently made Yunus the payer. The confusion was reported as a minor UI
+ * problem, and it was right: the list answered two questions and labelled
+ * neither.
  *
- * Ticking somebody now *is* the split. The first person ticked is the payer who
- * fronted the money; everybody ticked shares it. Nothing is hidden behind a
- * toggle because there is no toggle to hide behind.
+ * Now the questions are separate and labelled. "Who paid" is a single choice —
+ * one person fronted the money, and only one can have. "Split" is who shares
+ * it, ticked the same as before, with the same sliders and the same equal
+ * default. Picking the payer adds them to the split (somebody who paid for the
+ * household is usually in on it), but unticking them afterwards keeps them as
+ * the payer: paying for something and sharing it are different facts, and
+ * "I covered your train ticket" is the entry that needs them separate.
  *
  * Equal is the default, because it is right far more often than anything else
  * and a household that wants 60/40 can drag to it. The split is not renormalised
@@ -126,7 +132,7 @@ export function SplitEditor({
     )
   }
 
-  /** Tick or untick, keeping the roster order so the payer stays first-ticked. */
+  /** Tick or untick, keeping the roster order so the list stays scannable. */
   function toggle(memberId: string) {
     const included = drafts.some((d) => d.memberId === memberId)
     if (included) {
@@ -142,6 +148,12 @@ export function SplitEditor({
       // left 33/33 and blocked Save for the same reason. Re-equalising flat would
       // have fixed the numbers and thrown away a 60/40 somebody set on purpose;
       // redistributing the share keeps the ratio they chose.
+      //
+      // Note what this deliberately does NOT do any more: touch the payer.
+      // Unticking used to move "who paid" to the first remaining tick, because
+      // ticking elected the payer. The payer is chosen separately now, so the
+      // split only ever changes who shares — unticking the payer leaves them
+      // as the payer, which is what "I covered your ticket" means.
       const share = leaving?.weightBp ?? 0
       const redistributed = next.length
         ? proportional(next.map((d) => d.weightBp + share))
@@ -149,16 +161,17 @@ export function SplitEditor({
       onDraftsChange(
         next.map((d, i) => ({ ...d, weightBp: redistributed[i]! })),
       )
-
-      // The payer cannot be someone who is not in the split. The first
-      // remaining tick inherits it, which is what somebody unticking themselves
-      // from a shared purchase would expect.
-      if (paidByMemberId === memberId) {
-        onPaidByChange(next[0]?.memberId ?? '')
-      }
       return
     }
 
+    addToSplit(memberId)
+  }
+
+  /**
+   * Tick one more person, re-equalised — see `equalWeights` for why the whole
+   * list moves rather than just the newcomer.
+   */
+  function addToSplit(memberId: string) {
     const next = [...drafts, { memberId, weightBp: 0 }].sort(
       (a, b) =>
         members.findIndex((m) => m.id === a.memberId) -
@@ -170,7 +183,35 @@ export function SplitEditor({
     onDraftsChange(
       next.map((d, i) => ({ memberId: d.memberId, weightBp: weights[i]! })),
     )
-    if (!paidByMemberId) onPaidByChange(memberId)
+  }
+
+  /**
+   * Name the payer — and nobody else, which is the whole point of this
+   * function existing separately from `toggle`.
+   *
+   * Picking them adds them to the split when they are not in it: somebody who
+   * paid for the household is usually sharing it, and "pick Fede, then also
+   * tick Fede" would be the same undiscoverable two-step the old list had.
+   * Unticking them afterwards is allowed and keeps them as the payer, so the
+   * direction is one-way on purpose: choosing implies sharing, unsharing never
+   * unchooses.
+   */
+  function selectPayer(memberId: string) {
+    onPaidByChange(memberId)
+    if (!isInSplit(memberId)) addToSplit(memberId)
+  }
+
+  function isInSplit(memberId: string) {
+    return drafts.some((d) => d.memberId === memberId)
+  }
+
+  /** Everybody in, shares equal. One tap for the common case. */
+  function presetEveryone() {
+    if (members.length === 0) return
+    const weights = equalWeights(members.length)
+    onDraftsChange(
+      members.map((m, i) => ({ memberId: m.id, weightBp: weights[i]! })),
+    )
   }
 
   function presetEqual() {
@@ -197,15 +238,13 @@ export function SplitEditor({
   return (
     <div className="space-y-5">
       {/*
-        Two blocks, not one list.
+        Two blocks, answering the two questions out loud.
 
-        They were interleaved — a checkbox row with a slider hanging underneath
-        each ticked member — and with four members that is eight rows of
-        competing furniture for one decision. Worse, the two halves answer
-        different questions and it read as one: "who paid" is about the purchase,
-        "how is it shared" is about the debt. Splitting them lets the checkbox
-        list stay short and scannable, and lets the sliders appear as a block
-        that is unmistakably a separate thing you can ignore.
+        They were one checkbox list doing both jobs: ticking elected the split
+        AND the payer, with whoever was ticked first silently becoming who paid.
+        Nothing said so, so "Fede paid, split with Yunus" and "Yunus paid, split
+        with Fede" were the same gesture in a different order. Now "who paid"
+        is a single named choice and the split is who shares, ticked below it.
 
         The sliders only exist when there is something to divide, so a single
         tick shows no split section at all — which is honest, and is why
@@ -214,7 +253,53 @@ export function SplitEditor({
       */}
       <fieldset>
         <legend className="text-xs font-medium uppercase tracking-wide text-ink-muted mb-2">
-          Paid by
+          Who paid
+        </legend>
+
+        {members.length === 0 ? (
+          <p className="text-sm text-ink-faint">
+            Add someone to this household first.
+          </p>
+        ) : (
+          <div className="space-y-1" role="radiogroup" aria-label="Who paid">
+            {members.map((m) => {
+              const isPayer = paidByMemberId === m.id
+              return (
+                <label
+                  key={m.id}
+                  className={`flex items-center gap-3 select-none
+                    rounded-[var(--radius-sm)] px-2 py-1.5 -mx-2
+                    transition-colors duration-150 ${disabled ? '' : 'cursor-pointer hover:bg-[var(--color-paper-sunk)]'}`}
+                >
+                  <input
+                    type="radio"
+                    name="expense-payer"
+                    checked={isPayer}
+                    onChange={() => selectPayer(m.id)}
+                    disabled={disabled}
+                    aria-label={`${m.displayName} paid`}
+                    className="size-[1.15rem] accent-[var(--color-terracotta)]
+                      shrink-0 cursor-pointer disabled:cursor-default disabled:opacity-50"
+                  />
+                  <MemberAvatar
+                    memberId={m.id}
+                    avatar={m.userAvatar}
+                    name={m.displayName}
+                    size={20}
+                  />
+                  <span className="text-sm truncate min-w-0 flex-1">
+                    {m.displayName}
+                  </span>
+                </label>
+              )
+            })}
+          </div>
+        )}
+      </fieldset>
+
+      <fieldset>
+        <legend className="text-xs font-medium uppercase tracking-wide text-ink-muted mb-2">
+          Split among
         </legend>
 
         {members.length === 0 ? (
@@ -282,6 +367,27 @@ export function SplitEditor({
               ? `${sharers[0]!.member.displayName} covered all of it`
               : 'Nobody is sharing this yet'}
           </p>
+        )}
+
+        {/*
+          One tap to include everybody, available immediately rather than only
+          once two are already ticked. The equal-split presets below live in the
+          sliders block because they reshape weights that only exist with two
+          or more in — but "everyone shares this" is the common case for a
+          fresh expense with one person ticked, and hiding it until a second
+          tick defeats the purpose. Hidden once there is nothing left to add.
+        */}
+        {drafts.length < members.length && (
+          <div className="flex justify-end mt-2">
+            <button
+              type="button"
+              onClick={presetEveryone}
+              disabled={disabled}
+              className="text-xs text-terracotta-ink underline underline-offset-2 disabled:opacity-40 disabled:no-underline"
+            >
+              Everyone
+            </button>
+          </div>
         )}
       </fieldset>
 

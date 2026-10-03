@@ -27,7 +27,6 @@ export const exportCsv = createServerFn({ method: 'GET' })
         amount: expense.amountMinor,
         category: category.name,
         paidBy: spaceMember.displayName,
-        note: expense.note,
       })
       .from(expense)
       .leftJoin(category, eq(expense.categoryId, category.id))
@@ -43,10 +42,13 @@ export const exportCsv = createServerFn({ method: 'GET' })
         purpose: r.purpose,
         // Export in major units as a decimal string; the minor-unit integer is
         // an internal representation and would be misleading in a spreadsheet.
+        // No note column: remarks live in `expense_note` now, one entry to
+        // many, and a single column cannot hold that shape. A file this writes
+        // still imports — and an old file *with* a note column still imports
+        // too, its note becoming the entry's first note.
         amount: formatMinor(Number(r.amount)),
         category: r.category ?? '',
         paid_by: r.paidBy,
-        note: r.note ?? '',
       })),
     )
   })

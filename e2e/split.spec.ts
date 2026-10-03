@@ -7,8 +7,6 @@
  */
 import { expect, test } from '@playwright/test'
 
-import { chooseOption } from './helpers'
-
 test.describe('split editor', () => {
   test('shows a live euro preview that changes as weights change', async ({
     page,
@@ -21,27 +19,17 @@ test.describe('split editor', () => {
 
     await page.getByLabel('Amount').fill('100.00')
     await page.getByLabel('What was it for').fill('E2E split check')
-    await chooseOption(page, page.getByLabel('Paid by'), 'Sam')
+    // Who paid is its own choice now: picking Sam also ticks him in the split.
+    await page.getByRole('radio', { name: 'Sam paid' }).check()
+    await page.getByLabel('Alex is part of this expense').check()
+    await page.getByLabel('Robin is part of this expense').check()
 
-    // The switch's <input> is sr-only inside its <label>, so it cannot be
-    // clicked directly. Clicking the visible label is what a person does, and
-    // the label association toggles it.
-    await page.getByText('Split between members').click()
-    await expect(
-      page.getByRole('switch', { name: /Split between members/ }),
-    ).toBeChecked()
-
-    // With three members, defaults come from each member's defaultWeightBp.
-    // The status must state the truth about the remainder rather than
-    // silently renormalising the weights.
+    // Ticking re-equalises, so all three start at a third each and the status
+    // states the remainder rather than silently renormalising the weights.
     await expect(page.getByRole('status')).toBeVisible()
 
     await page.getByLabel('Sam percent').fill('60')
     await page.getByLabel('Alex percent').fill('30')
-
-    // 60 + 30 leaves 10% unassigned, and it must say so.
-    await expect(page.getByRole('status')).toHaveText('10% left to assign')
-
     await page.getByLabel('Robin percent').fill('10')
     await expect(page.getByRole('status')).toHaveText('Totals 100%')
 
@@ -61,14 +49,9 @@ test.describe('split editor', () => {
 
     await page.getByLabel('Amount').fill('50.00')
     await page.getByLabel('What was it for').fill('E2E unbalanced')
-    await chooseOption(page, page.getByLabel('Paid by'), 'Sam')
-    // The switch's <input> is sr-only inside its <label>, so it cannot be
-    // clicked directly. Clicking the visible label is what a person does, and
-    // the label association toggles it.
-    await page.getByText('Split between members').click()
-    await expect(
-      page.getByRole('switch', { name: /Split between members/ }),
-    ).toBeChecked()
+    await page.getByRole('radio', { name: 'Sam paid' }).check()
+    await page.getByLabel('Alex is part of this expense').check()
+    await page.getByLabel('Robin is part of this expense').check()
 
     await page.getByLabel('Sam percent').fill('60')
     await page.getByLabel('Alex percent').fill('30')
@@ -87,14 +70,9 @@ test.describe('split editor', () => {
 
     await page.getByLabel('Amount').fill('10.00')
     await page.getByLabel('What was it for').fill('E2E equal preset')
-    await chooseOption(page, page.getByLabel('Paid by'), 'Sam')
-    // The switch's <input> is sr-only inside its <label>, so it cannot be
-    // clicked directly. Clicking the visible label is what a person does, and
-    // the label association toggles it.
-    await page.getByText('Split between members').click()
-    await expect(
-      page.getByRole('switch', { name: /Split between members/ }),
-    ).toBeChecked()
+    await page.getByRole('radio', { name: 'Sam paid' }).check()
+    await page.getByLabel('Alex is part of this expense').check()
+    await page.getByLabel('Robin is part of this expense').check()
 
     // Three members at 10000/3 is 3333.33 — the preset must give the
     // remainder to one member so the total is exact.

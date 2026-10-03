@@ -16,7 +16,6 @@ export const CSV_HEADER = [
   'amount',
   'category',
   'paid_by',
-  'note',
 ] as const
 
 /**
@@ -136,6 +135,11 @@ export function parseCsv(text: string): ParseResult {
   }
 
   const col = (name: (typeof CSV_HEADER)[number]) => header.indexOf(name)
+  // The old `note` column, accepted but no longer written. Files exported
+  // before notes existed still carry one, and its content becomes the entry's
+  // first note rather than an error about an unexpected column — extra columns
+  // are ignored, so without this the remark would silently vanish.
+  const legacyNoteCol = header.indexOf('note')
 
   for (let i = 1; i < lines.length; i++) {
     const lineNo = i + 1 // 1-based, matching what a spreadsheet shows
@@ -148,7 +152,8 @@ export function parseCsv(text: string): ParseResult {
     const amount = get('amount')
     const category = categorySchema.safeParse(get('category'))
     const paidBy = get('paid_by')
-    const note = get('note')
+    const legacyNote =
+      legacyNoteCol >= 0 ? (cells[legacyNoteCol] ?? '').trim() : ''
 
     if (!isoDateSchema.safeParse(date).success) {
       errors.push({ line: lineNo, message: `bad or missing date: "${date}"` })
@@ -178,7 +183,7 @@ export function parseCsv(text: string): ParseResult {
       amountMinor,
       category: category.data,
       paidBy,
-      note: note.length > 0 ? note : null,
+      note: legacyNote.length > 0 ? legacyNote : null,
     })
   }
 

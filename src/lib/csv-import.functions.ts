@@ -22,7 +22,13 @@ import { z } from 'zod'
 import { ensureSession, requireSpaceMember } from './auth.functions'
 import { parseCsv } from './csv'
 import { getDb } from './db'
-import { category, expense, expenseSplit, spaceMember } from './db/schema'
+import {
+  category,
+  expense,
+  expenseNote,
+  expenseSplit,
+  spaceMember,
+} from './db/schema'
 import { uuidSchema } from './guards'
 import { allocate } from './money'
 import type { ParsedRow } from './csv'
@@ -222,11 +228,23 @@ export const commitImport = createServerFn({ method: 'POST' })
             spentOn: row.date,
             purpose: row.purpose,
             amountMinor: row.amountMinor,
-            note: row.note,
             createdByUserId: session.user.id,
           })
           .returning()
         if (!inserted) throw new Error(`Failed to import line ${row.line}`)
+
+        // The spreadsheet's note column, as the entry's first note. Same
+        // transaction, same reasoning as createExpense: the remark and its
+        // entry land together or not at all.
+        if (row.note?.trim()) {
+          await tx.insert(expenseNote).values({
+            spaceId: data.spaceId,
+            expenseId: inserted.id,
+            body: row.note.trim(),
+            authorUserId: session.user.id,
+            authorName: session.user.name,
+          })
+        }
 
         await tx.insert(expenseSplit).values({
           expenseId: inserted.id,

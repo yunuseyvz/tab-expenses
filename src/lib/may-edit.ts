@@ -59,6 +59,29 @@ export function isExpenseAuthor(
 }
 
 /**
+ * Whether the viewer may remove a note.
+ *
+ * Two people may: whoever left it, and whoever entered the expense it hangs
+ * under. The first is obvious — your own remark is yours to take back. The
+ * second is the price of the wall being yours: an entry whose notes its author
+ * cannot moderate collects whatever anyone writes under it. Note the asymmetry
+ * with editing, which the expense author cannot grant: removing a remark
+ * *about* an entry is not changing the entry.
+ *
+ * A note whose author deleted their account has `authorUserId` null, so the
+ * first rule can never fire for it — only the expense author can clear those.
+ */
+export function mayDeleteExpenseNote(
+  note: { authorUserId: string | null },
+  expense: { createdByUserId: string | null },
+  viewerUserId: string | null,
+): boolean {
+  if (!viewerUserId) return false
+  if (note.authorUserId === viewerUserId) return true
+  return expense.createdByUserId === viewerUserId
+}
+
+/**
  * Why the form is read-only, in the words to show instead.
  *
  * Null when the edit is allowed. Kept next to mayEditExpense so the two cannot

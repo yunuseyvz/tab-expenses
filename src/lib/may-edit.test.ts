@@ -20,7 +20,12 @@
 import { describe, expect, it } from 'vitest'
 
 import { displayMemberName } from './member-name'
-import { editBlockedReason, isExpenseAuthor, mayEditExpense } from './may-edit'
+import {
+  editBlockedReason,
+  isExpenseAuthor,
+  mayDeleteExpenseNote,
+  mayEditExpense,
+} from './may-edit'
 
 const ME = { userId: 'user-member' }
 const OTHER = { userId: 'user-other' }
@@ -132,6 +137,42 @@ describe('isExpenseAuthor', () => {
     // while "is this mine to lock" is a different fact that must not move with
     // the toggle.
     expect(isExpenseAuthor({ createdByUserId: 'user-other' }, OTHER)).toBe(true)
+  })
+})
+
+describe('mayDeleteExpenseNote', () => {
+  const mine = { authorUserId: 'user-member' }
+  const theirs = { authorUserId: 'user-other' }
+  const orphaned = { authorUserId: null }
+  const myEntry = { createdByUserId: 'user-member' }
+  const theirEntry = { createdByUserId: 'user-other' }
+
+  it('lets you take back your own remark', () => {
+    expect(mayDeleteExpenseNote(mine, theirEntry, 'user-member')).toBe(true)
+  })
+
+  it('lets the entry author moderate notes under it', () => {
+    expect(mayDeleteExpenseNote(theirs, myEntry, 'user-member')).toBe(true)
+  })
+
+  it('stops anyone else touching it', () => {
+    expect(mayDeleteExpenseNote(theirs, theirEntry, 'user-member')).toBe(false)
+  })
+
+  it('offers nothing to a signed-out viewer', () => {
+    expect(mayDeleteExpenseNote(mine, myEntry, null)).toBe(false)
+  })
+
+  /**
+   * A note whose author deleted their account can only be cleared by the entry
+   * author — the first rule can never fire, and that is the only way these
+   * ever get cleared.
+   */
+  it('clears an orphaned note only via the entry author', () => {
+    expect(mayDeleteExpenseNote(orphaned, myEntry, 'user-member')).toBe(true)
+    expect(mayDeleteExpenseNote(orphaned, theirEntry, 'user-member')).toBe(
+      false,
+    )
   })
 })
 

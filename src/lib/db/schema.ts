@@ -183,7 +183,6 @@ export const expense = pgTable(
     spentOn: date('spent_on').notNull(),
     purpose: text('purpose').notNull(),
     amountMinor: integer('amount_minor').notNull(),
-    note: text('note'),
     /**
      * Whether anybody but the person who typed this in may change it.
      *
@@ -205,7 +204,7 @@ export const expense = pgTable(
      * False by default, so an expense is editable by the household until its
      * author says otherwise.
      */
-    locked: boolean('locked').default(false).notNull(),
+    locked: boolean('locked').default(true).notNull(),
     /**
      * Who typed this in. Provenance only — the payer is `paidByMemberId`, and
      * that is the row the ledger cares about. Nullable and set null on account
@@ -272,12 +271,13 @@ export const expenseSplit = pgTable(
  * A note somebody left on an expense — the sticky-note conversation under a line
  * of the ledger.
  *
- * APPEND-ONLY, and deliberately a different thing from `expense.note`. That
- * column is a field of the entry: it is typed in beside the amount, it is saved
- * with it, and it is editable or not exactly as the entry is. A note here is a
- * separate remark *about* the entry, in the order it was left, and it is never
- * rewritten — which is the whole point of leaving one. Someone who disagrees with
- * what an expense says can say so without being able to change what it says.
+ * APPEND-ONLY, and the only place remarks about an entry live. It used to be two
+ * places — a `note` column on the expense beside the amount, plus this table —
+ * and the sheet showed both, with different rules and no link between them.
+ * The column is gone; what was typed into it arrives here as the opening note.
+ * A note is never rewritten, which is the whole point of leaving one. Someone
+ * who disagrees with what an expense says can say so without being able to
+ * change what it says.
  *
  * EVERY MEMBER CAN LEAVE ONE, edit rights notwithstanding. Editing is about the
  * numbers; a conversation is not. Someone who cannot change the amount is exactly

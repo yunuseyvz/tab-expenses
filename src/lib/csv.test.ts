@@ -117,6 +117,24 @@ describe('toCsv', () => {
   })
 })
 
+describe('legacy note column', () => {
+  it('reads an old file\u2019s note as the entry\u2019s first note', () => {
+    const { rows, errors } = parseCsv(
+      'date,purpose,amount,category,paid_by,note\n2026-03-01,Weekly shop,12.34,Home,Me,weekly\n',
+    )
+    expect(errors).toEqual([])
+    expect(rows[0]).toMatchObject({ note: 'weekly' })
+  })
+
+  it('does not require the note column any more', () => {
+    const { rows, errors } = parseCsv(
+      `${CSV_HEADER.join(',')}\n2026-03-01,Weekly shop,12.34,Home,Me\n`,
+    )
+    expect(errors).toEqual([])
+    expect(rows[0]).toMatchObject({ note: null })
+  })
+})
+
 describe('parseCsv', () => {
   const header = CSV_HEADER.join(',')
 

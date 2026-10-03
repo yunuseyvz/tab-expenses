@@ -227,13 +227,21 @@ describe.runIf(await describeIfDatabase())('expense notes and locks', () => {
     expect(left).toEqual([])
   })
 
-  it('unlocks every existing row by default', async () => {
+  it('locks every new row by default', async () => {
     const db = getDb()
     const [row] = await db
-      .select({ locked: expense.locked })
-      .from(expense)
-      .where(eq(expense.id, expenseId))
-    expect(row!.locked).toBe(false)
+      .insert(expense)
+      .values({
+        spaceId: ids.space,
+        paidByMemberId: memberId,
+        spentOn: '2026-06-03',
+        purpose: 'Default lock',
+        amountMinor: 100,
+        createdByUserId: ids.author,
+      })
+      .returning({ id: expense.id, locked: expense.locked })
+    expect(row!.locked).toBe(true)
+    await db.delete(expense).where(eq(expense.id, row!.id))
   })
 
   it('stores a lock the author sets', async () => {
@@ -252,5 +260,37 @@ describe.runIf(await describeIfDatabase())('expense notes and locks', () => {
       .update(expense)
       .set({ locked: false })
       .where(eq(expense.id, expenseId))
+  })
+})
+
+describe('expense input defaults', () => {
+  it('starts locked with no first note', async () => {
+    const { expenseInputSchema } = await import('./guards')
+    const parsed = expenseInputSchema.parse({
+      spaceId: randomUUID(),
+      amount: '12.34',
+      paidByMemberId: randomUUID(),
+      spentOn: '2026-06-01',
+      purpose: 'Test',
+    })
+    expect(parsed.locked).toBe(true)
+    expect(parsed.note).toBeNull()
+  })
+
+  it('caps the first note like any other note', async () => {
+    const { expenseInputSchema } = await import('./guards')
+    const base = {
+      spaceId: randomUUID(),
+      amount: '12.34',
+      paidByMemberId: randomUUID(),
+      spentOn: '2026-06-01',
+      purpose: 'Test',
+    }
+    expect(
+      expenseInputSchema.safeParse({ ...base, note: 'x'.repeat(2001) }).success,
+    ).toBe(false)
+    expect(expenseInputSchema.safeParse({ ...base, note: 'ok' }).success).toBe(
+      true,
+    )
   })
 })

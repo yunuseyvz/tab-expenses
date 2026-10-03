@@ -161,7 +161,25 @@ export const expenseInputSchema = z
     paidByMemberId: uuidSchema,
     spentOn: isoDateSchema,
     purpose: z.string().trim().min(1, 'say what it was for').max(200),
-    note: z.string().trim().max(500).nullable().default(null),
+    /**
+     * The first note on a new expense, not a field of the expense.
+     *
+     * It used to be a column, and the sheet showed both it and the notes list —
+     * two places to write the same thing, with different rules and no link
+     * between them. So this stays as an input (the field has to go *somewhere*
+     * on a new expense, and an empty notes list is the wrong place to discover
+     * you can write one) but it is written into `expense_note` as the opening
+     * note, attributed and timestamped like any other.
+     *
+     * Capped at 2000 like a note rather than 500, because it is now one.
+     */
+    note: z.string().trim().max(2000).nullable().default(null),
+    /**
+     * Whether the entry starts locked. Defaults true: a new expense is the
+     * author's, and its author decides whether the household may change it. See
+     * `expense.locked`.
+     */
+    locked: z.boolean().default(true),
     splits: z.array(splitInputSchema).max(50).default([]),
   })
   .refine((v) => v.splits.length === 0 || v.splits.length > 0, {
