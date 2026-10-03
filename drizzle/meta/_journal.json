@@ -29,6 +29,13 @@
       "when": 1790930808545,
       "tag": "0003_red_giant_man",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1791028169384,
+      "tag": "0004_romantic_mentor",
+      "breakpoints": true
     }
   ]
 }

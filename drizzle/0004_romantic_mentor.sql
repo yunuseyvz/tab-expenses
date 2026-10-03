@@ -1,0 +1,1 @@
+ALTER TABLE "space" ADD COLUMN "editable_by_members" boolean DEFAULT false NOT NULL;

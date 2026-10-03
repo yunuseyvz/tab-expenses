@@ -20,6 +20,7 @@ export function Switch({
   onChange,
   label,
   id,
+  ariaLabel,
   className,
 }: {
   checked: boolean
@@ -27,6 +28,16 @@ export function Switch({
   /** Rendered as a visible label beside the switch. */
   label?: ReactNode
   id?: string
+  /**
+   * The accessible name, for when the switch sits in a row whose title is plain
+   * text rather than a `<label for>`.
+   *
+   * The input is `sr-only`, so without this it announces as an unnamed switch —
+   * "switch, off", with nothing saying what it switches. It cannot borrow the
+   * row's title either: nothing links the two, and the row is not a label
+   * element.
+   */
+  ariaLabel?: string
   className?: string
 }) {
   return (
@@ -40,6 +51,7 @@ export function Switch({
         id={id}
         type="checkbox"
         role="switch"
+        aria-label={ariaLabel}
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
         className="sr-only peer"

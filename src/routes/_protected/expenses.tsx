@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 
 import { createFileRoute, useNavigate, useSearch } from '@tanstack/react-router'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import type { ExpenseRow } from '#/lib/expense.functions'
 
 import type { PeriodPreset } from '#/lib/period'
@@ -23,6 +24,7 @@ import { formatMoney } from '#/lib/money'
 import { fromISODate, groupByDay, resolvePeriod } from '#/lib/period'
 import { swatchColor } from '#/lib/swatches'
 import { useCurrentSpace } from '#/hooks/useCurrentSpace'
+import { useMayEditExpense } from '#/hooks/useMayEditExpense'
 import { resolveSpaceId } from '#/lib/space-preference'
 import { PeriodFilter } from '#/components/PeriodFilter'
 
@@ -110,6 +112,7 @@ function ExpensesRoute() {
 
   const groups = useMemo(() => groupByDay(expenses.data ?? []), [expenses.data])
   const currency = space?.currency ?? 'EUR'
+  const mayEdit = useMayEditExpense(spaceId)
 
   // One sheet for both jobs. `editing === null` means "new"; otherwise the row
   // that was tapped comes with it, already filled in.
@@ -120,7 +123,21 @@ function ExpensesRoute() {
     setEditing(null)
     setSheetOpen(true)
   }
+  /**
+   * Guarded on the way in, not just by the server.
+   *
+   * `mayEdit` is the same three-way rule the server applies (see
+   * useMayEditExpense). It is duplicated deliberately: this copy decides only
+   * whether to open the sheet, so a member cannot start editing somebody else's
+   * entry and discover the refusal after filling in the form. The server's check
+   * is the one that counts — this one is so the failure is a row that is simply
+   * not tappable rather than an error toast.
+   */
   const openEdit = (row: ExpenseRow) => {
+    if (!mayEdit(row).canEdit) {
+      toast.error(mayEdit(row).reason ?? 'You cannot edit this expense')
+      return
+    }
     setEditing(row)
     setSheetOpen(true)
   }
@@ -208,42 +225,50 @@ function ExpensesRoute() {
                 </div>
 
                 <Card className="p-0">
-                  {g.items.map((e) => (
-                    <button
-                      key={e.id}
-                      type="button"
-                      onClick={() => openEdit(e)}
-                      aria-label={`Edit ${e.purpose}, ${formatMoney(e.amountMinor, currency)}`}
-                      className="w-full flex items-center gap-3 px-4 py-3 text-left
+                  {g.items.map((e) => {
+                    const edit = mayEdit(e)
+                    return (
+                      <button
+                        key={e.id}
+                        type="button"
+                        onClick={() => openEdit(e)}
+                        aria-label={
+                          edit.canEdit
+                            ? `Edit ${e.purpose}, ${formatMoney(e.amountMinor, currency)}`
+                            : `${e.purpose}, ${formatMoney(e.amountMinor, currency)}. ${edit.reason}`
+                        }
+                        className="w-full flex items-center gap-3 px-4 py-3 text-left
                         border-b border-rule last:border-b-0
-                        transition-colors duration-150 hover:bg-[var(--color-paper-sunk)]"
-                    >
-                      <span
-                        aria-hidden
-                        className="h-8 w-1 rounded-sm shrink-0"
-                        style={{
-                          background:
-                            e.categoryColor !== null
-                              ? swatchColor(e.categoryColor)
-                              : 'var(--color-rule)',
-                        }}
-                      />
-                      <span className="min-w-0 flex-1">
-                        <span className="truncate text-sm font-medium block">
-                          {e.purpose}
+                        transition-colors duration-150
+                        enabled:hover:bg-[var(--color-paper-sunk)]"
+                      >
+                        <span
+                          aria-hidden
+                          className="h-8 w-1 rounded-sm shrink-0"
+                          style={{
+                            background:
+                              e.categoryColor !== null
+                                ? swatchColor(e.categoryColor)
+                                : 'var(--color-rule)',
+                          }}
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span className="truncate text-sm font-medium block">
+                            {e.purpose}
+                          </span>
+                          <span className="truncate text-xs text-ink-faint block">
+                            {e.categoryName ?? 'Uncategorised'} · paid by{' '}
+                            {e.paidByName}
+                            {e.splits.length > 1 &&
+                              ` · split ${e.splits.length} ways`}
+                          </span>
                         </span>
-                        <span className="truncate text-xs text-ink-faint block">
-                          {e.categoryName ?? 'Uncategorised'} · paid by{' '}
-                          {e.paidByName}
-                          {e.splits.length > 1 &&
-                            ` · split ${e.splits.length} ways`}
+                        <span className="tnum text-sm font-medium shrink-0">
+                          {formatMoney(e.amountMinor, currency)}
                         </span>
-                      </span>
-                      <span className="tnum text-sm font-medium shrink-0">
-                        {formatMoney(e.amountMinor, currency)}
-                      </span>
-                    </button>
-                  ))}
+                      </button>
+                    )
+                  })}
                 </Card>
               </section>
             ))}

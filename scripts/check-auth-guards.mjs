@@ -72,6 +72,40 @@ const UNAUTHENTICATED_EXEMPT = new Set([
   'emailIsRegistered',
 ])
 
+/**
+ * Per-row edit guards a handler may delegate to instead of inlining.
+ *
+ * A name here means "this function compares the expense's creator against the
+ * caller". Nothing else counts: the point of the guard is that the comparison
+ * happens, and accepting arbitrary indirection would let it pass without one.
+ */
+const CREATOR_GUARDS = ['assertMayEdit']
+
+/**
+ * Handlers that write to the expense ledger without a per-row creator check, and
+ * why that is correct.
+ *
+ * Keep this as short as the design allows — every entry is a way to change what
+ * somebody is shown they spent.
+ */
+const EXPENSE_WRITE_EXEMPT = new Set([
+  // Creating an expense stamps it with the caller, so there is no earlier author
+  // to protect: the row being written *is* yours by construction.
+  'createExpense',
+  // A CSV import does the same, in bulk. Every row it creates is the caller's,
+  // for the same reason.
+  'commitImport',
+  // Deleting your own account removes the expenses you entered, which is the
+  // point of deleting it. The authorisation is the session plus the address
+  // being retyped; there is no "other author" to protect, because the caller is
+  // the author of every row this touches.
+  'purgeAccount',
+  // A whole-space delete. Already owner-gated by its caller (deleteSpace), and
+  // purgeSpace is not a server function so it has no session of its own — the
+  // guard lives at the edge by design, the same split as purgeAccount.
+  'purgeSpace',
+])
+
 function walk(dir) {
   for (const entry of readdirSync(dir)) {
     const path = join(dir, entry)
@@ -92,24 +126,47 @@ function check(path) {
 
   // Slice the file into one chunk per createServerFn so a guard in a
   // neighbouring function cannot mask a missing one here.
-  const starts = []
-  const re = /createServerFn\(\{/g
-  let m
-  while ((m = re.exec(src)) !== null) starts.push(m.index)
-  if (starts.length === 0) return
+  // Boundaries are every top-level declaration, not just createServerFn. Slicing
+  // on the server-function marker alone attributes a plain exported helper to
+  // whichever server function precedes it, so `purgeAccount` — which legitimately
+  // deletes expenses — was reported as part of accountDeletionPreview.
+  const boundaries = [
+    ...src.matchAll(/^(?:export\s+)?(?:const|async function|function)\s+\w+/gm),
+  ]
+    .map((mm) => mm.index)
+    .sort((a, b) => a - b)
+  if (boundaries.length === 0) return
 
-  const chunks = starts.map((start, i) =>
-    src.slice(start, starts[i + 1] ?? src.length),
-  )
+  // A declaration is a server function when a createServerFn call appears in the
+  // text that follows it and before the next declaration. Matching on "the next
+  // declaration is this far away" rather than trying to pattern-match the
+  // declaration's own signature, which is what made an earlier version of this
+  // find zero server functions and silently pass everything.
+  const chunks = boundaries
+    .map((start, i) => ({
+      start,
+      text: src.slice(start, boundaries[i + 1] ?? src.length),
+    }))
+    .filter(({ text }) => text.includes('createServerFn({'))
+  if (chunks.length === 0) return
 
-  chunks.forEach((chunk, i) => {
+  chunks.forEach(({ start, text: chunk }, i) => {
     const where = `${path} (server function #${i + 1})`
     const method = /method:\s*'(\w+)'/.exec(chunk)?.[1] ?? 'GET'
 
     // The exported name, so exemptions are keyed by function rather than by
     // position — a reordering must not silently change what is exempt.
-    const before = src.slice(0, starts[i])
-    const name = /export const (\w+)\s*=\s*$/.exec(before)?.[1] ?? `fn${i + 1}`
+    //
+    // Read from the chunk's own first line rather than from the text *before* the
+    // boundary: the boundary is the start of `export const NAME`, so the name is
+    // inside the chunk and never in what precedes it. Reading it from `before`
+    // only worked for the multi-line `export const x =\n  createServerFn(…)` form
+    // and returned `fn1` for everything else, which silently disabled every
+    // exemption keyed by name.
+    const name =
+      /^export const (\w+)/.exec(chunk)?.[1] ??
+      /^(?:async )?function (\w+)/.exec(chunk)?.[1] ??
+      `fn${i + 1}`
     const whereNamed = `${path} (${name})`
     const exempt = MEMBERSHIP_EXEMPT.has(name)
     const publicFn = UNAUTHENTICATED_EXEMPT.has(name)
@@ -150,6 +207,38 @@ function check(path) {
         `${where}: takes a spaceId from the caller but never calls requireSpaceMember/requireSpaceOwner. ` +
           `ensureSession only proves who is calling — this would leak data across households.`,
       )
+    }
+
+    // Per-row edit rights, which the membership check above cannot see. A member
+    // of a space may *read* every expense in it; whether they may *change* one
+    // depends on who entered it and on the household's setting. Asserted here
+    // because a regression here is a member quietly rewriting somebody else's
+    // entries — and the membership guard above would still pass.
+    const writesExpense =
+      /\.update\(expense\)|\.delete\(expense\)|insert\(expense\)/.test(chunk)
+    if (writesExpense && !EXPENSE_WRITE_EXEMPT.has(name)) {
+      const ownerGated = /requireSpaceOwner\(/.test(chunk)
+      // Either a call to one of the named helpers, or an explicit comparison.
+      //
+      // Both halves matter, and getting this wrong is how a guard that looks
+      // present passes while nothing compares anything. Merely *mentioning*
+      // createdByUserId and session.user.id in the same handler is not a check:
+      // deleteExpense selects createdByUserId only to hand it to the helper, so
+      // with the helper call deleted both identifiers are still in the text and a
+      // looser rule keeps passing. Hence the explicit operator, and the helper
+      // allowlist — arbitrary indirection would satisfy this without anything
+      // comparing the two, which is the hole being closed.
+      const checksCreator =
+        CREATOR_GUARDS.some((fn) => chunk.includes(`${fn}(`)) ||
+        /createdByUserId\s*[!=]==?\s*[\w.]*session\.user\.id|session\.user\.id\s*[!=]==?\s*[\w.]*createdByUserId/.test(
+          chunk,
+        )
+      if (!ownerGated && !checksCreator) {
+        violations.push(
+          `${whereNamed}: writes to the expense ledger without checking who entered it. ` +
+            `Either gate on requireSpaceOwner, or compare createdByUserId with session.user.id.`,
+        )
+      }
     }
 
     // Writes that change space configuration should also be owner-gated.

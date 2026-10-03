@@ -56,7 +56,6 @@ export function ExpenseSheet({
   const [categoryId, setCategoryId] = useState<string>('')
   const [spentOn, setSpentOn] = useState(today)
   const [paidByMemberId, setPaidByMemberId] = useState<string>('')
-  const [split, setSplit] = useState(false)
   const [drafts, setDrafts] = useState<Array<SplitDraft>>([])
 
   const editingId = editing?.id ?? null
@@ -74,7 +73,6 @@ export function ExpenseSheet({
       setNote('')
       setCategoryId('')
       setPaidByMemberId('')
-      setSplit(false)
       setDrafts([])
       return
     }
@@ -84,17 +82,26 @@ export function ExpenseSheet({
     setCategoryId(editing.categoryId ?? '')
     setSpentOn(editing.spentOn)
     setPaidByMemberId(editing.paidByMemberId)
-    const isSplit = editing.splits.length > 1
-    setSplit(isSplit)
-    setDrafts(
-      isSplit
-        ? editing.splits.map((s) => ({
-            memberId: s.memberId,
-            weightBp: s.weightBp,
-          }))
-        : [],
-    )
-  }, [open, editingId])
+
+    /**
+     * Every member in the stored split comes back ticked, including when there
+     * is only one. A single-row split means the payer covered it alone, and that
+     * has to read as "ticked, at 100%" rather than as "nobody" — otherwise
+     * opening an existing expense and saving it unchanged would send an empty
+     * split and silently change who owes what.
+     */
+    const stored = editing.splits.length
+      ? editing.splits.map((s) => ({
+          memberId: s.memberId,
+          weightBp: s.weightBp,
+        }))
+      : [{ memberId: editing.paidByMemberId, weightBp: 10_000 }]
+
+    // A removed member is still on this expense, but is no longer on the
+    // roster, so the sheet must not offer to re-tick them. Their existing row is
+    // kept exactly as stored — which is why this filters rather than rebuilding.
+    setDrafts(stored.filter((s) => members.some((m) => m.id === s.memberId)))
+  }, [open, editingId, members])
 
   // Guard the parse: a half-typed amount should not throw during render.
   const amountMinor = useMemo(() => {
@@ -116,8 +123,10 @@ export function ExpenseSheet({
     Boolean(spaceId) &&
     amountMinor > 0 &&
     purpose.trim().length > 0 &&
-    paidByMemberId.length > 0 &&
-    (!split || remainderBp === 0)
+    // Somebody has to be in it. With the switch gone, "nobody ticked" is the
+    // only way to reach an expense nobody owes, so it is the thing to guard.
+    drafts.length > 0 &&
+    remainderBp === 0
 
   const save = useMutation({
     mutationFn: () =>
@@ -132,7 +141,10 @@ export function ExpenseSheet({
               categoryId: categoryId || null,
               paidByMemberId,
               spentOn,
-              splits: split ? drafts : [],
+              // Always sent, never `[]`. An empty array means "the payer takes
+              // all of it" to the server, and with a single member ticked the
+              // split is already explicit — one row at 100%.
+              splits: drafts,
             },
           })
         : createExpense({
@@ -144,7 +156,7 @@ export function ExpenseSheet({
               categoryId: categoryId || null,
               paidByMemberId,
               spentOn,
-              splits: split ? drafts : [],
+              splits: drafts,
             },
           }),
     onSuccess: () => {
@@ -168,7 +180,6 @@ export function ExpenseSheet({
     setNote('')
     setCategoryId('')
     setPaidByMemberId('')
-    setSplit(false)
     setDrafts([])
   }
 
@@ -256,9 +267,7 @@ export function ExpenseSheet({
           amountMinor={amountMinor}
           currency={currency}
           paidByMemberId={paidByMemberId}
-          split={split}
           drafts={drafts}
-          onSplitChange={setSplit}
           onPaidByChange={setPaidByMemberId}
           onDraftsChange={setDrafts}
         />

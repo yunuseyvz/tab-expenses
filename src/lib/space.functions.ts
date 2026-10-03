@@ -95,6 +95,12 @@ export const updateSpace = createServerFn({ method: 'POST' })
       name: z.string().trim().min(1, 'name is required').max(80),
       currency: currencySchema.optional(),
       icon: avatarKeySchema.nullable().optional(),
+      /**
+       * Whether members may edit each other's expenses. Owner-only, and read
+       * back in the UI so the switch shows the stored value rather than an
+       * optimistic local one that a rejected write would leave lying.
+       */
+      editableByMembers: z.boolean().optional(),
     }),
   )
   .handler(async ({ data }) => {
@@ -120,6 +126,9 @@ export const updateSpace = createServerFn({ method: 'POST' })
         name: data.name,
         ...(data.currency !== undefined ? { currency: data.currency } : {}),
         ...(data.icon !== undefined ? { icon: data.icon } : {}),
+        ...(data.editableByMembers !== undefined
+          ? { editableByMembers: data.editableByMembers }
+          : {}),
       })
       // Scoped by id only because requireSpaceOwner has already established
       // that this caller owns exactly this space.

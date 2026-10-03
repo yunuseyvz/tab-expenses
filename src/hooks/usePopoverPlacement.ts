@@ -154,5 +154,13 @@ export function usePopoverPlacement<T extends HTMLElement>({
     }
   }, [open, width, margin, gap, panelEl])
 
-  return { anchor, panel, placement, floating }
+  /**
+   * The panel element itself, as well as the ref to attach to it.
+   *
+   * Callers that portal the panel need to know whether a click landed inside it
+   * — a click-outside handler that only knows about the anchor closes the panel
+   * the instant anything inside is pressed, which is every interaction the panel
+   * exists to offer.
+   */
+  return { anchor, panel, panelEl, placement, floating }
 }

@@ -118,6 +118,10 @@ export const listMySpaces = createServerFn({ method: 'GET' }).handler(
         icon: space.icon,
         role: spaceMember.role,
         memberId: spaceMember.id,
+        // Whether members may edit each other's expenses. It rides along on the
+        // list every screen already has, rather than costing a query per route
+        // that needs to decide whether to offer an edit affordance.
+        editableByMembers: space.editableByMembers,
       })
       .from(spaceMember)
       .innerJoin(space, eq(spaceMember.spaceId, space.id))

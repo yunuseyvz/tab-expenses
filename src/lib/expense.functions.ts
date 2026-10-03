@@ -13,7 +13,13 @@ import { z } from 'zod'
 
 import { ensureSession, requireSpaceMember } from './auth.functions'
 import { getDb } from './db'
-import { category, expense, expenseSplit, spaceMember } from './db/schema'
+import {
+  category,
+  expense,
+  expenseSplit,
+  space,
+  spaceMember,
+} from './db/schema'
 import {
   expenseInputSchema,
   isoDateSchema,
@@ -22,6 +28,7 @@ import {
 } from './guards'
 import { BP_TOTAL, allocate, parseAmountToMinor } from './money'
 import { settle } from './settle'
+import { displayMemberName } from './member-name'
 import type { Db } from './db'
 import type { SQL } from 'drizzle-orm'
 import type { Settlement } from './settle'
@@ -48,8 +55,10 @@ function categoryFilter(
 
 export interface SplitRow {
   memberId: string
+  /** Carries the `(removed)` suffix when the member has left. */
   displayName: string
   color: string
+  archivedAt: Date | null
   weightBp: number
   shareMinor: number
 }
@@ -69,6 +78,8 @@ export interface ExpenseRow {
   paidByMemberId: string
   paidByName: string
   paidByColor: string
+  /** When the payer left the household, if they have. */
+  paidByArchivedAt: Date | null
   createdByUserId: string | null
   createdAt: string
   splits: Array<SplitRow>
@@ -91,6 +102,7 @@ function expenseSelect() {
     paidByMemberId: expense.paidByMemberId,
     paidByName: spaceMember.displayName,
     paidByColor: spaceMember.color,
+    paidByArchivedAt: spaceMember.archivedAt,
     createdByUserId: expense.createdByUserId,
     createdAt: expense.createdAt,
   }
@@ -111,6 +123,7 @@ async function splitsFor(
       memberId: expenseSplit.memberId,
       displayName: spaceMember.displayName,
       color: spaceMember.color,
+      archivedAt: spaceMember.archivedAt,
       weightBp: expenseSplit.weightBp,
       shareMinor: expenseSplit.shareMinor,
     })
@@ -128,8 +141,13 @@ async function splitsFor(
     const list = byExpense.get(r.expenseId)
     const entry: SplitRow = {
       memberId: r.memberId,
-      displayName: r.displayName,
+      // Marked here rather than at each render site: a removed member has to
+      // read as removed in the split summary, the balance table and the export
+      // alike, and the suffix is a fact about the row rather than a presentation
+      // choice made per screen.
+      displayName: displayMemberName(r.displayName, r.archivedAt),
       color: r.color,
+      archivedAt: r.archivedAt,
       weightBp: r.weightBp,
       shareMinor: r.shareMinor,
     }
@@ -180,6 +198,60 @@ async function assertMembersInSpace(
   if (stranger) {
     throw new Error(`${label} is not a member of this space`)
   }
+}
+
+/**
+ * Whether this caller may change an expense they did not enter.
+ *
+ * Three ways to pass, in order:
+ *
+ *   1. You entered it. Always yours to correct — a typo in your own entry is
+ *      yours to fix and nobody else's to be protected from.
+ *   2. You own the household. An owner who cannot fix a bad entry is an owner
+ *      with a broken household, and they already have strictly larger powers
+ *      (deleting it, archiving whoever entered it).
+ *   3. The household has opened its ledger to each other.
+ *
+ * Otherwise: no. A shared ledger where any member can rewrite anyone else's
+ * entries is one where nobody can trust what they are shown they spent, and the
+ * household setting exists so a group that *wants* to work that way can say so
+ * once instead of every row carrying its own permission.
+ *
+ * Throws rather than returning a boolean, because every caller here is a write
+ * and there is nothing to do with a false.
+ *
+ * `createdByUserId` is read from the row rather than passed in: it is the one
+ * value the client must not be able to influence.
+ */
+async function assertMayEdit(
+  db: Db,
+  userId: string,
+  spaceId: string,
+  existing: { createdByUserId: string | null },
+) {
+  if (existing.createdByUserId === userId) return
+
+  const [household] = await db
+    .select({
+      editableByMembers: space.editableByMembers,
+      role: spaceMember.role,
+    })
+    .from(space)
+    .innerJoin(
+      spaceMember,
+      and(
+        eq(spaceMember.spaceId, space.id),
+        eq(spaceMember.userId, userId),
+        isNull(spaceMember.archivedAt),
+      ),
+    )
+    .where(eq(space.id, spaceId))
+    .limit(1)
+
+  if (!household) throw new Error('Not found')
+  if (household.role === 'owner' || household.editableByMembers) return
+
+  throw new Error('This expense was added by someone else')
 }
 
 export const createExpense = createServerFn({ method: 'POST' })
@@ -332,6 +404,8 @@ export const updateExpense = createServerFn({ method: 'POST' })
       )
       .limit(1)
     if (!existing) throw new Error('Not found')
+
+    await assertMayEdit(db, session.user.id, data.spaceId, existing)
 
     const amountMinor =
       data.amount !== undefined
@@ -489,6 +563,22 @@ export const deleteExpense = createServerFn({ method: 'POST' })
     await requireSpaceMember(session.user.id, data.spaceId)
     const db = getDb()
 
+    /**
+     * The same rule as editing, and it has to be: being unable to change what
+     * somebody entered is worth little if you can delete it outright. Deleting
+     * is strictly more destructive, so it is not the one operation that skips
+     * the check.
+     */
+    const [existing] = await db
+      .select({ createdByUserId: expense.createdByUserId })
+      .from(expense)
+      .where(
+        and(eq(expense.id, data.expenseId), eq(expense.spaceId, data.spaceId)),
+      )
+      .limit(1)
+    if (!existing) throw new Error('Not found')
+    await assertMayEdit(db, session.user.id, data.spaceId, existing)
+
     // expense_split rows cascade; scoping the delete by spaceId stops a
     // guessed id from removing another space's expense.
     const deleted = await db
@@ -551,6 +641,7 @@ export const listExpenses = createServerFn({ method: 'GET' })
 
     return rows.map<ExpenseRow>((r) => ({
       ...r,
+      paidByName: displayMemberName(r.paidByName, r.paidByArchivedAt),
       // Drizzle's `date()` mode already yields a 'YYYY-MM-DD' string.
       spentOn: r.spentOn,
       createdAt:

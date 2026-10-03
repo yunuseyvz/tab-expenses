@@ -8,6 +8,7 @@
  */
 import { relations, sql } from 'drizzle-orm'
 import {
+  boolean,
   check,
   date,
   index,
@@ -44,6 +45,19 @@ export const space = pgTable('space', {
    * has a distinct mark rather than a blank one.
    */
   icon: text('icon'),
+  /**
+   * Whether a member may edit an expense somebody else entered.
+   *
+   * False by default, so an expense is only editable by whoever typed it in.
+   * The alternative — anyone in the household can rewrite anyone's entries —
+   * means one person can quietly change what another person is shown they paid,
+   * which in a shared ledger is worse than the extra friction of a toggle.
+   *
+   * Owner-set, per household, rather than per expense: the question is whether
+   * this household trusts each other with each other's entries, and that is one
+   * answer for the whole ledger rather than a decision to make 300 times.
+   */
+  editableByMembers: boolean('editable_by_members').default(false).notNull(),
   /**
    * Who set this household up. Provenance, not authority: who can *manage* the
    * space is `space_member.role`, and that is the row that decides it. Which is

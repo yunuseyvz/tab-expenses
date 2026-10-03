@@ -1,23 +1,28 @@
 /**
- * The split editor.
+ * Who paid, and how the cost is shared.
  *
- * Toggle Split off → one row, the payer takes 100%. On → a row per member with
- * a tactile slider and a numeric field, pre-filled from each member's
- * defaultWeightBp.
+ * One control, not two. It used to be a "Paid by" dropdown above a "Split
+ * between members" switch, which asked the same question twice and had a third
+ * state to reason about: with the switch off the split editor was hidden and the
+ * payer took 100%, so ticking two people required discovering a switch first,
+ * and the switch said nothing about whether it was the right thing to do.
  *
- * Two deliberate choices:
- *  · The per-member euro preview is live while dragging, so rounding is visible
- *    and the number is trustworthy rather than something to verify after save.
- *  · Weights are never renormalised behind the user's back. The remainder is
- *    shown prominently instead, because silently rescaling 60/40 to 63/37
- *    would misrepresent what was entered.
+ * Ticking somebody now *is* the split. The first person ticked is the payer who
+ * fronted the money; everybody ticked shares it. Nothing is hidden behind a
+ * toggle because there is no toggle to hide behind.
+ *
+ * Equal is the default, because it is right far more often than anything else
+ * and a household that wants 60/40 can drag to it. The split is not renormalised
+ * behind anyone's back either: the remainder is stated, loudly, rather than
+ * silently rescaling what was entered.
+ *
+ * The euro figure is live while dragging, so rounding is visible and the number
+ * is trustworthy rather than something to verify after saving.
  */
 import { useMemo } from 'react'
 
 import type { SpaceMember } from '#/lib/db/schema'
-import { Label, Select } from '#/components/ui/Input'
 import { NumberField } from '#/components/ui/NumberField'
-import { Switch } from '#/components/ui/Switch'
 import { allocate, formatMoney } from '#/lib/money'
 import { swatchColor } from '#/lib/swatches'
 
@@ -26,14 +31,28 @@ export interface SplitDraft {
   weightBp: number
 }
 
+/**
+ * Ticking one more person changes what "equal" means for everybody.
+ *
+ * 3 people sharing → tick a 4th → four equal quarters, not three (or a 4th at
+ * whatever percentage made the total work). Leaving the existing weights alone
+ * would leave the sheet showing 100% assigned the moment a person is added,
+ * which reads as a bug: you ticked somebody and the numbers refused to move.
+ * Re-equalising is the only thing that matches what the tick meant.
+ */
+function equalWeights(count: number): Array<number> {
+  const even = Math.floor(10_000 / count)
+  return Array.from({ length: count }, (_, i) =>
+    i === 0 ? 10_000 - even * (count - 1) : even,
+  )
+}
+
 export function SplitEditor({
   members,
   amountMinor,
   currency,
   paidByMemberId,
-  split,
   drafts,
-  onSplitChange,
   onPaidByChange,
   onDraftsChange,
 }: {
@@ -41,9 +60,7 @@ export function SplitEditor({
   amountMinor: number
   currency: string
   paidByMemberId: string | null
-  split: boolean
   drafts: Array<SplitDraft>
-  onSplitChange: (v: boolean) => void
   onPaidByChange: (memberId: string) => void
   onDraftsChange: (next: Array<SplitDraft>) => void
 }) {
@@ -51,12 +68,12 @@ export function SplitEditor({
     () => 10_000 - drafts.reduce((s, d) => s + d.weightBp, 0),
     [drafts],
   )
-  const valid = remainderBp === 0
+  const valid = remainderBp === 0 && drafts.length > 0
 
-  // Preview uses the same allocate() the server uses, so the number on screen
-  // is the number that gets stored.
+  // Uses the same allocate() the server uses, so the figure on screen is the
+  // figure that gets stored.
   const preview = useMemo(() => {
-    if (!valid || drafts.length === 0) return new Map<string, number>()
+    if (!valid) return new Map<string, number>()
     try {
       const shares = allocate(
         amountMinor,
@@ -77,166 +94,175 @@ export function SplitEditor({
     )
   }
 
-  function presetEqual() {
-    if (members.length === 0) return
-    const even = Math.floor(10_000 / members.length)
-    onDraftsChange(
-      members.map((m, i) => ({
-        memberId: m.id,
-        // The first member absorbs the rounding remainder so the total is exact.
-        weightBp: i === 0 ? even + (10_000 - even * members.length) : even,
-      })),
+  /** Tick or untick, keeping the roster order so the payer stays first-ticked. */
+  function toggle(memberId: string) {
+    const included = drafts.some((d) => d.memberId === memberId)
+    if (included) {
+      const next = drafts.filter((d) => d.memberId !== memberId)
+      onDraftsChange(next)
+      // The payer cannot be someone who is not in the split. The first
+      // remaining tick inherits it, which is what somebody unticking themselves
+      // from a shared purchase would expect.
+      if (paidByMemberId === memberId) {
+        onPaidByChange(next[0]?.memberId ?? '')
+      }
+      return
+    }
+
+    const next = [...drafts, { memberId, weightBp: 0 }].sort(
+      (a, b) =>
+        members.findIndex((m) => m.id === a.memberId) -
+        members.findIndex((m) => m.id === b.memberId),
     )
+    // Re-equalised rather than zeroed: a 0% row is not a participation, it is a
+    // validation error waiting to happen.
+    const weights = equalWeights(next.length)
+    onDraftsChange(
+      next.map((d, i) => ({ memberId: d.memberId, weightBp: weights[i]! })),
+    )
+    if (!paidByMemberId) onPaidByChange(memberId)
+  }
+
+  function presetEqual() {
+    if (drafts.length === 0) return
+    const weights = equalWeights(drafts.length)
+    onDraftsChange(drafts.map((d, i) => ({ ...d, weightBp: weights[i]! })))
   }
 
   function presetEvenPairs() {
-    if (members.length === 0) return
-    const half = members.slice(0, 2)
-    onDraftsChange([
-      { memberId: half[0]!.id, weightBp: 5000 },
-      { memberId: (half[1] ?? half[0]!).id, weightBp: 5000 },
-    ])
+    if (drafts.length < 2) return
+    onDraftsChange(drafts.map((d, i) => ({ ...d, weightBp: i < 2 ? 5000 : 0 })))
   }
 
+  const inSplit = new Set(drafts.map((d) => d.memberId))
+
   return (
-    <div className="space-y-4">
-      <div>
-        <Label htmlFor="paid-by">Paid by</Label>
-        <Select
-          id="paid-by"
-          aria-label="Paid by"
-          value={paidByMemberId ?? ''}
-          onChange={(e) => onPaidByChange(e.target.value)}
-        >
-          <option value="" disabled>
-            Choose…
-          </option>
-          {members.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.displayName}
-            </option>
-          ))}
-        </Select>
-      </div>
+    <fieldset className="space-y-3">
+      <legend className="text-xs font-medium uppercase tracking-wide text-ink-muted mb-1.5">
+        Paid by
+      </legend>
 
-      <div className="flex items-center justify-between py-1">
-        <Label className="mb-0" htmlFor="split-toggle">
-          Split between members
-        </Label>
-        <Switch
-          id="split-toggle"
-          checked={split}
-          onChange={(next) => {
-            onSplitChange(next)
-            if (next && drafts.length === 0 && members.length > 0) {
-              // Pre-fill from each member's default weight, falling back to an
-              // even split when nobody has set one.
-              const hasDefaults = members.some((m) => m.defaultWeightBp > 0)
-              if (hasDefaults) {
-                onDraftsChange(
-                  members.map((m) => ({
-                    memberId: m.id,
-                    weightBp: m.defaultWeightBp,
-                  })),
-                )
-              } else {
-                presetEqual()
-              }
-            }
-          }}
-        />
-      </div>
+      {members.length === 0 && (
+        <p className="text-sm text-ink-faint">
+          Add someone to this household first.
+        </p>
+      )}
 
-      {split && (
-        <div className="space-y-3">
-          <div className="flex justify-end gap-3">
-            <button
-              type="button"
-              onClick={presetEvenPairs}
-              className="text-xs text-terracotta-ink underline underline-offset-2"
-            >
-              50 / 50
-            </button>
-            <button
-              type="button"
-              onClick={presetEqual}
-              className="text-xs text-terracotta-ink underline underline-offset-2"
-            >
-              Equal
-            </button>
-          </div>
+      <div className="space-y-2.5">
+        {members.map((m) => {
+          const draft = drafts.find((d) => d.memberId === m.id)
+          const included = inSplit.has(m.id)
+          const isPayer = paidByMemberId === m.id
+          const pct = draft ? draft.weightBp / 100 : 0
 
-          {drafts.map((d) => {
-            const member = members.find((m) => m.id === d.memberId)
-            const name = member?.displayName ?? 'Member'
-            const pct = d.weightBp / 100
-            return (
-              <div key={d.memberId}>
-                <div className="flex items-center justify-between mb-1 gap-2">
-                  <span className="text-sm flex items-center gap-1.5 min-w-0 truncate">
-                    <span
-                      aria-hidden
-                      className="h-2 w-2 rounded-full shrink-0"
-                      style={{ background: swatchColor(member?.color ?? '') }}
-                    />
-                    {name}
+          return (
+            <div key={m.id}>
+              <label className="flex items-center gap-3 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={included}
+                  onChange={() => toggle(m.id)}
+                  aria-label={`${m.displayName} is part of this expense`}
+                  className="size-[1.15rem] rounded accent-[var(--color-terracotta)]
+                    shrink-0 cursor-pointer"
+                />
+                <span
+                  aria-hidden
+                  className="h-2.5 w-2.5 rounded-full shrink-0"
+                  style={{ background: swatchColor(m.color) }}
+                />
+                <span className="text-sm truncate min-w-0 flex-1">
+                  {m.displayName}
+                </span>
+                {isPayer && (
+                  <span className="text-[0.7rem] uppercase tracking-wide text-ink-faint shrink-0">
+                    Paid
                   </span>
-                  <span className="flex items-center gap-1.5 shrink-0">
-                    {/* Live euro preview: rounding made visible. */}
+                )}
+              </label>
+
+              {/*
+                Sliders appear for ticked members only, and a slider for one
+                person is a useless 0-or-100 control — so a single tick shows the
+                share as a figure and nothing else.
+              */}
+              {included && drafts.length > 1 && (
+                <div className="pl-[2.65rem] mt-1.5">
+                  <div className="flex items-center justify-between mb-1 gap-2">
                     <span className="tnum text-xs text-ink-faint">
-                      {preview.has(d.memberId)
-                        ? formatMoney(preview.get(d.memberId)!, currency)
+                      {preview.has(m.id)
+                        ? formatMoney(preview.get(m.id)!, currency)
                         : '—'}
                     </span>
                     <NumberField
-                      value={String(d.weightBp / 100)}
-                      onChange={(next) =>
-                        setWeight(d.memberId, Number(next) * 100)
-                      }
-                      label={`${name} percent`}
+                      value={String(draft!.weightBp / 100)}
+                      onChange={(next) => setWeight(m.id, Number(next) * 100)}
+                      label={`${m.displayName} percent`}
                       suffix="%"
                       min={0}
                       max={100}
                       step={1}
                     />
-                  </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={pct}
+                    onChange={(e) =>
+                      setWeight(m.id, Number(e.target.value) * 100)
+                    }
+                    aria-label={`${m.displayName} split`}
+                    className="range-tactile"
+                    // --fill drives the whole track, so filled and unfilled
+                    // lengths cannot drift apart the way two values in a
+                    // background gradient could.
+                    style={{ '--fill': `${pct}%` } as React.CSSProperties}
+                  />
                 </div>
-                {/* Tactile thumb on a debossed groove. */}
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  step={1}
-                  value={d.weightBp / 100}
-                  onChange={(e) =>
-                    setWeight(d.memberId, Number(e.target.value) * 100)
-                  }
-                  aria-label={`${name} split slider`}
-                  className="range-tactile"
-                  // --fill drives the whole track, so the filled and unfilled
-                  // lengths cannot drift apart the way two separate values in a
-                  // background gradient could.
-                  style={{ '--fill': `${pct}%` } as React.CSSProperties}
-                />
-              </div>
-            )
-          })}
+              )}
+            </div>
+          )
+        })}
+      </div>
 
-          <p
-            role="status"
-            className="tnum text-sm font-medium"
-            style={{
-              color: valid ? 'var(--color-sage)' : 'var(--color-oxblood)',
-            }}
+      {drafts.length > 1 && (
+        <div className="flex justify-end gap-3 pt-1">
+          <button
+            type="button"
+            onClick={presetEvenPairs}
+            className="text-xs text-terracotta-ink underline underline-offset-2"
           >
-            {valid
-              ? 'Totals 100%'
-              : remainderBp > 0
-                ? `${remainderBp / 100}% left to assign`
-                : `${-remainderBp / 100}% over-assigned`}
-          </p>
+            First two only
+          </button>
+          <button
+            type="button"
+            onClick={presetEqual}
+            className="text-xs text-terracotta-ink underline underline-offset-2"
+          >
+            Equal
+          </button>
         </div>
       )}
-    </div>
+
+      <p
+        role="status"
+        className="tnum text-sm font-medium"
+        style={{
+          color: valid ? 'var(--color-sage)' : 'var(--color-oxblood)',
+        }}
+      >
+        {drafts.length === 0
+          ? 'Nobody is sharing this yet'
+          : valid
+            ? drafts.length === 1
+              ? `${members.find((m) => m.id === drafts[0]!.memberId)?.displayName ?? 'They'} paid all of it`
+              : 'Totals 100%'
+            : remainderBp > 0
+              ? `${remainderBp / 100}% left to assign`
+              : `${-remainderBp / 100}% over-assigned`}
+      </p>
+    </fieldset>
   )
 }

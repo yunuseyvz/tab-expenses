@@ -30,6 +30,7 @@ import {
   archiveMember,
   createCategory,
   createMember,
+  updateSpace,
 } from '#/lib/space.functions'
 import {
   categoriesQuery,
@@ -179,6 +180,24 @@ function SettingsRoute() {
     },
     onError: (err) =>
       toast.error(err instanceof Error ? err.message : 'Could not delete'),
+  })
+
+  /**
+   * Who may change whose entries. Owner-only, and it invalidates the space list
+   * because every screen reads `editableByMembers` from there to decide whether
+   * to offer an edit affordance — a toggle that saved but did not change any
+   * button on screen would look broken.
+   */
+  const setPermissions = useMutation({
+    mutationFn: (patch: { editableByMembers: boolean }) =>
+      updateSpace({
+        data: { spaceId: spaceId!, name: space!.name, ...patch },
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: spaceKeys.mySpaces })
+    },
+    onError: (e) =>
+      toast.error(e instanceof Error ? e.message : 'Could not save'),
   })
 
   const saveAvatar = useMutation({
@@ -473,7 +492,38 @@ function SettingsRoute() {
           )}
         </SettingsGroup>
 
-        <SettingsGroup title="Data">
+        <SettingsGroup
+          title="Data"
+          hint={space ? 'Everyone sees the same ledger' : undefined}
+        >
+          {/*
+            Off by default. In a shared ledger, letting anyone rewrite anyone
+            else's entries means one person can change what another is shown they
+            spent, which is worse than the extra friction. Owner-only, because it
+            is a decision about how much this household trusts itself.
+          */}
+          {space?.role === 'owner' && (
+            <SettingsRow
+              label="Members can edit each other's expenses"
+              hint={
+                space.editableByMembers
+                  ? 'Anyone can change any entry'
+                  : 'Only whoever added it'
+              }
+            >
+              <Switch
+                ariaLabel="Members can edit each other's expenses"
+                // `checked` stays the stored value rather than an optimistic
+                // local one: the write can be refused, and a switch that
+                // springs over and then springs back is worse than one that
+                // waits.
+                checked={space.editableByMembers}
+                onChange={(next) =>
+                  setPermissions.mutate({ editableByMembers: next })
+                }
+              />
+            </SettingsRow>
+          )}
           <SettingsRow
             // Down for import, up for export: the arrows point the way the file
             // travels. Import brings data *into* the app, export takes it out,
