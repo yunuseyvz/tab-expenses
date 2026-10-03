@@ -11,6 +11,7 @@
  */
 import { Outlet, createFileRoute, redirect } from '@tanstack/react-router'
 
+import { RemovalNotice } from '#/components/RemovalNotice'
 import {
   getRememberedSpaceId,
   getSession,
@@ -52,5 +53,12 @@ export const Route = createFileRoute('/_protected')({
 })
 
 function ProtectedLayout() {
-  return <Outlet />
+  return (
+    <>
+      <Outlet />
+      {/* Mounted here rather than inside AppShell, because AppShell is per-screen
+          and this has to appear on whichever one the redirect below lands on. */}
+      <RemovalNotice />
+    </>
+  )
 }

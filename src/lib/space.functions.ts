@@ -10,7 +10,7 @@
  * does check membership.
  */
 import { createServerFn } from '@tanstack/react-start'
-import { and, asc, eq, isNull, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, isNull, sql } from 'drizzle-orm'
 
 import { z } from 'zod'
 import {
@@ -438,7 +438,10 @@ export const archiveMember = createServerFn({ method: 'POST' })
 
     const [row] = await db
       .update(spaceMember)
-      .set({ archivedAt: new Date() })
+      // `removed`, and only ever `removed`: this handler is the owner taking
+      // somebody off the roster. Walking is `leaveSpace`, which writes `left`, so
+      // the two cannot be confused by whoever is told about it later.
+      .set({ archivedAt: new Date(), archivedReason: 'removed' })
       .where(
         and(
           eq(spaceMember.id, data.memberId),
@@ -450,6 +453,139 @@ export const archiveMember = createServerFn({ method: 'POST' })
     if (!row) throw new Error('Not found')
     return row
   })
+
+/**
+ * Leave a household yourself.
+ *
+ * The roster is not a place you get stuck: leaving is something you can always
+ * do, which is why it is a button rather than a thing you ask an owner to do for
+ * you. Archiving is the same operation as `archiveMember` in reverse — the row
+ * stays, `user_id` goes to NULL, and every split that referenced it keeps this
+ * person's name — so the ledger does not rewrite itself when a household
+ * changes.
+ *
+ * THE OWNER PROBLEM, because this is the one a self-service leave has that the
+ * reverse does not. A household with no owner cannot be managed, which is why
+ * `archiveMember` refuses to remove the last one. Leaving has to solve that
+ * rather than trip over it, so the longest-standing remaining member is promoted
+ * first and the departure goes ahead. That is the same handover account deletion
+ * performs, and for the same reason: an owner walking out should not take the
+ * household's administration with them.
+ *
+ * The exception is being the only member at all. There is nobody to hand over to
+ * and nobody to strand, so the space goes — see `purgeSpace` for why the expenses
+ * are deleted explicitly rather than left to a restrict rule to decide.
+ */
+export const leaveSpace = createServerFn({ method: 'POST' })
+  .inputValidator(z.object({ spaceId: uuidSchema }))
+  .handler(async ({ data }) => {
+    const session = await ensureSession()
+    const member = await requireSpaceMember(session.user.id, data.spaceId)
+    const db = getDb()
+
+    const others = await db
+      .select({
+        id: spaceMember.id,
+        role: spaceMember.role,
+        // Needed to pick an heir who can actually log in: a virtual member has no
+        // account, so promoting one would hand administration of the household to
+        // a row nobody can sign in as. The `?? others[0]` fallback covers the case
+        // where every remaining member is virtual, where a virtual owner is still
+        // better than a household with none.
+        userId: spaceMember.userId,
+        createdAt: spaceMember.createdAt,
+      })
+      .from(spaceMember)
+      .where(
+        and(
+          eq(spaceMember.spaceId, data.spaceId),
+          sql`${spaceMember.id} is distinct from ${member.id}`,
+          isNull(spaceMember.archivedAt),
+        ),
+      )
+      .orderBy(asc(spaceMember.createdAt))
+
+    if (others.length === 0) {
+      // The last person out turns the lights off. Cascading is not enough on its
+      // own: expense_split.restrict on member_id means Postgres may or may not
+      // order the cascades favourably, and which it does is trigger-OID luck
+      // rather than a guarantee.
+      await purgeSpace(db, data.spaceId)
+      return { ok: true as const, deletedSpace: true }
+    }
+
+    // Hand over before leaving, so there is never a moment with no owner.
+    if (member.role === 'owner') {
+      const heir = others.find((o) => o.userId !== null) ?? others[0]!
+      await db
+        .update(spaceMember)
+        .set({ role: 'owner' })
+        .where(eq(spaceMember.id, heir.id))
+    }
+
+    await db
+      .update(spaceMember)
+      .set({ archivedAt: new Date(), archivedReason: 'left' })
+      .where(eq(spaceMember.id, member.id))
+
+    return { ok: true as const, deletedSpace: false }
+  })
+
+/**
+ * Households this account was removed from and has not been told about.
+ *
+ * Drives the notice shown on the next sign-in. Deliberately excludes a
+ * departure you chose: being told you were removed from somewhere you left
+ * yourself would be nonsense, and the two are only distinguishable because
+ * `archived_reason` records which happened.
+ *
+ * Unacknowledged only, so it appears once and then stops. Reads the space name so
+ * the notice can say *which* household rather than making the person guess.
+ */
+export const listRemovalNotices = createServerFn({ method: 'GET' }).handler(
+  async () => {
+    const session = await ensureSession()
+    const db = getDb()
+
+    return db
+      .select({ spaceId: space.id, spaceName: space.name })
+      .from(spaceMember)
+      .innerJoin(space, eq(spaceMember.spaceId, space.id))
+      .where(
+        and(
+          eq(spaceMember.userId, session.user.id),
+          eq(spaceMember.archivedReason, 'removed'),
+          isNull(spaceMember.removalAckAt),
+        ),
+      )
+      .orderBy(desc(spaceMember.archivedAt))
+  },
+)
+
+/**
+ * Mark every pending removal notice as seen.
+ *
+ * No ids in the payload, so it cannot be used to acknowledge somebody else's
+ * notice: it acknowledges the caller's own rows and nothing else.
+ */
+export const ackRemovalNotices = createServerFn({ method: 'POST' }).handler(
+  async () => {
+    const session = await ensureSession()
+    const db = getDb()
+
+    await db
+      .update(spaceMember)
+      .set({ removalAckAt: new Date() })
+      .where(
+        and(
+          eq(spaceMember.userId, session.user.id),
+          eq(spaceMember.archivedReason, 'removed'),
+          isNull(spaceMember.removalAckAt),
+        ),
+      )
+    return { ok: true as const }
+  },
+)
 
 /** Link a logged-in user to an existing virtual member row. */
 export const claimMember = createServerFn({ method: 'POST' })

@@ -99,6 +99,33 @@ export const spaceMember = pgTable(
     defaultWeightBp: integer('default_weight_bp').default(0).notNull(),
     role: text('role').$type<'owner' | 'member'>().default('member').notNull(),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
+    /**
+     * How this row was archived, when it was.
+     *
+     * `removed` — an owner took this person off the roster.
+     * `left` — they walked, from Settings.
+     *
+     * The distinction is only needed for one thing: telling somebody they were
+     * removed. Without it, a person who left and a person who was removed are the
+     * same row, and the only honest thing the app could do was say nothing to
+     * either — which is how you get somebody logging in after being thrown out
+     * of a household to find the space simply absent from their list, with no
+     * account of where it went or who did it.
+     *
+     * NULL while the membership is live, which is the same test as archivedAt
+     * being null; they are kept separate because one is *when* and this is *why*.
+     */
+    archivedReason: text('archived_reason').$type<'left' | 'removed'>(),
+    /**
+     * When this person was told.
+     *
+     * The notice has to survive a reload — "as soon as they log in" means the
+     * next login, not only the one that happened to be open — but it must not
+     * reappear on every subsequent one. An acknowledgement is what separates
+     * those two, and putting it on the row rather than in localStorage means it
+     * follows the person to another device.
+     */
+    removalAckAt: timestamp('removal_ack_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true })
       .defaultNow()
       .notNull(),

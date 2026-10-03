@@ -18,32 +18,48 @@
 import { Sheet } from '#/components/AppShell'
 import { Button } from '#/components/ui/Button'
 
-export type RemovalKind = 'member' | 'category'
+export type RemovalKind = 'member' | 'category' | 'leave'
 
 export function ConfirmRemoval({
   kind,
   name,
+  isOwner = false,
   busy,
   onCancel,
   onConfirm,
 }: {
   kind: RemovalKind
   name: string
+  /** Whether the leaver owns the household, so the handover can be mentioned. */
+  isOwner?: boolean
   busy: boolean
   onCancel: () => void
   onConfirm: () => void
 }) {
   const isMember = kind === 'member'
+  const isLeave = kind === 'leave'
 
   return (
     <Sheet
       open
       onClose={onCancel}
-      title={isMember ? `Remove ${name}?` : `Archive ${name}?`}
+      title={
+        isLeave
+          ? `Leave ${name}?`
+          : isMember
+            ? `Remove ${name}?`
+            : `Archive ${name}?`
+      }
     >
       <div className="pb-4 space-y-4">
         <p className="text-sm leading-relaxed text-ink-muted">
-          {isMember ? (
+          {isLeave ? (
+            <>
+              You will lose access to{' '}
+              <strong className="text-ink font-medium">{name}</strong>. You can
+              join again only if an owner invites you back.
+            </>
+          ) : isMember ? (
             <>
               <strong className="text-ink font-medium">{name}</strong> will stop
               being assignable to new expenses, and will no longer be offered in
@@ -64,7 +80,12 @@ export function ConfirmRemoval({
          * lost.
          */}
         <p className="text-sm leading-relaxed rounded-[var(--radius-md)] border border-rule bg-[var(--color-paper-sunk)] p-3">
-          {isMember ? (
+          {isLeave ? (
+            <>
+              Your name stays on every expense you were part of. Nothing in the
+              ledger is rewritten, and no history is lost.
+            </>
+          ) : isMember ? (
             <>
               Expenses already split with {name} keep their name, their colour
               and their share. Nothing in the ledger is rewritten, and no
@@ -85,6 +106,16 @@ export function ConfirmRemoval({
           </p>
         )}
 
+        {/* The owner handover, said out loud because it is the one part of
+            leaving that is not obvious: somebody else is about to be able to
+            remove members from this household because of you. */}
+        {isLeave && isOwner && (
+          <p className="text-xs leading-relaxed text-ink-faint">
+            You own this household, so the next member in will become its owner
+            before you go.
+          </p>
+        )}
+
         <div className="flex gap-2.5 pt-1">
           <Button
             type="button"
@@ -95,10 +126,14 @@ export function ConfirmRemoval({
             onClick={onConfirm}
           >
             {busy
-              ? 'Removing…'
-              : isMember
-                ? 'Remove member'
-                : 'Archive category'}
+              ? isLeave
+                ? 'Leaving…'
+                : 'Removing…'
+              : isLeave
+                ? 'Leave household'
+                : isMember
+                  ? 'Remove member'
+                  : 'Archive category'}
           </Button>
           <Button
             type="button"

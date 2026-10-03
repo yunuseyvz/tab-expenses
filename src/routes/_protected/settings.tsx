@@ -31,6 +31,7 @@ import {
   archiveMember,
   createCategory,
   createMember,
+  leaveSpace,
   updateSpace,
 } from '#/lib/space.functions'
 import {
@@ -267,6 +268,29 @@ function SettingsRoute() {
     onError: (e) => toast.error(e instanceof Error ? e.message : 'Failed'),
   })
 
+  /**
+   * Leave the household.
+   *
+   * A full navigation when done, and it is not optional here: with zero spaces
+   * every protected route redirects to /setup, and an in-app transition would
+   * render one frame of a household this person is no longer in. `listMySpaces`
+   * is invalidated first so the space list is already correct by the time the
+   * next loader asks.
+   */
+  const leaveHousehold = useMutation({
+    mutationFn: () => leaveSpace({ data: { spaceId: spaceId! } }),
+    onSuccess: () => {
+      toast.success('You left the household')
+      void queryClient.invalidateQueries({ queryKey: spaceKeys.mySpaces })
+      setRemoving(null)
+      window.location.href = '/dashboard'
+    },
+    onError: (e) => {
+      toast.error(e instanceof Error ? e.message : 'Could not leave')
+      setRemoving(null)
+    },
+  })
+
   const removeCategory = useMutation({
     mutationFn: (categoryId: string) =>
       archiveCategory({ data: { spaceId: spaceId!, categoryId } }),
@@ -299,8 +323,31 @@ function SettingsRoute() {
    * because there was not one.
    */
   const ownerCount = members.data?.filter((m) => m.role === 'owner').length ?? 0
+
+  /**
+   * Whether *this* member can be removed, and by whom.
+   *
+   * Two conditions, and the first one used to be missing here. The server has
+   * always required an owner to archive anybody — `archiveMember` calls
+   * `requireSpaceOwner` — but the button was rendered for everyone who passed
+   * the last-owner check. So an ordinary member saw a delete button on every row
+   * of the household they belonged to, and clicking it produced a permission
+   * error from a screen that had just told them they could do it. Offering a
+   * control the server will refuse is worse than not offering it: it teaches
+   * people the app is unreliable.
+   *
+   * The X is now owner-only. A plain member gets no removal control on other
+   * rows, and gets `Leave household` for their own row further down, which is the
+   * thing they actually have a right to do.
+   */
+  const isOwner = space?.role === 'owner'
   const canRemove = (m: { role: string }) =>
-    m.role !== 'owner' || ownerCount > 1
+    isOwner && (m.role !== 'owner' || ownerCount > 1)
+
+  /** The viewer's own roster row, for the leave button. */
+  const myMember = (members.data ?? []).find(
+    (m) => m.userId === me.data?.user.id,
+  )
 
   return (
     <AppShell>
@@ -384,12 +431,34 @@ function SettingsRoute() {
             />
           )}
 
-          {space?.role === 'owner' && (
+          {isOwner && (
             <SettingsRow
               icon={UserPlus}
               label="Invite people"
               hint="Via a link"
               onClick={() => setInviteSheet(true)}
+            />
+          )}
+
+          {/* Leaving is available to everybody, and is a different gesture from
+              being removed: it is the one thing on a roster that is always
+              yours to do, and somebody removed from a household they no longer
+              belong to cannot come back and press it. */}
+          {myMember && (
+            <SettingsRow
+              label="Leave this household"
+              hint={
+                myMember.role === 'owner'
+                  ? 'Someone else becomes the owner'
+                  : 'You can rejoin with an invite'
+              }
+              onClick={() =>
+                setRemoving({
+                  kind: 'leave',
+                  id: myMember.id,
+                  name: space?.name ?? 'this household',
+                })
+              }
             />
           )}
         </SettingsGroup>
@@ -628,17 +697,21 @@ function SettingsRoute() {
         <ConfirmRemoval
           kind={removing.kind}
           name={removing.name}
+          isOwner={myMember?.role === 'owner'}
           busy={
             removing.kind === 'member'
               ? removeMember.isPending
-              : removeCategory.isPending
+              : removing.kind === 'category'
+                ? removeCategory.isPending
+                : leaveHousehold.isPending
           }
           onCancel={() => setRemoving(null)}
-          onConfirm={() =>
-            removing.kind === 'member'
-              ? removeMember.mutate(removing.id)
-              : removeCategory.mutate(removing.id)
-          }
+          onConfirm={() => {
+            if (removing.kind === 'member') removeMember.mutate(removing.id)
+            else if (removing.kind === 'category')
+              removeCategory.mutate(removing.id)
+            else leaveHousehold.mutate()
+          }}
         />
       )}
 

@@ -14,7 +14,7 @@
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 
-import type { SpaceMember } from '#/lib/db/schema'
+import type { MemberListItem } from '#/lib/space.functions'
 import type { ExpenseRow } from '#/lib/expense.functions'
 import { getSession } from '#/lib/auth.functions'
 import { editBlockedReason } from '#/lib/may-edit'
@@ -32,7 +32,7 @@ export function useMayEditExpense(spaceId: string | null) {
   const viewer = useMemo(() => {
     const userId = me.data?.user.id ?? null
     const row = (members.data ?? []).find(
-      (m: SpaceMember) => m.userId === userId,
+      (m: MemberListItem) => m.userId === userId,
     )
     return { userId, role: row?.role ?? null }
   }, [me.data, members.data])
