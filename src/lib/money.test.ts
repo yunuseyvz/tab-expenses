@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
   BP_TOTAL,
+  MAX_AMOUNT_MINOR,
   allocate,
   formatMinor,
   formatMoney,
+  isAmountTooLarge,
   parseAmountToMinor,
 } from './money'
 
@@ -97,6 +99,55 @@ describe('parseAmountToMinor', () => {
     expect(() => parseAmountToMinor('abc')).toThrow(/invalid amount/)
     expect(() => parseAmountToMinor('')).toThrow(/invalid amount/)
     expect(() => parseAmountToMinor('1.2.3')).toThrow(/invalid amount/)
+  })
+
+  /**
+   * The boundary, stated on both sides. A cap is off by one exactly when only one
+   * of these is tested, and the mistake is invisible until somebody's rent
+   * payment is refused.
+   */
+  it('allows the ceiling exactly and refuses one cent over', () => {
+    expect(MAX_AMOUNT_MINOR).toBe(999_999_999)
+    expect(parseAmountToMinor('9999999.99')).toBe(MAX_AMOUNT_MINOR)
+    expect(() => parseAmountToMinor('10000000')).toThrow(/too large/)
+    expect(() => parseAmountToMinor('9999999.999')).toThrow(/invalid amount/)
+  })
+
+  /**
+   * A pasted total in cents is the realistic way to hit this: 1234.56 becomes
+   * 123456 and the number looks plausible, so only the ceiling catches it.
+   */
+  it('refuses a units slip that is still a valid amount', () => {
+    expect(parseAmountToMinor('123456')).toBe(12_345_600)
+    expect(() => parseAmountToMinor('99999999')).toThrow(/too large/)
+  })
+
+  it('refuses values that would overflow the column', () => {
+    // 2147483647 is int4's ceiling. The cap is deliberately lower so the failure
+    // is a sentence rather than "integer out of range".
+    expect(MAX_AMOUNT_MINOR).toBeLessThan(2_147_483_647)
+    expect(() => parseAmountToMinor('99999999999999999999')).toThrow(
+      /too large/,
+    )
+  })
+})
+
+describe('isAmountTooLarge', () => {
+  it('answers without throwing, whatever it is handed', () => {
+    // This is called on every keystroke, so it must not be the same function
+    // that throws.
+    expect(isAmountTooLarge('9999999.99')).toBe(false)
+    expect(isAmountTooLarge('10000000')).toBe(true)
+    expect(isAmountTooLarge('')).toBe(false)
+    expect(isAmountTooLarge('abc')).toBe(false)
+    expect(isAmountTooLarge('1.234')).toBe(false)
+    expect(isAmountTooLarge('-5')).toBe(false)
+  })
+
+  it('is not the same answer as "parses to something"', () => {
+    // The distinction the form depends on: a big number is not a malformed one.
+    expect(isAmountTooLarge('10000000')).toBe(true)
+    expect(isAmountTooLarge('nonsense')).toBe(false)
   })
 })
 

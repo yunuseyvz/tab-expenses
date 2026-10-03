@@ -1,0 +1,1 @@
+ALTER TABLE "expense" ADD CONSTRAINT "expense_amount_within_limit" CHECK ("expense"."amount_minor" <= 999999999);

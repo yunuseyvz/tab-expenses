@@ -242,6 +242,41 @@ describe('categoryInputSchema', () => {
   })
 })
 
+describe('the amount ceiling', () => {
+  /**
+   * The cap has three enforcement points and this asserts the outermost one
+   * returns a validation error rather than throwing. That last part is the one
+   * worth having: the check is `isAmountTooLarge` rather than
+   * `parseAmountToMinor` precisely because zod runs every refinement even after an
+   * earlier one has failed, so a malformed amount reached the throwing parser and
+   * escaped as a RangeError.
+   */
+  it('accepts the ceiling and refuses one cent over', () => {
+    expect(amountStringSchema.safeParse('9999999.99').success).toBe(true)
+    expect(amountStringSchema.safeParse('10000000').success).toBe(false)
+  })
+
+  it('names the limit in the message, so it can be acted on', () => {
+    const result = amountStringSchema.safeParse('10000000')
+    expect(result.success).toBe(false)
+    expect(result.error?.issues[0]?.message).toContain('9999999.99')
+  })
+
+  it('returns a failure for junk rather than throwing', () => {
+    for (const bad of ['-5', 'abc', '', '1.234', '1.2.3', '  ']) {
+      const result = amountStringSchema.safeParse(bad)
+      expect(result.success, bad).toBe(false)
+    }
+  })
+
+  it('catches a units slip that is still well-formed', () => {
+    // The realistic failure: a total pasted in cents. Perfectly valid input, and
+    // only the ceiling stops it.
+    expect(amountStringSchema.safeParse('123456.78').success).toBe(true)
+    expect(amountStringSchema.safeParse('12345678').success).toBe(false)
+  })
+})
+
 describe('expenseInputSchema', () => {
   const base = {
     spaceId: '018f0000-0000-7000-8000-000000000001',

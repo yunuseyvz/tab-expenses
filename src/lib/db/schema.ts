@@ -233,6 +233,16 @@ export const expense = pgTable(
     index('expense_category_idx').on(t.categoryId),
     index('expense_payer_idx').on(t.paidByMemberId),
     check('expense_amount_positive', sql`${t.amountMinor} > 0`),
+    // The ceiling, in the column rather than only in the request validator.
+    // `amountStringSchema` and `parseAmountToMinor` both refuse it, which covers
+    // every path the app has — but those are application rules, and this is the
+    // one that holds if a write arrives from anywhere else. Raw DDL rather than
+    // an interpolated constant for the same reason as `bpTotal` above: the
+    // migrator sends no bind parameters.
+    //
+    // Kept just under the int4 ceiling (2 147 483 647) so a value that trips this
+    // gets a sentence somebody can read rather than "integer out of range".
+    check('expense_amount_within_limit', sql`${t.amountMinor} <= 999999999`),
   ],
 )
 

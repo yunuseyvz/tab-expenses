@@ -50,6 +50,13 @@
       "when": 1791054247065,
       "tag": "0006_clammy_mongoose",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1791056050439,
+      "tag": "0007_breezy_mauler",
+      "breakpoints": true
     }
   ]
 }

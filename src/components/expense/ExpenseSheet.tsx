@@ -14,7 +14,13 @@ import { Listbox } from '#/components/ui/Listbox'
 import { CategoryDot } from '#/components/CategoryDot'
 import { SplitEditor } from '#/components/expense/SplitEditor'
 import { createExpense, updateExpense } from '#/lib/expense.functions'
-import { parseAmountToMinor } from '#/lib/money'
+import {
+  MAX_AMOUNT,
+  MAX_AMOUNT_MINOR,
+  formatMoney,
+  isAmountTooLarge,
+  parseAmountToMinor,
+} from '#/lib/money'
 import { today } from '#/lib/period'
 
 /**
@@ -119,6 +125,15 @@ export function ExpenseSheet({
     (c) => c.scope === 'shared' || c.ownerMemberId === paidByMemberId,
   )
 
+  /**
+   * Whether the typed amount is over the ceiling.
+   *
+   * Read from the string rather than from `amountMinor`, because that is 0 for an
+   * amount too big as well as for one that failed to parse — the two would be
+   * indistinguishable and the field would say "zero" about a nine-figure number.
+   */
+  const amountTooLarge = amount.trim() !== '' && isAmountTooLarge(amount)
+
   const remainderBp = 10_000 - drafts.reduce((s, d) => s + d.weightBp, 0)
   const canSave =
     Boolean(spaceId) &&
@@ -211,11 +226,23 @@ export function ExpenseSheet({
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
             placeholder="0.00"
-            aria-invalid={amount !== '' && amountMinor === 0}
+            // `max` does nothing for a text-mode numeric field on every browser,
+            // so the cap is enforced in the validator and in the database. It is
+            // here as the hint a numeric keypad offers on some platforms.
+            max={MAX_AMOUNT}
+            aria-invalid={
+              amount !== '' && (amountMinor === 0 || amountTooLarge)
+            }
             // Sans, matching the figures it will become. A serif at this size
             // fought the field it sits in rather than characterising it.
             className="tnum text-2xl font-medium tracking-tight"
           />
+          {amountTooLarge && (
+            <p role="alert" className="text-sm text-oxblood-ink mt-1.5">
+              That is more than {formatMoney(MAX_AMOUNT_MINOR, currency)}. Check
+              for a units slip — a total typed in cents, say.
+            </p>
+          )}
         </div>
 
         <div>

@@ -75,16 +75,82 @@ export function allocate(
   return shares
 }
 
-/** Parse a major-unit decimal string ("12.34") into integer minor units. */
-export function parseAmountToMinor(input: string): number {
+/**
+ * The largest amount a ledger will hold, in minor units.
+ *
+ * Just under the `int4` ceiling of 2 147 483 647, and deliberately so: a cap at
+ * the column's own maximum would be enforced by Postgres as an out-of-range
+ * error rather than as anything a person could act on, and would leave no room
+ * for the column to be widened later.
+ *
+ * €9 999 999.99 is roughly a hundred thousand years of groceries. It exists to
+ * catch a fat finger — a pasted total, a stray keypress of zeroes, a units
+ * mistake where cents were typed as major units — and nothing else. A household
+ * ledger that genuinely needs more than ten million euros on one line is not a
+ * household ledger.
+ *
+ * The same bound is a check constraint in the schema, because this constant on
+ * its own is only reached by whatever happens to call it: a CSV row, an import,
+ * a future write path. The column also rejects negatives already
+ * (`expense_amount_positive`), so between the two the column is a sane integer.
+ */
+export const MAX_AMOUNT_MINOR = 999_999_999
+
+/** The same bound as typed into the form, for messages and input attributes. */
+export const MAX_AMOUNT = 9_999_999.99
+
+/**
+ * Major-unit decimal to minor units, or null if the string is not one.
+ *
+ * The single place that knows how a typed amount becomes an integer, because two
+ * callers need it and they disagree if there are two. `parseAmountToMinor` throws
+ * on a bad or oversized value; `isAmountTooLarge` has to tell those two apart.
+ * An earlier version of the second one caught everything and returned false,
+ * which made "too large" — the only answer it exists to give — unreachable, and
+ * the test is what caught that rather than any amount the app would have stored.
+ *
+ * No bound is applied here; that is the caller's business.
+ */
+function toMinorOrNull(input: string): number | null {
   const trimmed = input.trim().replace(',', '.')
-  if (!/^\d+(\.\d{1,2})?$/.test(trimmed)) {
+  if (!/^\d+([.,]\d{1,2})?$/.test(trimmed)) return null
+  const [whole = '0', frac = ''] = trimmed.split('.')
+  const minor = Number(whole) * 100 + Number(frac.padEnd(2, '0') || 0)
+  return Number.isFinite(minor) ? minor : null
+}
+
+/**
+ * Parse a major-unit decimal string ("12.34") into integer minor units.
+ *
+ * Throws `RangeError` past {@link MAX_AMOUNT_MINOR}. Enforced here rather than
+ * only in the request validator so every caller is covered — the CSV importer
+ * parses amounts through this function and would otherwise be a way around it.
+ */
+export function parseAmountToMinor(input: string): number {
+  const minor = toMinorOrNull(input)
+  if (minor === null) {
     throw new RangeError(`invalid amount: ${JSON.stringify(input)}`)
   }
-  const [whole = '0', frac = ''] = trimmed.split('.')
-  const sign = whole.startsWith('-') ? -1 : 1
-  const absWhole = whole.replace('-', '')
-  return sign * (Number(absWhole) * 100 + Number(frac.padEnd(2, '0') || 0))
+  if (minor > MAX_AMOUNT_MINOR) {
+    throw new RangeError(`amount is too large: ${JSON.stringify(input)}`)
+  }
+  return minor
+}
+
+/**
+ * Whether a typed amount is over {@link MAX_AMOUNT_MINOR}.
+ *
+ * Separate from `parseAmountToMinor` because the two answer different questions.
+ * Parsing throws, which is right for a write path and wrong for a live field:
+ * a form that threw while you typed would either swallow the keystroke or show a
+ * stack trace, and the honest thing on screen is a message under the input while
+ * the rest of the form stays usable.
+ */
+export function isAmountTooLarge(input: string): boolean {
+  const minor = toMinorOrNull(input)
+  // Unparseable is not "too large": the field already calls a malformed or zero
+  // amount invalid, and that is a different message about a different mistake.
+  return minor !== null && minor > MAX_AMOUNT_MINOR
 }
 
 /** Format integer minor units for display, e.g. 12345 → "123.45". */

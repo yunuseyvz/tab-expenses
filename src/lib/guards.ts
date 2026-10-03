@@ -7,7 +7,12 @@
  */
 import { z } from 'zod'
 
-import { BP_TOTAL } from './money'
+import {
+  BP_TOTAL,
+  MAX_AMOUNT_MINOR,
+  formatMinor,
+  isAmountTooLarge,
+} from './money'
 import { CATEGORY_ICON_NAMES } from './category-icons'
 import { AVATAR_KEYS } from './avatars'
 
@@ -17,12 +22,30 @@ export const currencySchema = z
   .toUpperCase()
   .regex(/^[A-Z]{3}$/, 'currency must be a 3-letter ISO code')
 
-/** A positive decimal amount string like "12.34". */
+/**
+ * A positive decimal amount string like "12.34", capped at ten million.
+ *
+ * The cap is stated as a message rather than as a bare refusal, because the
+ * commonest way to hit it is a units mistake — pasting a total in cents, or a
+ * zero key held down — and "amount must be 9999999.99 or less" is the thing
+ * somebody can act on. It mirrors MAX_AMOUNT_MINOR, which is where the real
+ * enforcement lives; this exists so the person finds out in the field rather than
+ * as a 500 from the write.
+ */
 export const amountStringSchema = z
   .string()
   .trim()
   .regex(/^\d+([.,]\d{1,2})?$/, 'enter an amount like 12.34')
   .refine((s) => Number(s.replace(',', '.')) > 0, 'amount must be above zero')
+  // `isAmountTooLarge` rather than `parseAmountToMinor`: zod runs every chained
+  // refinement even after an earlier one has failed, so a negative or a
+  // malformed amount reached the parser and came back as a thrown RangeError
+  // instead of a validation result. A validator that throws on the inputs it is
+  // supposed to reject is a 500 with a stack trace where a field error belongs.
+  .refine(
+    (s) => !isAmountTooLarge(s),
+    `amount must be ${formatMinor(MAX_AMOUNT_MINOR)} or less`,
+  )
 
 export const isoDateSchema = z
   .string()
