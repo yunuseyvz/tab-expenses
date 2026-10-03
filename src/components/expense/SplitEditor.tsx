@@ -21,10 +21,10 @@
  */
 import { useMemo } from 'react'
 
-import type { SpaceMember } from '#/lib/db/schema'
+import type { MemberListItem } from '#/lib/space.functions'
+import { MemberAvatar } from '#/components/MemberAvatar'
 import { NumberField } from '#/components/ui/NumberField'
 import { allocate, formatMoney } from '#/lib/money'
-import { swatchColor } from '#/lib/swatches'
 
 export interface SplitDraft {
   memberId: string
@@ -85,7 +85,7 @@ export function SplitEditor({
   onPaidByChange,
   onDraftsChange,
 }: {
-  members: Array<SpaceMember>
+  members: Array<MemberListItem>
   amountMinor: number
   currency: string
   paidByMemberId: string | null
@@ -187,7 +187,9 @@ export function SplitEditor({
       draft: d,
       member: members.find((m) => m.id === d.memberId),
     }))
-    .filter((x): x is { draft: SplitDraft; member: SpaceMember } => !!x.member)
+    .filter(
+      (x): x is { draft: SplitDraft; member: MemberListItem } => !!x.member,
+    )
 
   return (
     <div className="space-y-5">
@@ -236,10 +238,11 @@ export function SplitEditor({
                     className="size-[1.15rem] rounded accent-[var(--color-terracotta)]
                       shrink-0 cursor-pointer"
                   />
-                  <span
-                    aria-hidden
-                    className="h-2.5 w-2.5 rounded-full shrink-0"
-                    style={{ background: swatchColor(m.color) }}
+                  <MemberAvatar
+                    memberId={m.id}
+                    avatar={m.userAvatar}
+                    name={m.displayName}
+                    size={20}
                   />
                   <span className="text-sm truncate min-w-0 flex-1">
                     {m.displayName}
@@ -290,13 +293,14 @@ export function SplitEditor({
               return (
                 <div key={member.id}>
                   <div className="flex items-center justify-between mb-1 gap-2">
-                    <span className="text-sm flex items-center gap-2 min-w-0 truncate">
-                      <span
-                        aria-hidden
-                        className="h-2 w-2 rounded-full shrink-0"
-                        style={{ background: swatchColor(member.color) }}
+                    <span className="text-sm flex items-center gap-2 min-w-0">
+                      <MemberAvatar
+                        memberId={member.id}
+                        avatar={member.userAvatar}
+                        name={member.displayName}
+                        size={18}
                       />
-                      {member.displayName}
+                      <span className="truncate">{member.displayName}</span>
                     </span>
                     <span className="flex items-center gap-2 shrink-0">
                       {/* Live euro figure: rounding made visible, so the number

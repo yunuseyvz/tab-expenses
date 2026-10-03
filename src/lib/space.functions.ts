@@ -19,7 +19,14 @@ import {
   requireSpaceOwner,
 } from './auth.functions'
 import { getDb } from './db'
-import { category, expense, space, spaceInvite, spaceMember } from './db/schema'
+import {
+  category,
+  expense,
+  space,
+  spaceInvite,
+  spaceMember,
+  user,
+} from './db/schema'
 import {
   avatarKeySchema,
   categoryInputSchema,
@@ -267,8 +274,37 @@ export const getSpace = createServerFn({ method: 'GET' })
 // ── members ───────────────────────────────────────────────────────────────
 
 /**
+ * One row of the roster, as `listMembers` returns it.
+ *
+ * Named rather than reusing `SpaceMember` because it is not that type: it carries
+ * `userAvatar`, which comes from the joined account and does not live on the
+ * member row at all. Callers that type a prop as `SpaceMember` therefore silently
+ * lose the avatar, which is exactly the mistake this type exists to make
+ * impossible.
+ */
+export interface MemberListItem {
+  id: string
+  spaceId: string
+  userId: string | null
+  displayName: string
+  color: string
+  defaultWeightBp: number
+  role: 'owner' | 'member'
+  archivedAt: Date | null
+  createdAt: Date
+  /** Their account avatar key, or null for a virtual member. */
+  userAvatar: string | null
+}
+
+/**
  * Members of a space. `userId` is null for a virtual member — someone carrying a
  * share without ever registering.
+ *
+ * `userAvatar` comes from the joined account, so it is null for a virtual member
+ * and for one whose account is gone. That is not a gap: a virtual member has no
+ * account to hold an avatar, and every caller passes the member id as the seed
+ * so the component derives a stable identicon instead. Two people on one roster
+ * therefore still look different, which is the whole point of drawing them.
  */
 export const listMembers = createServerFn({ method: 'GET' })
   .inputValidator(z.object({ spaceId: uuidSchema }))
@@ -277,16 +313,32 @@ export const listMembers = createServerFn({ method: 'GET' })
     await requireSpaceMember(session.user.id, data.spaceId)
     const db = getDb()
 
-    return db
-      .select()
-      .from(spaceMember)
-      .where(
-        and(
-          eq(spaceMember.spaceId, data.spaceId),
-          isNull(spaceMember.archivedAt),
-        ),
-      )
-      .orderBy(asc(spaceMember.createdAt))
+    return (
+      db
+        .select({
+          id: spaceMember.id,
+          spaceId: spaceMember.spaceId,
+          userId: spaceMember.userId,
+          displayName: spaceMember.displayName,
+          color: spaceMember.color,
+          defaultWeightBp: spaceMember.defaultWeightBp,
+          role: spaceMember.role,
+          archivedAt: spaceMember.archivedAt,
+          createdAt: spaceMember.createdAt,
+          userAvatar: user.avatar,
+        })
+        .from(spaceMember)
+        // Left, not inner: a virtual member has no account row, and an inner join
+        // would drop every one of them from the roster.
+        .leftJoin(user, eq(spaceMember.userId, user.id))
+        .where(
+          and(
+            eq(spaceMember.spaceId, data.spaceId),
+            isNull(spaceMember.archivedAt),
+          ),
+        )
+        .orderBy(asc(spaceMember.createdAt))
+    )
   })
 
 export const createMember = createServerFn({ method: 'POST' })

@@ -12,6 +12,7 @@ import { getSession, listMySpaces, updateProfile } from '#/lib/auth.functions'
 import { AppShell, Sheet } from '#/components/AppShell'
 import { authClient } from '#/lib/auth-client'
 import { Avatar } from '#/components/Avatar'
+import { MemberAvatar } from '#/components/MemberAvatar'
 import { AvatarPicker } from '#/components/AvatarPicker'
 import { IconPicker } from '#/components/IconPicker'
 import { InvitePanel } from '#/components/InvitePanel'
@@ -315,9 +316,15 @@ function SettingsRoute() {
               key={m.id}
               label={
                 <span className="flex items-center gap-2.5">
+                  <MemberAvatar
+                    memberId={m.id}
+                    avatar={m.userAvatar}
+                    name={m.displayName}
+                    size={22}
+                  />
                   <span
                     aria-hidden
-                    className="h-3 w-3 rounded-full shrink-0"
+                    className="h-2.5 w-2.5 rounded-full shrink-0"
                     style={{ background: swatchColor(m.color) }}
                   />
                   <span className="truncate">{m.displayName}</span>

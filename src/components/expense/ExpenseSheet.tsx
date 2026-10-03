@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
-import type { Category, SpaceMember } from '#/lib/db/schema'
+import type { Category } from '#/lib/db/schema'
+import type { MemberListItem } from '#/lib/space.functions'
 import type { SplitDraft } from '#/components/expense/SplitEditor'
 import type { ExpenseRow } from '#/lib/expense.functions'
 import { Sheet } from '#/components/AppShell'
@@ -44,7 +45,7 @@ export function ExpenseSheet({
   onClose: () => void
   spaceId: string | null
   categories: Array<Category>
-  members: Array<SpaceMember>
+  members: Array<MemberListItem>
   currency?: string
   editing?: ExpenseRow | null
 }) {

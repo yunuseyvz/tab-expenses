@@ -19,6 +19,7 @@ import {
   expenseSplit,
   space,
   spaceMember,
+  user,
 } from './db/schema'
 import {
   expenseInputSchema,
@@ -59,6 +60,8 @@ export interface SplitRow {
   displayName: string
   color: string
   archivedAt: Date | null
+  /** Their account avatar, or null — then the caller derives one from memberId. */
+  avatar: string | null
   weightBp: number
   shareMinor: number
 }
@@ -80,6 +83,8 @@ export interface ExpenseRow {
   paidByColor: string
   /** When the payer left the household, if they have. */
   paidByArchivedAt: Date | null
+  /** The payer's account avatar, or null — then derive one from paidByMemberId. */
+  paidByAvatar: string | null
   createdByUserId: string | null
   createdAt: string
   splits: Array<SplitRow>
@@ -103,6 +108,10 @@ function expenseSelect() {
     paidByName: spaceMember.displayName,
     paidByColor: spaceMember.color,
     paidByArchivedAt: spaceMember.archivedAt,
+    // The payer's account avatar, so a list of expenses shows faces rather than
+    // a column of names. Null for a virtual payer, who then gets an identicon
+    // derived from the member id.
+    paidByAvatar: user.avatar,
     createdByUserId: expense.createdByUserId,
     createdAt: expense.createdAt,
   }
@@ -124,11 +133,13 @@ async function splitsFor(
       displayName: spaceMember.displayName,
       color: spaceMember.color,
       archivedAt: spaceMember.archivedAt,
+      avatar: user.avatar,
       weightBp: expenseSplit.weightBp,
       shareMinor: expenseSplit.shareMinor,
     })
     .from(expenseSplit)
     .innerJoin(spaceMember, eq(expenseSplit.memberId, spaceMember.id))
+    .leftJoin(user, eq(spaceMember.userId, user.id))
     .where(
       and(
         eq(spaceMember.spaceId, spaceId),
@@ -148,6 +159,7 @@ async function splitsFor(
       displayName: displayMemberName(r.displayName, r.archivedAt),
       color: r.color,
       archivedAt: r.archivedAt,
+      avatar: r.avatar,
       weightBp: r.weightBp,
       shareMinor: r.shareMinor,
     }
@@ -630,6 +642,10 @@ export const listExpenses = createServerFn({ method: 'GET' })
       .from(expense)
       .leftJoin(category, eq(expense.categoryId, category.id))
       .innerJoin(spaceMember, eq(expense.paidByMemberId, spaceMember.id))
+      // For the payer's avatar, so a list of expenses shows faces rather than a
+      // column of names. Left, not inner: a virtual payer has no account row, and
+      // an inner join here would drop every expense they paid.
+      .leftJoin(user, eq(spaceMember.userId, user.id))
       .where(and(...conditions))
       .orderBy(desc(expense.spentOn), desc(expense.createdAt))
       .limit(data.limit)
@@ -745,6 +761,8 @@ export interface MemberBalance {
   displayName: string
   color: string
   userId: string | null
+  /** Their account avatar, or null — then the caller derives one from memberId. */
+  avatar: string | null
   paidMinor: number
   shareMinor: number
   netMinor: number
@@ -797,6 +815,7 @@ export const getBalances = createServerFn({ method: 'GET' })
         displayName: spaceMember.displayName,
         color: spaceMember.color,
         userId: spaceMember.userId,
+        avatar: user.avatar,
         paidMinor: sql<number>`coalesce(
           sum(${expense.amountMinor}) filter (where ${expense.paidByMemberId} = ${spaceMember.id}),
           0
@@ -811,6 +830,7 @@ export const getBalances = createServerFn({ method: 'GET' })
         )::int`,
       })
       .from(spaceMember)
+      .leftJoin(user, eq(spaceMember.userId, user.id))
       .leftJoin(expenseSplit, eq(expenseSplit.memberId, spaceMember.id))
       .leftJoin(expense, and(...expenseJoin))
       .where(
@@ -824,6 +844,11 @@ export const getBalances = createServerFn({ method: 'GET' })
         spaceMember.displayName,
         spaceMember.color,
         spaceMember.userId,
+        // Postgres requires every selected column to be grouped or aggregated, and
+        // the avatar is selected. It is functionally dependent on space_member.id
+        // but only because it is the primary key, and relying on that is not
+        // portable — so it is grouped like the rest.
+        user.avatar,
       )
 
     const balances: Array<MemberBalance> = rows.map((r) => {
@@ -834,6 +859,7 @@ export const getBalances = createServerFn({ method: 'GET' })
         displayName: r.displayName,
         color: r.color,
         userId: r.userId,
+        avatar: r.avatar,
         paidMinor: paid,
         shareMinor: share,
         netMinor: paid - share,

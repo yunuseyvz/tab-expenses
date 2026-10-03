@@ -7,6 +7,7 @@ import type { PeriodPreset } from '#/lib/period'
 import type { ExpenseRow } from '#/lib/expense.functions'
 import type { ListFilter } from '#/lib/session'
 import { CountUp } from '#/components/CountUp'
+import { MemberAvatar } from '#/components/MemberAvatar'
 import {
   Card,
   CardHeader,
@@ -220,9 +221,19 @@ export function Dashboard({
                       <span className="truncate text-sm font-medium block">
                         {e.purpose}
                       </span>
-                      <span className="truncate text-xs text-ink-faint tnum block">
-                        {e.categoryName ?? 'Uncategorised'} · {e.paidByName} ·{' '}
-                        {e.spentOn}
+                      <span className="flex items-center gap-1.5 min-w-0 mt-0.5">
+                        <MemberAvatar
+                          memberId={e.paidByMemberId}
+                          avatar={e.paidByAvatar}
+                          name={e.paidByName}
+                          size={15}
+                        />
+                        <span className="truncate text-xs text-ink-faint">
+                          {e.paidByName}
+                        </span>
+                        <span className="truncate text-xs text-ink-faint/70 tnum">
+                          {e.categoryName ?? 'Uncategorised'} · {e.spentOn}
+                        </span>
                       </span>
                     </span>
                     <span className="tnum text-sm font-medium shrink-0">

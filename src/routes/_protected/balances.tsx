@@ -16,6 +16,7 @@ import { balancesQuery, rememberedSpaceQuery, spaceKeys } from '#/lib/session'
 import { listMySpaces } from '#/lib/auth.functions'
 import { formatMoney } from '#/lib/money'
 import { resolvePeriod } from '#/lib/period'
+import { MemberAvatar } from '#/components/MemberAvatar'
 import { swatchColor } from '#/lib/swatches'
 import { useCurrentSpace } from '#/hooks/useCurrentSpace'
 import { resolveSpaceId } from '#/lib/space-preference'
@@ -138,9 +139,18 @@ function BalancesRoute() {
               </CardHeader>
               {data.balances.map((b) => (
                 <Row key={b.memberId}>
+                  {/* The face, with the colour dot kept beside it: the dot
+                      identifies them at a glance across a long list, and the
+                      face is what tells you *which* Alex. */}
+                  <MemberAvatar
+                    memberId={b.memberId}
+                    avatar={b.avatar}
+                    name={b.displayName}
+                    size={26}
+                  />
                   <span
                     aria-hidden
-                    className="h-3 w-3 rounded-full shrink-0"
+                    className="h-2.5 w-2.5 rounded-full shrink-0"
                     style={{ background: swatchColor(b.color) }}
                   />
                   <div className="min-w-0 flex-1">

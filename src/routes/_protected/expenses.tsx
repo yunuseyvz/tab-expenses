@@ -11,6 +11,7 @@ import { AppShell } from '#/components/AppShell'
 import { NewExpenseButton } from '#/components/NewExpenseButton'
 import { Select } from '#/components/ui/Input'
 import { Card } from '#/components/ui/Card'
+import { MemberAvatar } from '#/components/MemberAvatar'
 import { ExpenseSheet } from '#/components/expense/ExpenseSheet'
 import { listMySpaces } from '#/lib/auth.functions'
 import {
@@ -256,11 +257,25 @@ function ExpensesRoute() {
                           <span className="truncate text-sm font-medium block">
                             {e.purpose}
                           </span>
-                          <span className="truncate text-xs text-ink-faint block">
-                            {e.categoryName ?? 'Uncategorised'} · paid by{' '}
-                            {e.paidByName}
-                            {e.splits.length > 1 &&
-                              ` · split ${e.splits.length} ways`}
+                          <span className="flex items-center gap-1.5 min-w-0 mt-0.5">
+                            {/* The payer's face, not their name alone. On a household
+                                ledger "who is this" is asked far more often than "how
+                                much", and a column of identical text asked the reader to
+                                hold the roster in their head to answer it. */}
+                            <MemberAvatar
+                              memberId={e.paidByMemberId}
+                              avatar={e.paidByAvatar}
+                              name={e.paidByName}
+                              size={15}
+                            />
+                            <span className="truncate text-xs text-ink-faint">
+                              {e.paidByName}
+                            </span>
+                            <span className="truncate text-xs text-ink-faint/70">
+                              {e.categoryName ?? 'Uncategorised'}
+                              {e.splits.length > 1 &&
+                                ` · split ${e.splits.length} ways`}
+                            </span>
                           </span>
                         </span>
                         <span className="tnum text-sm font-medium shrink-0">
