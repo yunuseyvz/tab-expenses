@@ -378,6 +378,39 @@ function SettingsRoute() {
           title="Household"
           hint={space ? `${space.name} · ${space.currency}` : undefined}
         >
+          {/*
+            First row, above the roster, because it is a property of the whole
+            household rather than of anybody on it — it answers "how much do we
+            trust each other here", and the list underneath is the people that
+            answer applies to. It was down in Data, next to import and export,
+            which is where the eye goes to move data in and out rather than to
+            decide who may change it.
+            *
+            * Off by default, and owner-only: in a shared ledger, letting anyone
+            * rewrite anyone else's entries means one person can change what
+            * another is shown they spent, which is worse than the extra friction.
+          */}
+          {isOwner && (
+            <SettingsRow
+              label="Members can edit each other's expenses"
+              hint={
+                space.editableByMembers
+                  ? 'Anyone can change any entry'
+                  : 'Only whoever added it'
+              }
+            >
+              <Switch
+                ariaLabel="Members can edit each other's expenses"
+                // `checked` stays the stored value rather than an optimistic
+                // local one: the write can be refused, and a switch that springs
+                // over and then springs back is worse than one that waits.
+                checked={space.editableByMembers}
+                onChange={(next) =>
+                  setPermissions.mutate({ editableByMembers: next })
+                }
+              />
+            </SettingsRow>
+          )}
           {(members.data ?? []).map((m) => (
             <SettingsRow
               key={m.id}
@@ -627,34 +660,6 @@ function SettingsRoute() {
           title="Data"
           hint={space ? 'Everyone sees the same ledger' : undefined}
         >
-          {/*
-            Off by default. In a shared ledger, letting anyone rewrite anyone
-            else's entries means one person can change what another is shown they
-            spent, which is worse than the extra friction. Owner-only, because it
-            is a decision about how much this household trusts itself.
-          */}
-          {space?.role === 'owner' && (
-            <SettingsRow
-              label="Members can edit each other's expenses"
-              hint={
-                space.editableByMembers
-                  ? 'Anyone can change any entry'
-                  : 'Only whoever added it'
-              }
-            >
-              <Switch
-                ariaLabel="Members can edit each other's expenses"
-                // `checked` stays the stored value rather than an optimistic
-                // local one: the write can be refused, and a switch that
-                // springs over and then springs back is worse than one that
-                // waits.
-                checked={space.editableByMembers}
-                onChange={(next) =>
-                  setPermissions.mutate({ editableByMembers: next })
-                }
-              />
-            </SettingsRow>
-          )}
           <SettingsRow
             // Down for import, up for export: the arrows point the way the file
             // travels. Import brings data *into* the app, export takes it out,
