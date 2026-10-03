@@ -6,8 +6,17 @@ import {
   expenseInputSchema,
   isoDateSchema,
 } from './guards'
-import { groupByDay, presetToPeriod, toISODate } from './period'
+import {
+  PERIOD_PRESETS,
+  groupByDay,
+  periodControlLabel,
+  periodLabel,
+  presetToPeriod,
+  resolvePeriod,
+  toISODate,
+} from './period'
 import { settle } from './settle'
+import type { PeriodPreset } from './period'
 
 describe('settle', () => {
   it('balances the plan’s 60/40 shared-flat scenario to zero', () => {
@@ -239,6 +248,93 @@ describe('categoryInputSchema', () => {
         ownerMemberId: null,
       }).success,
     ).toBe(false)
+  })
+})
+
+describe('periodControlLabel', () => {
+  it('names the preset when there is one', () => {
+    // `all` is excluded on purpose and has its own test below: "All" names the
+    // choice, so the control says what it shows instead.
+    for (const { key, label } of PERIOD_PRESETS.filter(
+      (p) => p.key !== 'all',
+    )) {
+      expect(periodControlLabel(key)).toBe(label)
+    }
+  })
+
+  /**
+   * The case that produced a button with an icon, a chevron and nothing between
+   * them. The routes cast `?period=` without checking it, so a value this build
+   * does not know reaches the control; `presetToPeriod` matches no case for it
+   * and yields no bounds, so the loader showed all time and the label has to say
+   * so too. Anything else here is a control that disagrees with the list under it.
+   */
+  it('describes the window when the preset is not one it knows', () => {
+    const bogus = 'lastQuarter' as PeriodPreset
+    expect(PERIOD_PRESETS.some((p) => p.key === bogus)).toBe(false)
+    // No bounds, which is the whole claim: the label and the query agree.
+    expect(presetToPeriod(bogus)).toEqual({ from: null, to: null })
+    expect(resolvePeriod(bogus)).toEqual({ from: null, to: null })
+    // And the label function survives being handed it, which it did not: it used
+    // to throw inside periodLabel on the undefined this produced.
+    expect(() => periodLabel(resolvePeriod(bogus))).not.toThrow()
+    expect(periodControlLabel(bogus)).toBe('All time')
+    expect(periodControlLabel(bogus)).not.toBe('')
+  })
+
+  it('describes a custom range as dates, since it has no name to show', () => {
+    expect(periodControlLabel('custom', '2026-09-28', '2026-10-11')).toBe(
+      'Sep 28, 2026 – Oct 11, 2026',
+    )
+    expect(periodControlLabel('custom', '2026-09-28')).toBe('from Sep 28, 2026')
+    expect(periodControlLabel('custom', undefined, '2026-10-11')).toBe(
+      'until Oct 11, 2026',
+    )
+    // Neither bound set is not an error, it is all time, and it says so rather
+    // than showing the word "Custom".
+    expect(periodControlLabel('custom')).toBe('All time')
+  })
+
+  it('calls the unbounded preset the window rather than the mechanism', () => {
+    // "All" names the choice, not the answer.
+    expect(periodControlLabel('all')).toBe('All time')
+  })
+
+  it('never returns an empty string, whatever it is handed', () => {
+    // The empty-button bug, pinned at the level it can be pinned without a
+    // browser: a value with no preset name behind it still gets the window.
+    for (const key of [
+      'all',
+      'custom',
+      'unknown',
+      '',
+      'week',
+      'lastQuarter',
+      'THISMONTH',
+    ] as Array<PeriodPreset>) {
+      expect(
+        periodControlLabel(key).length,
+        JSON.stringify(key),
+      ).toBeGreaterThan(0)
+    }
+  })
+
+  it('never contradicts the bounds the loader used', () => {
+    // The invariant that matters: whatever the button says, the list underneath is
+    // showing those dates. A bounded preset deliberately reads as its name rather
+    // than as its dates, so the test is that the two are *distinguishable* — if
+    // they ever came out identical the control would be describing the wrong
+    // thing without looking wrong.
+    for (const key of [
+      'thisWeek',
+      'lastBiweek',
+      'thisMonth',
+      'thisQuarter',
+    ] as Array<PeriodPreset>) {
+      const resolved = resolvePeriod(key)
+      expect(resolved.from, key).not.toBeNull()
+      expect(periodControlLabel(key)).not.toBe(periodLabel(resolved))
+    }
   })
 })
 

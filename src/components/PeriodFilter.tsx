@@ -1,47 +1,57 @@
-import { useEffect, useRef, useState } from 'react'
+/**
+ * The period control, on every screen that has one.
+ *
+ * ONE DROPDOWN, not a row of pills. There are eight bounded presets plus a custom
+ * range, and a control with nine options does not fit on a phone in any
+ * arrangement: as pills it wrapped onto three lines and pushed the numbers below
+ * it down the screen, and trimmed to three it made the week and the quarter
+ * second-class. So the control is a single button naming the window you picked,
+ * with every other choice inside it. One line everywhere, nothing unreachable.
+ *
+ * This is the same argument the earlier redesign made about the *custom range*,
+ * which was a second control sitting beside the presets. Two controls answering
+ * one question ("which dates am I looking at") was the original mistake, and
+ * adding presets to one of them without folding the other in would have rebuilt
+ * it. The two date fields live inside this panel, not behind their own trigger.
+ *
+ * The button names the preset you picked rather than repeating the dates it
+ * resolves to, because the screen header above it already states the window and
+ * two identical strings forty pixels apart read as a fault. A custom range has
+ * no name to show, so that one *is* the dates, formatted by `periodLabel` — the
+ * same function the header uses, so a range is described in one way in the app.
+ *
+ * Dates apply as they are picked, with no Apply button, because every other
+ * control here takes effect on click and a button labelled only "Apply" beside
+ * fields that visibly redraw the list underneath is noise.
+ */
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { CalendarRange, Check, ChevronDown } from 'lucide-react'
+
+import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 
 import type { PeriodPreset } from '#/lib/period'
-import { PERIOD_PRESETS } from '#/lib/period'
+import { PERIOD_PRESETS, periodControlLabel } from '#/lib/period'
 import { DateField } from '#/components/ui/DateField'
 import { usePopoverPlacement } from '#/hooks/usePopoverPlacement'
 import { cn } from '#/lib/cn'
 
+const PANEL_WIDTH = 268
+
 /**
- * From `PERIOD_PRESETS`, so the label here and the one in Settings cannot
- * disagree. Custom is not in that list — it is a disclosure rather than a
- * window, and it goes last.
+ * The bounded presets plus the custom range, in one list.
+ *
+ * `PERIOD_PRESETS` holds only the eight bounded ones, so `custom` is added here
+ * rather than being a pill of its own somewhere else. Order is deliberately the
+ * cadence ladder — week, fortnight, month, quarter — with the past twins beside
+ * their present and "All" at the end, which is how the data is stored and how
+ * anybody looks for a window.
  */
-const PRESETS: Array<{ key: PeriodPreset; label: string }> = [
+const CHOICES = [
   ...PERIOD_PRESETS.map(({ key, label }) => ({ key, label })),
-  { key: 'custom', label: 'Custom' },
+  { key: 'custom' as const, label: 'Custom range' },
 ]
 
-const PANEL_WIDTH = 300
-
-/**
- * The period control, on every screen that has one.
- *
- * Previously three: a joined segmented control on the dashboard and two rows of
- * separate pills elsewhere, with the custom range on exactly one of them. That
- * made "the same control" mean something different depending on the page, and
- * it is why Custom was ever missing from two screens.
- *
- * CUSTOM IS ITS OWN DISCLOSURE
- * The two attempts before this were both wrong in instructive ways. A trailing
- * "Dates" button needed a trigger of its own merely to stay dimmed until Custom
- * was chosen, and its popover — wider than its own button — hung off the right
- * edge of a phone. Putting the fields on a row of their own fixed the overflow
- * but cost a line of vertical space on every screen, permanently, to show two
- * controls that are meaningless nine times out of ten.
- *
- * So Custom opens the panel itself. There is nothing else to click, nothing
- * inert to grey out, and nothing to reserve space for. The panel hangs off the
- * Custom pill, which is the one control whose meaning is "I want to set dates".
- *
- * Dates apply as they are picked — no Apply button — because every other control
- * in this filter takes effect on click, and a button that only says "Apply" next
- * to two fields that visibly change the list underneath is noise.
- */
 export function PeriodFilter({
   current,
   from,
@@ -59,26 +69,37 @@ export function PeriodFilter({
   }) => void
   className?: string
 }) {
-  const custom = current === 'custom'
   const [open, setOpen] = useState(false)
   const root = useRef<HTMLDivElement>(null)
-  const { anchor, placement } = usePopoverPlacement<HTMLSpanElement>({
-    open,
-    width: PANEL_WIDTH,
-  })
+  const options = useRef<Array<HTMLButtonElement | null>>([])
+  const { anchor, panel, panelEl, floating } =
+    usePopoverPlacement<HTMLButtonElement>({ open, width: PANEL_WIDTH })
 
-  // A popover that outlives the thing it is about is worse than no popover.
-  useEffect(() => {
-    if (!custom) setOpen(false)
-  }, [custom])
+  const showDates = current === 'custom'
 
+  // A popover that outlives the thing it is about is worse than no popover: pick
+  // a preset and there is nothing left inside it to adjust, so it closes. Custom
+  // is the exception — it *is* the adjustment, and the panel closes on the pick
+  // that reveals the fields.
   useEffect(() => {
     if (!open) return
     const onPointerDown = (e: PointerEvent) => {
-      if (!root.current?.contains(e.target as Node)) setOpen(false)
+      const target = e.target as Node
+      // Both halves, because the panel is portalled and is therefore not inside
+      // `root`. Checking only `root` would close it the instant you touched it.
+      if (!root.current?.contains(target) && !panelEl?.contains(target)) {
+        setOpen(false)
+      }
     }
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false)
+      if (e.key !== 'Escape') return
+      setOpen(false)
+      // Focus is on an option inside the panel, and the panel is about to
+      // unmount, which drops focus onto <body> — so the control that opened it
+      // can no longer be reopened without starting the tab order from the top of
+      // the document again. Verified in a browser: Escape used to land on body
+      // and a following Enter did nothing at all.
+      anchor.current?.focus()
     }
     document.addEventListener('pointerdown', onPointerDown)
     document.addEventListener('keydown', onKeyDown)
@@ -86,137 +107,192 @@ export function PeriodFilter({
       document.removeEventListener('pointerdown', onPointerDown)
       document.removeEventListener('keydown', onKeyDown)
     }
-  }, [open])
+  }, [open, panelEl])
 
-  const unbounded = !from && !to
+  /**
+   * Roving focus over the choices.
+   *
+   * Not decoration. The pills were tabbable in series, and a portal puts the
+   * panel at the end of the tab order, so without this the options would be
+   * reachable only by tabbing past the entire rest of the page — which is how a
+   * control that becomes the *only* way to pick a window ends up unusable by
+   * keyboard. Focus moves rather than the selection; Space and Enter still pick,
+   * as they do on any button.
+   */
+  const moveFocus = (at: number, delta: number) => {
+    const next = (at + delta + CHOICES.length) % CHOICES.length
+    options.current[next]?.focus()
+  }
+
+  const onTriggerKeyDown = (e: ReactKeyboardEvent) => {
+    if (e.key !== 'ArrowDown' && e.key !== 'Enter' && e.key !== ' ') return
+    e.preventDefault()
+    setOpen(true)
+    // Wait for the panel to mount before reaching into it.
+    queueMicrotask(() => {
+      const at = Math.max(
+        0,
+        CHOICES.findIndex((c) => c.key === current),
+      )
+      options.current[at]?.focus()
+    })
+  }
+
+  /**
+   * What the button says.
+   *
+   * The preset's name, not the dates it resolves to: the screen header above
+   * already states the window, and two identical strings forty pixels apart read
+   * as a rendering fault. A custom range has no name to show, so that one *is* the
+   * dates. `periodControlLabel` owns the decision, including what to do about a
+   * `?period=` this build does not recognise — which used to render an empty
+   * button.
+   */
+  const label = useMemo(
+    () => periodControlLabel(current, from, to),
+    [current, from, to],
+  )
 
   return (
     <div ref={root} className={cn('mb-4', className)}>
-      <div
-        role="radiogroup"
-        aria-label="Period"
-        className="flex flex-wrap items-center gap-1.5"
+      <button
+        ref={anchor}
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        onKeyDown={onTriggerKeyDown}
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        className="inline-flex max-w-full items-center gap-2
+          rounded-[var(--radius-sm)] bg-paper-raised px-3 py-1.5 text-sm
+          shadow-[var(--shadow-raise)] transition-colors duration-150"
       >
-        {PRESETS.map((p) => {
-          const active = current === p.key
-          const isCustom = p.key === 'custom'
-          const pill = (
-            <button
-              type="button"
-              role="radio"
-              aria-checked={active}
-              aria-haspopup={isCustom ? 'dialog' : undefined}
-              aria-expanded={isCustom ? open : undefined}
-              onClick={() => {
-                if (!isCustom) {
-                  onChange({ period: p.key })
-                  return
-                }
-                // First press selects it *and* opens the panel, because a
-                // control that changes state without showing you what the state
-                // does is the definition of a dead end. A second press closes it.
-                if (!active) onChange({ period: p.key })
-                setOpen((o) => (active ? !o : true))
-              }}
-              className={cn(
-                'px-2.5 py-1.5 text-sm rounded-[var(--radius-sm)]',
-                'transition-[background-color,box-shadow] duration-150',
-                active
-                  ? 'bg-paper-raised shadow-[var(--shadow-raise)]'
-                  : 'bg-paper-sunk shadow-[var(--shadow-deboss)]',
-              )}
-            >
-              {p.label}
-            </button>
-          )
+        <CalendarRange
+          size={15}
+          aria-hidden
+          className="shrink-0 text-ink-faint"
+        />
+        {/* The window is the label. `truncate` on the flex child, not the
+            button, so a long custom range shrinks instead of pushing the
+            chevron out of the control. */}
+        <span className="tnum truncate">{label}</span>
+        <ChevronDown
+          size={14}
+          aria-hidden
+          className="shrink-0 text-ink-muted transition-transform duration-200"
+          style={{ transform: open ? 'rotate(180deg)' : undefined }}
+        />
+      </button>
 
-          // Every branch of this map needs a key, and that is load-bearing
-          // rather than housekeeping. Three of the four presets return the bare
-          // button; only the custom one is wrapped. A list whose children are
-          // partly keyed and partly not reconciles by position for the unkeyed
-          // ones, and the popover's anchor ref — which lives on the wrapper —
-          // ended up on the *second* pill instead of Custom. The clamp then
-          // measured that button's box, decided the panel fitted, and left it
-          // hanging 149px off the right edge of a phone.
-          if (!isCustom) return <span key={p.key}>{pill}</span>
-
-          return (
-            <span key={p.key} ref={anchor} className="relative inline-flex">
-              {pill}
-              {open && (
-                <div
-                  role="dialog"
-                  aria-label="Custom date range"
-                  style={
-                    placement
-                      ? { left: placement.left, width: placement.width }
-                      : undefined
-                  }
-                  // top-full, not just a margin: without it `top` is auto, the
-                  // panel falls back to its static position beside the pill, and
-                  // it swallows the very click that is meant to close it.
-                  className="absolute z-50 top-full mt-1.5 left-0
-                    w-[min(18.75rem,calc(100vw-1rem))]
-                    rounded-[var(--radius-lg)] border border-rule
-                    bg-[var(--color-paper-raised)]
-                    p-3 shadow-[var(--shadow-float)]"
-                >
-                  <div className="space-y-2">
-                    <div>
-                      <span className="block text-xs text-ink-faint mb-1">
-                        From
-                      </span>
-                      <DateField
-                        label="From date"
-                        placeholder="Any date"
-                        compact
-                        value={from ?? ''}
-                        onChange={(v) => onChange({ from: v || undefined })}
-                      />
-                    </div>
-                    <div>
-                      <span className="block text-xs text-ink-faint mb-1">
-                        To
-                      </span>
-                      <DateField
-                        label="To date"
-                        placeholder="Any date"
-                        compact
-                        value={to ?? ''}
-                        onChange={(v) => onChange({ to: v || undefined })}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Stated rather than left to be inferred: an empty range
-                      means no bounds, which means everything. Without this,
-                      choosing Custom looks like it did nothing at all — which is
-                      indistinguishable from a filter that is broken. */}
-                  {unbounded && (
-                    <p className="mt-2.5 text-xs text-ink-faint">
-                      No dates set, so everything is shown.
-                    </p>
-                  )}
-
-                  {!unbounded && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        onChange({ from: undefined, to: undefined })
+      {open &&
+        floating &&
+        createPortal(
+          <div
+            ref={panel}
+            style={{
+              left: floating.left,
+              top: floating.top,
+              width: floating.width,
+            }}
+            className="fixed z-[60] rounded-[var(--radius-md)] border border-rule
+              bg-[var(--color-paper-raised)] p-1.5 shadow-[var(--shadow-float)]"
+          >
+            {/* The listbox holds options and nothing else. The date fields below
+                are not options, and putting a form inside a listbox tells a
+                screen reader the fields are choices. */}
+            <div role="listbox" aria-label="Period">
+              {CHOICES.map(({ key, label: optionLabel }, i) => {
+                const active = current === key
+                return (
+                  <button
+                    key={key}
+                    ref={(el) => {
+                      options.current[i] = el
+                    }}
+                    type="button"
+                    role="option"
+                    aria-selected={active}
+                    onKeyDown={(e) => {
+                      if (e.key === 'ArrowDown') {
+                        e.preventDefault()
+                        moveFocus(i, 1)
+                      } else if (e.key === 'ArrowUp') {
+                        e.preventDefault()
+                        moveFocus(i, -1)
                       }
-                      className="mt-2.5 text-xs text-ink-muted
-                        transition-colors duration-150 hover:text-ink
-                        underline underline-offset-4"
-                    >
-                      Clear dates
-                    </button>
-                  )}
+                    }}
+                    onClick={() => {
+                      onChange({ period: key })
+                      // Every choice but custom leaves nothing in the panel to
+                      // adjust, and a popover left hanging over a list that has
+                      // already changed is just in the way.
+                      if (key !== 'custom') setOpen(false)
+                      // Back to the trigger, because the option that had focus is
+                      // about to unmount with the panel. Without this, picking a
+                      // window by mouse or by Enter drops focus onto <body> and
+                      // the next Tab starts again from the top of the document.
+                      anchor.current?.focus()
+                    }}
+                    className={cn(
+                      'flex w-full items-center gap-2',
+                      'rounded-[var(--radius-sm)] px-2.5 py-2 text-left text-sm',
+                      'transition-colors duration-150',
+                      'hover:bg-[var(--color-paper-sunk)]',
+                      active && 'font-medium',
+                    )}
+                  >
+                    <Check
+                      size={13}
+                      aria-hidden
+                      className={cn(
+                        'shrink-0 text-ink-faint',
+                        !active && 'invisible',
+                      )}
+                    />
+                    <span className="truncate">{optionLabel}</span>
+                  </button>
+                )
+              })}
+            </div>
+
+            {showDates && (
+              <div className="mt-1.5 space-y-2 border-t border-rule px-0.5 pt-2.5">
+                <div>
+                  <span className="mb-1 block text-xs text-ink-faint">
+                    From
+                  </span>
+                  <DateField
+                    label="From date"
+                    placeholder="Any date"
+                    compact
+                    value={from ?? ''}
+                    onChange={(v) => onChange({ from: v || undefined })}
+                  />
                 </div>
-              )}
-            </span>
-          )
-        })}
-      </div>
+                <div>
+                  <span className="mb-1 block text-xs text-ink-faint">To</span>
+                  <DateField
+                    label="To date"
+                    placeholder="Any date"
+                    compact
+                    value={to ?? ''}
+                    onChange={(v) => onChange({ to: v || undefined })}
+                  />
+                </div>
+                {(from || to) && (
+                  <button
+                    type="button"
+                    onClick={() => onChange({ from: undefined, to: undefined })}
+                    className="pt-0.5 text-xs text-terracotta-ink underline
+                      underline-offset-2"
+                  >
+                    Clear dates
+                  </button>
+                )}
+              </div>
+            )}
+          </div>,
+          document.body,
+        )}
     </div>
   )
 }

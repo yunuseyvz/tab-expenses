@@ -225,6 +225,26 @@ export function presetToPeriod(preset: PeriodPreset): Period {
     case 'all':
     case 'custom':
       return { from: null, to: null }
+    default:
+      // Reachable, and the reason this function is not simply trusted to be
+      // exhaustive. `PeriodPreset` comes off a URL search param that the routes
+      // cast without checking (`s.period as PeriodPreset`), so a hand-typed
+      // `?period=lastQuarter` arrives here as a string the type system insists is
+      // a preset. With no `default`, the switch fell off the end and returned
+      // `undefined` — from a function declared to return `Period`, which the
+      // compiler had no reason to doubt.
+      //
+      // That `undefined` then reached `periodLabel(period)` on the dashboard and
+      // threw `Cannot read properties of undefined (reading 'from')`, taking the
+      // whole screen down over a query string.
+      //
+      // "No bounds" is the honest answer and is what this function already
+      // returns for `all`: a preset nobody recognises resolves to no window, and
+      // the screen shows everything, which is what the caller asked for by
+      // naming something that does not exist. `asCycleKey` is what narrows the
+      // *settlement cycle*, where an unrecognised value must not silently become
+      // a cadence.
+      return { from: null, to: null }
   }
 }
 
@@ -237,6 +257,9 @@ export function presetToPeriod(preset: PeriodPreset): Period {
  * `to`, then computed its filter from `presetToPeriod(deps.period)` and threw
  * them away, so choosing Custom silently showed all time. One function so a
  * loader and its component cannot disagree about which dates a screen shows.
+ *
+ * Total by construction: it cannot return `undefined`, whatever it is handed.
+ * See the `default` in `presetToPeriod` for why that is not a formality.
  */
 export function resolvePeriod(
   preset: PeriodPreset,
@@ -247,6 +270,39 @@ export function resolvePeriod(
     return { from: from ?? null, to: to ?? null }
   }
   return presetToPeriod(preset)
+}
+
+/**
+ * What the period control calls itself.
+ *
+ * The preset's own name where one exists, and the resolved dates where none does.
+ *
+ * Three cases are not preset names. `all` and `custom` name the *mechanism* —
+ * "All" and "Custom range" say which of the nine you picked, not what dates you
+ * ended up looking at — so both describe the window instead. And a preset this
+ * build does not recognise reaches here from the URL, which casts the search
+ * param without checking it. `resolvePeriod` gives such a key no bounds, because
+ * it matches no case in `presetToPeriod`, so "All time" is not a guess here: it
+ * is what the loader fetched with.
+ *
+ * That last case is the reason this falls back rather than returning
+ * `PERIOD_PRESETS.find(...)?.label`. The first version did exactly that, and a
+ * hand-typed `?period=lastQuarter` produced a button with a calendar icon, a
+ * chevron, and no text between them.
+ */
+export function periodControlLabel(
+  preset: PeriodPreset,
+  from?: string,
+  to?: string,
+  locale = 'en',
+): string {
+  if (preset === 'all' || preset === 'custom') {
+    return periodLabel(resolvePeriod(preset, from, to), locale)
+  }
+  return (
+    PERIOD_PRESETS.find((p) => p.key === preset)?.label ??
+    periodLabel(resolvePeriod(preset, from, to), locale)
+  )
 }
 
 export function periodLabel(period: Period, locale = 'en'): string {

@@ -4,13 +4,16 @@ import {
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from 'react'
+import { createPortal } from 'react-dom'
 import { Check, ChevronDown } from 'lucide-react'
 import type { ReactElement, ReactNode } from 'react'
 
+import { usePopoverPlacement } from '#/hooks/usePopoverPlacement'
 import { cn } from '#/lib/cn'
 
 /**
@@ -30,6 +33,21 @@ import { cn } from '#/lib/cn'
  *   to an option starting with what you typed. Options carry
  *   aria-selected and the active one is tracked with aria-activedescendant, so a
  *   screen reader follows along without focus leaving the trigger.
+ *
+ * THE PANEL IS PORTALLED, and that is not a detail. It used to be `absolute`
+ * inside this control, which is fine until the control sits in a settings card:
+ * those cards carry `overflow-hidden` to clip their hairlines to the rounded
+ * corners, so the panel was cut off at the card's edge — the Settlement cycle
+ * row showed one and a half of its four options and no indication that three
+ * more existed. Worse, nothing in that chain established a stacking context, so
+ * the *next* settings group painted straight over the rest of the panel. Both
+ * are invisible in isolation and only show up where a dropdown lands inside a
+ * card, which is exactly where the settlement cycle lives.
+ *
+ * Portalling also means the panel is matched to the trigger's measured width
+ * rather than stretching between two offsets that a flex row can make enormous,
+ * and it can flip above the trigger when there is no room below instead of
+ * running off the bottom of a phone.
  */
 export interface ListboxOption {
   value: string
@@ -65,8 +83,33 @@ export function Listbox({
   const [active, setActive] = useState(0)
   const [typed, setTyped] = useState('')
   const root = useRef<HTMLDivElement>(null)
-  const panel = useRef<HTMLDivElement>(null)
+  const trigger = useRef<HTMLButtonElement>(null)
   const listId = useId()
+
+  // The panel matches the trigger's width, which has to be measured rather than
+  // guessed: the trigger is a `flex` child whose width comes from whatever
+  // `className` the call site passed (`w-48` on the member filter, `w-36` on the
+  // settings row). Reading it back on open is cheaper than making every call site
+  // state its width twice, and it cannot drift from the control it belongs to.
+  const [triggerWidth, setTriggerWidth] = useState(0)
+  const { anchor, panel, panelEl, floating } =
+    usePopoverPlacement<HTMLButtonElement>({
+      // Placement waits for the measurement. The panel is rendered only once
+      // `floating` exists, so holding the hook closed until then is what stops a
+      // one-frame panel at width zero appearing at the wrong place.
+      open: open && triggerWidth > 0,
+      width: triggerWidth,
+    })
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setTriggerWidth(0)
+      return
+    }
+    setTriggerWidth(
+      Math.round(trigger.current?.getBoundingClientRect().width ?? 0),
+    )
+  }, [open])
 
   const selectedIndex = useMemo(
     () => options.findIndex((o) => o.value === value),
@@ -83,19 +126,25 @@ export function Listbox({
   useEffect(() => {
     if (!open) return
     const onPointerDown = (e: PointerEvent) => {
-      if (!root.current?.contains(e.target as Node)) setOpen(false)
+      const target = e.target as Node
+      // Both halves. The panel is portalled, so it is not inside `root`, and a
+      // check that only knew about the trigger closed the panel the moment you
+      // pressed any of the options it exists to offer.
+      if (!root.current?.contains(target) && !panelEl?.contains(target)) {
+        setOpen(false)
+      }
     }
     document.addEventListener('pointerdown', onPointerDown)
     return () => document.removeEventListener('pointerdown', onPointerDown)
-  }, [open])
+  }, [open, panelEl])
 
   // Keep the highlighted option in view while arrowing through a long list.
   useEffect(() => {
     if (!open) return
-    panel.current
+    panelEl
       ?.querySelector<HTMLElement>(`[data-index="${active}"]`)
       ?.scrollIntoView({ block: 'nearest' })
-  }, [open, active])
+  }, [open, active, panelEl])
 
   const step = useCallback(
     (delta: number) => {
@@ -183,6 +232,10 @@ export function Listbox({
   return (
     <div ref={root} className={cn('relative', className)}>
       <button
+        ref={(el) => {
+          ;(anchor as { current: HTMLButtonElement | null }).current = el
+          trigger.current = el
+        }}
         id={id}
         type="button"
         role="combobox"
@@ -223,66 +276,80 @@ export function Listbox({
         />
       </button>
 
-      {open && (
-        <div
-          ref={panel}
-          id={listId}
-          role="listbox"
-          aria-label={label}
-          tabIndex={-1}
-          className="absolute z-50 mt-1.5 left-0 right-0
-            max-h-64 overflow-y-auto overscroll-contain
-            rounded-[var(--radius-md)] border border-rule
-            bg-[var(--color-paper-raised)]
-            p-1
-            shadow-[var(--shadow-float)]"
-          onKeyDown={onKeyDown}
-        >
-          {options.map((option, i) => {
-            const isSelected = option.value === value
-            const isActive = i === active
-            return (
-              <div
-                key={option.value}
-                id={`${listId}-opt-${i}`}
-                role="option"
-                aria-selected={isSelected}
-                aria-disabled={option.disabled || undefined}
-                data-index={i}
-                // onMouseDown, not onClick: the blur that follows a click would
-                // tear the panel down before the click landed.
-                onMouseDown={(e) => {
-                  e.preventDefault()
-                  commit(i)
-                }}
-                onMouseEnter={() => setActive(i)}
-                className={cn(
-                  'flex items-center gap-2 rounded-[var(--radius-sm)] px-2.5 py-2',
-                  'text-sm cursor-pointer transition-colors duration-100',
-                  isActive
-                    ? 'bg-[var(--color-paper-sunk)] text-ink'
-                    : 'text-ink-muted',
-                  option.disabled && 'opacity-40 cursor-not-allowed',
-                  isSelected && 'font-medium',
-                )}
-              >
-                {/* The tick is reserved width whether or not it is shown, so the
-                    labels stay aligned down the list. */}
-                <Check
-                  size={14}
-                  aria-hidden
+      {open &&
+        floating &&
+        createPortal(
+          <div
+            ref={panel}
+            id={listId}
+            role="listbox"
+            aria-label={label}
+            tabIndex={-1}
+            style={{
+              left: floating.left,
+              top: floating.top,
+              width: floating.width,
+              // The hook flips the panel above the trigger when there is no room
+              // below, so it can open *upwards* from the top edge. Origin has to
+              // follow, or the panel grows away from the trigger it belongs to.
+              transformOrigin: floating.side === 'above' ? 'bottom' : 'top',
+            }}
+            className="fixed z-[60]
+              max-h-64 overflow-y-auto overscroll-contain
+              rounded-[var(--radius-md)] border border-rule
+              bg-[var(--color-paper-raised)]
+              p-1
+              shadow-[var(--shadow-float)]"
+            onKeyDown={onKeyDown}
+          >
+            {options.map((option, i) => {
+              const isSelected = option.value === value
+              const isActive = i === active
+              return (
+                <div
+                  key={option.value}
+                  id={`${listId}-opt-${i}`}
+                  role="option"
+                  aria-selected={isSelected}
+                  aria-disabled={option.disabled || undefined}
+                  data-index={i}
+                  // onMouseDown, not onClick: the blur that follows a click would
+                  // tear the panel down before the click landed.
+                  onMouseDown={(e) => {
+                    e.preventDefault()
+                    commit(i)
+                  }}
+                  onMouseEnter={() => setActive(i)}
                   className={cn(
-                    'shrink-0',
-                    isSelected ? 'text-[var(--color-terracotta)]' : 'opacity-0',
+                    'flex items-center gap-2 rounded-[var(--radius-sm)] px-2.5 py-2',
+                    'text-sm cursor-pointer transition-colors duration-100',
+                    isActive
+                      ? 'bg-[var(--color-paper-sunk)] text-ink'
+                      : 'text-ink-muted',
+                    option.disabled && 'opacity-40 cursor-not-allowed',
+                    isSelected && 'font-medium',
                   )}
-                />
-                {option.leading}
-                <span className="truncate">{option.label}</span>
-              </div>
-            )
-          })}
-        </div>
-      )}
+                >
+                  {/* The tick is reserved width whether or not it is shown, so the
+                    labels stay aligned down the list. */}
+                  <Check
+                    size={14}
+                    aria-hidden
+                    className={cn(
+                      'shrink-0',
+                      isSelected
+                        ? 'text-[var(--color-terracotta)]'
+                        : 'opacity-0',
+                    )}
+                  />
+                  {option.leading}
+                  <span className="truncate">{option.label}</span>
+                </div>
+              )
+            })}
+          </div>,
+          document.body,
+        )}
     </div>
   )
 }

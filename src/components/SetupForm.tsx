@@ -140,6 +140,7 @@ export function SetupForm({
           <Label htmlFor="currency">Currency</Label>
           <Select
             id="currency"
+            aria-label="Currency"
             value={currency}
             onChange={(e) => setCurrency(e.target.value)}
           >

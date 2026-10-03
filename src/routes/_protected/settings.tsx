@@ -1,6 +1,14 @@
 import { useState } from 'react'
 import { createFileRoute, useSearch } from '@tanstack/react-router'
-import { FileDown, FileUp, LogOut, Plus, UserPlus, X } from 'lucide-react'
+import {
+  DoorOpen,
+  FileDown,
+  FileUp,
+  LogOut,
+  Plus,
+  UserPlus,
+  X,
+} from 'lucide-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
@@ -499,6 +507,12 @@ function SettingsRoute() {
               belong to cannot come back and press it. */}
           {myMember && (
             <SettingsRow
+              // A mark in the same left-hand slot the roster and the import rows
+              // use, so the column of leading icons still lines up. DoorOpen
+              // rather than LogOut: the sign-out row in Account already uses the
+              // latter, and two rows meaning "you are leaving something" with the
+              // same glyph is a worse confusion than the near-duplicate.
+              icon={DoorOpen}
               label="Leave this household"
               hint={
                 myMember.role === 'owner'
@@ -635,7 +649,12 @@ function SettingsRoute() {
             <SettingsRow label="Settlement cycle">
               <Select
                 aria-label="Settlement cycle"
-                className="w-auto"
+                // A fixed width, not `w-auto`. The Listbox root is `relative`
+                // and its trigger is `w-full` of that, so in a flex row an
+                // auto width resolves against the whole line: the control grew to
+                // the width of its longest option, `flex-1` collapsed the label
+                // to nothing beside it, and the panel then hung past the card.
+                className="w-44 shrink-0"
                 value={asCycleKey(space.cycle) ?? 'thisMonth'}
                 disabled={setCycle.isPending}
                 onChange={(e) => setCycle.mutate(e.target.value as CycleKey)}

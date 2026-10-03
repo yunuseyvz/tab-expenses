@@ -272,6 +272,10 @@ export function ExpenseSheet({
             <Label htmlFor="category">Category</Label>
             <Listbox
               id="category"
+              // The <Label htmlFor> above names the *trigger*; the panel is a
+              // separate element in a portal and needs naming too, or it reaches a
+              // screen reader as an unnamed list of choices.
+              label="Category"
               value={categoryId}
               onChange={setCategoryId}
               options={[
