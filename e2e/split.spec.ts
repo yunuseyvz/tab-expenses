@@ -5,13 +5,13 @@
  * "Alex: €40.00" is shown while dragging so the rounding is visible and
  * trustworthy rather than something to verify after saving.
  *
- * These specs describe the editor as it is now — ONE roster, with the tick, the
- * payer pill and the share all on the same row — and they pin the one decision
- * that is easy to get wrong in either direction: rows are INDEPENDENT. Setting a
- * share must move that row and nothing else, because renormalising the rest makes
- * a typed 60/30/10 unreachable. A total that is not 100% is reported and blocks
- * Save, which is visible and has a one-tap way out; a control that rewrites the
- * numbers beside the one you edited is neither.
+ * These specs describe the editor as it is now — a strip of member chips for "Who
+ * paid" and one roster for the split — and they pin the one decision that is easy
+ * to get wrong in either direction: rows are INDEPENDENT. Setting a share must
+ * move that row and nothing else, because renormalising the rest makes a typed
+ * 60/30/10 unreachable. A total that is not 100% is reported and blocks Save,
+ * which is visible and has a one-tap way out; a control that rewrites the numbers
+ * beside the one you edited is neither.
  */
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
@@ -258,6 +258,38 @@ test.describe('split editor', () => {
     await expect(page.getByRole('radio', { name: 'Alex paid' })).toBeChecked()
     await expect(page.getByLabel('Alex percent')).toHaveCount(0)
     await expect(page.getByText('Sam covered all of it')).toBeVisible()
+  })
+
+  test('sets the payer from one strip, with one control per person', async ({
+    page,
+  }) => {
+    await page.goto('/dashboard?period=all')
+    await page.getByRole('button', { name: 'New expense' }).click()
+
+    await page.getByLabel('Amount').fill('20.00')
+    await page.getByLabel('What was it for').fill('E2E payer strip')
+
+    // The payer is one fieldset of three radios and nothing else, and the split
+    // list below it carries ticks only. A payer control repeated on every split
+    // row is the shape this replaced, and it was two decisions competing for the
+    // same glance.
+    const strip = page.getByRole('radiogroup', { name: 'Who paid' })
+    await expect(strip.getByRole('radio')).toHaveCount(3)
+    const split = page.locator('fieldset', { hasText: 'Split between' })
+    await expect(split.getByRole('radio')).toHaveCount(0)
+
+    // One tap, one choice. The real radios underneath keep it single-select.
+    await checkPayer(page, 'Alex')
+    await expect(page.getByRole('radio', { name: 'Alex paid' })).toBeChecked()
+    await checkPayer(page, 'Robin')
+    await expect(page.getByRole('radio', { name: 'Robin paid' })).toBeChecked()
+    // Single-select within the group, which is what the real radios buy: no
+    // handler has to remember to untick the previous one.
+    expect(await strip.getByRole('radio', { checked: true }).count()).toBe(1)
+
+    // Choosing a payer ticks them into the split, because somebody who paid for
+    // the household is usually sharing it.
+    await expect(page.getByLabel('Robin is part of this expense')).toBeChecked()
   })
 
   test('refuses an amount with more than two decimal places', async ({

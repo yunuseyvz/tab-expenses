@@ -29,6 +29,7 @@
  * loudest thing on the row and the percentage the quiet one, because "Fede is
  * owed €12.50" is the fact this sheet exists to record and 25% is not.
  */
+import { Check } from 'lucide-react'
 import { useMemo } from 'react'
 
 import type { MemberListItem } from '#/lib/space.functions'
@@ -330,40 +331,136 @@ export function SplitEditor({
     canAddMore || remainderBp !== 0 || (uneven && drafts.length > 1)
 
   return (
-    <fieldset>
-      {/* The real legend is for screen readers only: a <legend> inside this flex
-          row would stop being a legend in most engines. */}
-      <legend className="sr-only">Who paid and who it is split between</legend>
-      <div className="flex items-baseline justify-between gap-3 mb-2">
-        <span className="text-xs font-medium uppercase tracking-wide text-ink-muted">
-          Split between
-        </span>
+    <div className="space-y-5">
+      {/*
+        Who paid, as one strip of chips — because it is one decision.
 
-        {offerReset ? (
-          <button
-            type="button"
-            onClick={canAddMore ? presetEveryone : presetEqual}
-            disabled={disabled}
-            className="text-xs text-terracotta-ink underline underline-offset-2
+        The pill used to live on every member row, on the right, beside that
+        row's tick. That is a control repeated once per person for a choice that
+        can only be made once, and it read as a status column: the word was the
+        same on every line and only the fill differed. It also took its width
+        from the name it sat next to, which is the part of the row worth reading.
+
+        Here it has a label of its own, its own place, and exactly one tap: a
+        person, their face, their name, filled when they are the one who paid.
+        The rows below are then only ever about the split, and the tick beside a
+        name means one thing instead of competing with a radio for the same
+        glance.
+      */}
+      <fieldset>
+        <legend className="text-xs font-medium uppercase tracking-wide text-ink-muted mb-2">
+          Who paid
+        </legend>
+
+        {members.length === 0 ? (
+          <p className="text-sm text-ink-faint">
+            Add someone to this household first.
+          </p>
+        ) : (
+          <div
+            className="flex flex-wrap gap-2"
+            role="radiogroup"
+            aria-label="Who paid"
+          >
+            {members.map((m) => {
+              const isPayer = paidByMemberId === m.id
+              return (
+                <label
+                  key={m.id}
+                  className={cn(
+                    'select-none',
+                    disabled ? '' : 'cursor-pointer',
+                  )}
+                  title={
+                    isPayer
+                      ? `${m.displayName} paid for this`
+                      : `Set ${m.displayName} as payer`
+                  }
+                >
+                  <input
+                    type="radio"
+                    name="expense-payer"
+                    checked={isPayer}
+                    onChange={() => selectPayer(m.id)}
+                    disabled={disabled}
+                    aria-label={`${m.displayName} paid`}
+                    className="sr-only peer"
+                  />
+                  <span
+                    className={cn(
+                      'inline-flex items-center gap-2 h-9 pl-1.5 pr-3 rounded-full border',
+                      'text-sm transition-colors duration-150',
+                      'peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2',
+                      'peer-focus-visible:outline-[var(--color-terracotta)]',
+                      // Ink on terracotta, not white, for the same reason the
+                      // primary button is: 4.8:1 against 2.6:1, and it reads as
+                      // ink on paper, which is the art direction anyway.
+                      isPayer
+                        ? 'border-transparent bg-[var(--color-terracotta)] text-ink'
+                        : cn(
+                            'border-rule text-ink-muted',
+                            disabled
+                              ? ''
+                              : 'hover:border-terracotta-ink hover:text-ink',
+                          ),
+                    )}
+                  >
+                    <MemberAvatar
+                      memberId={m.id}
+                      avatar={m.userAvatar}
+                      name={m.displayName}
+                      size={22}
+                    />
+                    <span className="max-w-[9rem] truncate">
+                      {m.displayName}
+                    </span>
+                    {/* Colour alone is not the selection: the tick is the second
+                        signal, and it is the one that survives a screenshot in
+                        greyscale or a colour-blind reader. */}
+                    {isPayer && (
+                      <Check size={14} aria-hidden strokeWidth={2.5} />
+                    )}
+                  </span>
+                </label>
+              )
+            })}
+          </div>
+        )}
+      </fieldset>
+
+      <fieldset>
+        {/* The real legend is for screen readers only: a <legend> inside this
+            flex row would stop being a legend in most engines. */}
+        <legend className="sr-only">Who it is split between</legend>
+        <div className="flex items-baseline justify-between gap-3 mb-2">
+          <span className="text-xs font-medium uppercase tracking-wide text-ink-muted">
+            Split between
+          </span>
+
+          {offerReset ? (
+            <button
+              type="button"
+              onClick={canAddMore ? presetEveryone : presetEqual}
+              disabled={disabled}
+              className="text-xs text-terracotta-ink underline underline-offset-2
               disabled:opacity-40 disabled:no-underline
               motion-reduce:no-underline"
-          >
-            {canAddMore ? 'Everyone' : 'Equal'}
-          </button>
-        ) : drafts.length > 1 ? (
-          <span className="text-xs text-ink-faint">Split equally</span>
-        ) : null}
-      </div>
+            >
+              {canAddMore ? 'Everyone' : 'Equal'}
+            </button>
+          ) : drafts.length > 1 ? (
+            <span className="text-xs text-ink-faint">Split equally</span>
+          ) : null}
+        </div>
 
-      {members.length === 0 ? (
-        <p className="text-sm text-ink-faint">
-          Add someone to this household first.
-        </p>
-      ) : (
+        {/*
+        The roster is only about the split. The payer strip above already
+        answered who paid, and there is nothing left for a second control on
+        these rows to say.
+      */}
         <div className="-mx-2">
           {members.map((m) => {
             const included = inSplit.has(m.id)
-            const isPayer = paidByMemberId === m.id
             const draft = drafts.find((d) => d.memberId === m.id)
             const pct = draft ? draft.weightBp / 100 : 0
             /**
@@ -383,9 +480,10 @@ export function SplitEditor({
                 <div className="flex items-center gap-3">
                   {/* Tick = in the split. Whole name area is the target, because
                       the checkbox is a checkbox first and a 1.15rem one.
-                      Someone who is not sharing steps back here — but the payer
-                      pill beside it stays at full strength, because not sharing
-                      and not being able to have paid are different things. */}
+                      Someone who is not sharing steps back, because there is
+                      nothing of theirs below to show. "Who paid" lives in the
+                      strip above now, so dimming here can only ever mean "not
+                      sharing". */}
                   <label
                     className={cn(
                       'flex items-center gap-3 min-w-0 flex-1',
@@ -413,60 +511,6 @@ export function SplitEditor({
                       {m.displayName}
                     </span>
                   </label>
-
-                  {/*
-                    Who paid, as a pill rather than another radio list. It is a
-                    real radio underneath — one per group by construction, no
-                    handler that has to remember to untick the last one.
-
-                    Only the payer says Paid. Every row used to say it, filled
-                    for the payer and faint for everyone else, and three PAIDs
-                    read as a status column rather than a choice — nothing said
-                    tappable, nothing said one. Now the unselected state is an
-                    outlined action ("Set payer") and the selected state is the
-                    filled fact ("Paid"), so action and state never share a word.
-                    In read-only there is no action left, so only the fact shows.
-                  */}
-                  {disabled && !isPayer ? null : (
-                    <label
-                      className={cn(
-                        'shrink-0 select-none',
-                        disabled ? '' : 'cursor-pointer',
-                      )}
-                      title={
-                        isPayer
-                          ? `${m.displayName} paid for this`
-                          : `Set ${m.displayName} as payer`
-                      }
-                    >
-                      <input
-                        type="radio"
-                        name="expense-payer"
-                        checked={isPayer}
-                        onChange={() => selectPayer(m.id)}
-                        disabled={disabled}
-                        aria-label={`${m.displayName} paid`}
-                        className="sr-only peer"
-                      />
-                      <span
-                        className={cn(
-                          'inline-flex items-center h-8 px-3 rounded-full border',
-                          'text-[0.7rem] font-medium uppercase tracking-wide',
-                          'transition-colors duration-150',
-                          'peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2',
-                          'peer-focus-visible:outline-[var(--color-terracotta)]',
-                          // Ink on terracotta, not white, for the same reason the
-                          // primary button is: 4.8:1 against 2.6:1, and it reads
-                          // as ink on paper, which is the art direction anyway.
-                          isPayer
-                            ? 'border-transparent bg-[var(--color-terracotta)] text-ink'
-                            : 'border-rule text-ink-muted hover:border-terracotta-ink hover:text-ink',
-                        )}
-                      >
-                        {isPayer ? 'Paid' : 'Set payer'}
-                      </span>
-                    </label>
-                  )}
                 </div>
 
                 {/*
@@ -530,39 +574,41 @@ export function SplitEditor({
             )
           })}
         </div>
-      )}
 
-      {/*
-        Only ever something to fix. There used to be a sage "Totals 100%" here,
-        which is true almost every time the section is on screen, and a line that
-        is almost always true is a line people learn to stop reading — which is
-        exactly what happens to the red one when it finally matters.
+        {/*
+          Only ever something to fix. There used to be a sage "Totals 100%" here,
+          which is true almost every time the section is on screen, and a line
+          that is almost always true is a line people learn to stop reading —
+          which is exactly what happens to the red one when it finally matters.
 
-        This is the report for a total that is not 100%, and the reason the rows
-        are left independent: the sheet says so, and Save waits, rather than the
-        numbers next to yours quietly changing instead.
-      */}
-      <p
-        role="status"
-        className="text-sm font-medium mt-2 empty:hidden"
-        style={{
-          color:
-            drafts.length === 1 ? 'var(--color-sage)' : 'var(--color-oxblood)',
-        }}
-      >
-        {drafts.length === 0
-          ? 'Nobody is sharing this yet'
-          : drafts.length === 1
-            ? `${members.find((m) => m.id === drafts[0]!.memberId)?.displayName ?? 'They'} covered all of it`
-            : // Nothing to say when the total is right. Falling through to the
-              // over-assigned branch here is what printed "0% over-assigned" on
-              // every single split, which is worse than no line at all.
-              remainderBp === 0
-              ? ''
-              : remainderBp > 0
-                ? `${remainderBp / 100}% left to assign`
-                : `${-remainderBp / 100}% over-assigned`}
-      </p>
-    </fieldset>
+          This is the report for a total that is not 100%, and the reason the rows
+          are left independent: the sheet says so, and Save waits, rather than the
+          numbers next to yours quietly changing instead.
+        */}
+        <p
+          role="status"
+          className="text-sm font-medium mt-2 empty:hidden"
+          style={{
+            color:
+              drafts.length === 1
+                ? 'var(--color-sage)'
+                : 'var(--color-oxblood)',
+          }}
+        >
+          {drafts.length === 0
+            ? 'Nobody is sharing this yet'
+            : drafts.length === 1
+              ? `${members.find((m) => m.id === drafts[0]!.memberId)?.displayName ?? 'They'} covered all of it`
+              : // Nothing to say when the total is right. Falling through to the
+                // over-assigned branch here is what printed "0% over-assigned" on
+                // every single split, which is worse than no line at all.
+                remainderBp === 0
+                ? ''
+                : remainderBp > 0
+                  ? `${remainderBp / 100}% left to assign`
+                  : `${-remainderBp / 100}% over-assigned`}
+        </p>
+      </fieldset>
+    </div>
   )
 }
