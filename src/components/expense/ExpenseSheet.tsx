@@ -727,11 +727,11 @@ export function ExpenseSheet({
                 <p className="text-sm text-oxblood-ink">
                   Could not load notes.
                 </p>
-              ) : noteList.length === 0 ? (
-                <p className="text-sm text-ink-faint">
-                  Nothing here yet. Leave the first one.
-                </p>
               ) : (
+                // No empty state. "Nothing here yet. Leave the first one." said
+                // what the heading, the input and its placeholder already say,
+                // and it was the loudest line in a section whose whole purpose is
+                // the notes that are not there yet. An absence is not a message.
                 <ul className="space-y-2">
                   {noteList.map((n) => {
                     // Yours to take back, or under your entry to moderate.
