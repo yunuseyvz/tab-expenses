@@ -22,6 +22,7 @@ import { balancesQuery, expensesQuery, totalsQuery } from '#/lib/session'
 import { formatMoney } from '#/lib/money'
 import { swatchColor } from '#/lib/swatches'
 import { useMayEditExpense } from '#/hooks/useMayEditExpense'
+import { UNCATEGORISED_CHIP } from '#/lib/uncategorised'
 
 /**
  * The dashboard: total spend, your share beside it, the category donut, the
@@ -164,7 +165,7 @@ export function Dashboard({
       </div>
 
       <CategoryChips
-        categories={categories}
+        categories={[...categories, UNCATEGORISED_CHIP]}
         allIds={allCategoryIds}
         selected={selectedCategoryIds}
         onChange={setCategories}

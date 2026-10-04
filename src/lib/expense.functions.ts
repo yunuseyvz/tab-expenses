@@ -18,6 +18,7 @@ import {
   inArray,
   isNull,
   lte,
+  or,
   sql,
 } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
@@ -43,6 +44,7 @@ import { BP_TOTAL, allocate, parseAmountToMinor } from './money'
 import { settle } from './settle'
 import { displayMemberName } from './member-name'
 import { mayDeleteExpenseNote } from './may-edit'
+import { UNCATEGORISED_ID } from './uncategorised'
 import type { Db } from './db'
 import type { SQL } from 'drizzle-orm'
 import type { Settlement } from './settle'
@@ -58,13 +60,23 @@ import type { Settlement } from './settle'
  * has a "None" button, and a user who deselects everything should see a zero
  * total, not the whole ledger. `inArray(col, [])` is not usable for the middle
  * case, hence the explicit `false`.
+ *
+ * `[UNCATEGORISED_ID]` (or alongside real ids) matches entries with no category.
+ * Null cannot travel in `cats=a,b` or in `inArray()`, so the pseudo-id is
+ * translated back to `IS NULL` here — the one place that translation lives, so
+ * every screen using this helper agrees on what it means. It is stripped before
+ * `inArray()` for a reason beyond tidiness: comparing a uuid column to a
+ * non-uuid string is a Postgres error, not an empty result.
  */
 function categoryFilter(
   categoryIds: Array<string> | undefined,
 ): SQL | undefined {
   if (categoryIds === undefined) return undefined
-  if (categoryIds.length === 0) return sql`false`
-  return inArray(expense.categoryId, categoryIds)
+  const rest = categoryIds.filter((id) => id !== UNCATEGORISED_ID)
+  const uncat = categoryIds.includes(UNCATEGORISED_ID)
+  if (rest.length === 0) return uncat ? isNull(expense.categoryId) : sql`false`
+  const known = inArray(expense.categoryId, rest)
+  return uncat ? or(known, isNull(expense.categoryId)) : known
 }
 
 export interface SplitRow {
@@ -1074,8 +1086,40 @@ export const getTotals = createServerFn({ method: 'GET' })
       .groupBy(category.id, category.name, category.color, category.icon)
       .orderBy(desc(sql`coalesce(sum(${expense.amountMinor}), 0)`))
 
-    const totalMinor = byCategory.reduce((s, c) => s + c.totalMinor, 0)
-    const count = byCategory.reduce((s, c) => s + c.count, 0)
+    const [all] = await db
+      .select({
+        total: sql<number>`coalesce(sum(${expense.amountMinor}), 0)::int`,
+        n: drizzleCount(),
+      })
+      .from(expense)
+      .where(and(...conditions))
+    const totalMinor = Number(all?.total ?? 0)
+    const count = Number(all?.n ?? 0)
+
+    // Entries without a category belong to no row of the breakdown above, so
+    // they get a row of their own — same shape, toggleable like any other.
+    // The same `conditions` (including any category selection) scope it: with
+    // a real category picked and Uncategorised not among them, this counts
+    // nothing and no row is appended.
+    const [uncat] = await db
+      .select({
+        total: sql<number>`coalesce(sum(${expense.amountMinor}), 0)::int`,
+        n: drizzleCount(),
+      })
+      .from(expense)
+      .where(and(...conditions, isNull(expense.categoryId)))
+    if (Number(uncat?.n ?? 0) > 0) {
+      byCategory.push({
+        id: UNCATEGORISED_ID,
+        name: 'Uncategorised',
+        // Grey is not a swatch anyone can paint a category — see swatchColor,
+        // which passes raw CSS through for exactly this row.
+        color: 'var(--color-rule)',
+        icon: 'tag',
+        totalMinor: uncat?.total ?? 0,
+        count: uncat?.n ?? 0,
+      })
+    }
 
     // "Your share" = your portion of the filtered expenses, read from the
     // stored share_minor rather than recomputed from weights.
@@ -1091,11 +1135,13 @@ export const getTotals = createServerFn({ method: 'GET' })
       totalMinor,
       count,
       yourShareMinor: Number(share?.total ?? 0),
-      byCategory: byCategory.map((c) => ({
-        ...c,
-        totalMinor: Number(c.totalMinor),
-        count: Number(c.count),
-      })),
+      byCategory: byCategory
+        .map((c) => ({
+          ...c,
+          totalMinor: Number(c.totalMinor),
+          count: Number(c.count),
+        }))
+        .sort((a, b) => b.totalMinor - a.totalMinor),
     } satisfies TotalsResult
   })
 

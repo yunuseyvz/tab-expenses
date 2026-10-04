@@ -15,6 +15,7 @@ import {
 } from './money'
 import { CATEGORY_ICON_NAMES } from './category-icons'
 import { AVATAR_KEYS } from './avatars'
+import { UNCATEGORISED_ID } from './uncategorised'
 
 export const currencySchema = z
   .string()
@@ -191,7 +192,13 @@ export const periodFilterSchema = z.object({
   spaceId: uuidSchema,
   from: isoDateSchema.nullable().default(null),
   to: isoDateSchema.nullable().default(null),
-  categoryIds: z.array(uuidSchema).max(200).optional(),
+  // Either a category id or the Uncategorised pseudo-id, which is
+  // deliberately not a uuid so it can never collide with a real one. See
+  // UNCATEGORISED_ID: loosening this to plain strings would accept anything.
+  categoryIds: z
+    .array(z.union([uuidSchema, z.literal(UNCATEGORISED_ID)]))
+    .max(200)
+    .optional(),
   memberId: uuidSchema.nullable().optional(),
 })
 export type PeriodFilter = z.infer<typeof periodFilterSchema>

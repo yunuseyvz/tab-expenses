@@ -220,11 +220,6 @@ export function SplitEditor({
     onDraftsChange(drafts.map((d, i) => ({ ...d, weightBp: weights[i]! })))
   }
 
-  function presetEvenPairs() {
-    if (drafts.length < 2) return
-    onDraftsChange(drafts.map((d, i) => ({ ...d, weightBp: i < 2 ? 5000 : 0 })))
-  }
-
   const inSplit = new Set(drafts.map((d) => d.memberId))
   const sharers = drafts
     .map((d) => ({
@@ -457,15 +452,7 @@ export function SplitEditor({
             })}
           </div>
 
-          <div className="flex justify-end gap-3 mt-3">
-            <button
-              type="button"
-              onClick={presetEvenPairs}
-              disabled={disabled}
-              className="text-xs text-terracotta-ink underline underline-offset-2 disabled:opacity-40 disabled:no-underline"
-            >
-              First two only
-            </button>
+          <div className="flex justify-end mt-3">
             <button
               type="button"
               onClick={presetEqual}

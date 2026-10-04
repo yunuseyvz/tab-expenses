@@ -688,7 +688,6 @@ function SettingsRoute() {
               <Label htmlFor="profile-name">Name</Label>
               <Input
                 id="profile-name"
-                autoFocus
                 value={profileName ?? ''}
                 onChange={(e) => setProfileName(e.target.value)}
                 placeholder="What should we call you"

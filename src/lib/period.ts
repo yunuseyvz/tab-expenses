@@ -116,39 +116,6 @@ export function resolvePeriod(
   return presetToPeriod(preset)
 }
 
-/**
- * What the period control calls itself.
- *
- * The preset's own name where one exists, and the resolved dates where none does.
- *
- * Three cases are not preset names. `all` and `custom` name the *mechanism* —
- * "All" and "Custom range" say which of the nine you picked, not what dates you
- * ended up looking at — so both describe the window instead. And a preset this
- * build does not recognise reaches here from the URL, which casts the search
- * param without checking it. `resolvePeriod` gives such a key no bounds, because
- * it matches no case in `presetToPeriod`, so "All time" is not a guess here: it
- * is what the loader fetched with.
- *
- * That last case is the reason this falls back rather than returning
- * `PERIOD_PRESETS.find(...)?.label`. The first version did exactly that, and a
- * hand-typed `?period=lastQuarter` produced a button with a calendar icon, a
- * chevron, and no text between them.
- */
-export function periodControlLabel(
-  preset: PeriodPreset,
-  from?: string,
-  to?: string,
-  locale = 'en',
-): string {
-  if (preset === 'all' || preset === 'custom') {
-    return periodLabel(resolvePeriod(preset, from, to), locale)
-  }
-  return (
-    PERIOD_PRESETS.find((p) => p.key === preset)?.label ??
-    periodLabel(resolvePeriod(preset, from, to), locale)
-  )
-}
-
 export function periodLabel(period: Period, locale = 'en'): string {
   const fmt = (s: string) =>
     fromISODate(s).toLocaleDateString(locale, {

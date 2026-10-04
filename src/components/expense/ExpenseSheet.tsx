@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Eye, Lock, LockOpen, Plus, StickyNote, Trash2, X } from 'lucide-react'
@@ -100,6 +100,7 @@ export function ExpenseSheet({
   const [locked, setLocked] = useState(false)
 
   const editingId = editing?.id ?? null
+  const formId = useId()
 
   // The roster as of this render, for the prefill effect below to read without
   // depending on. `members` is a fresh array identity on every refetch, and an
@@ -415,13 +416,87 @@ export function ExpenseSheet({
             )}
           </button>
         }
+        footer={
+          <div
+            className="px-5 pt-3
+            bg-[var(--surface-material)]
+            backdrop-blur-[var(--material-blur)]
+            border-t border-rule
+            /* Clears the iOS home indicator, which sits over the very bottom
+               of a bottom sheet. Without this the Save button is under it on
+               a device that has one. */
+            pb-[max(1rem,env(safe-area-inset-bottom))]"
+          >
+            {readOnly ? (
+              <Button
+                type="button"
+                variant="secondary"
+                size="lg"
+                onClick={onClose}
+                className="w-full"
+              >
+                Close
+              </Button>
+            ) : (
+              <div className="flex gap-2.5">
+                {/* The trash, red and on the left where a destructive action
+                  belongs: before the thing it destroys rather than after it.
+                  Icon-only because the row already says what it deletes, and a
+                  word beside every Save would teach people to read past it.
+                  It opens a separate confirm dialog rather than swapping this
+                  footer in place — and that is load-bearing, not style. The
+                  swap was removed because of what it did: the press that
+                  dismissed it unmounted its own button mid-dispatch, and the
+                  browser completed the gesture on the form's default button
+                  instead, silently saving whatever was typed. A dialog has no
+                  form and no submit button, so there is nothing to complete
+                  onto. */}
+                {editing && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="lg"
+                    onClick={() => setConfirmingDelete(true)}
+                    aria-label={`Delete ${editing.purpose}`}
+                    title={`Delete ${editing.purpose}`}
+                    className="shrink-0 px-3 text-[var(--color-danger-fill)] hover:text-[var(--color-danger-fill)]"
+                  >
+                    <Trash2 size={18} aria-hidden />
+                  </Button>
+                )}
+                <Button
+                  type="submit"
+                  form={formId}
+                  size="lg"
+                  className="flex-1"
+                  disabled={!canSave || save.isPending}
+                >
+                  {save.isPending
+                    ? 'Saving…'
+                    : editing
+                      ? 'Save changes'
+                      : 'Save expense'}
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="lg"
+                  onClick={onClose}
+                >
+                  Cancel
+                </Button>
+              </div>
+            )}
+          </div>
+        }
       >
         <form
+          id={formId}
           onSubmit={(e) => {
             e.preventDefault()
             if (!readOnly) save.mutate()
           }}
-          className="space-y-4 pb-1"
+          className="space-y-4 pb-4"
         >
           {/* Whose entry this is, when it is not yours. The row already refused
             nothing — it opened — so this banner is what makes "read-only"
@@ -658,7 +733,10 @@ export function ExpenseSheet({
                 </ul>
               )}
 
-              <div className="flex gap-2 mt-2.5">
+              {/* The input is a fixed-height field and the icon button is a fixed
+                  square; without items-center the two sit on different
+                  baselines and the plus reads as floating. */}
+              <div className="flex gap-2 mt-2.5 items-center">
                 <Input
                   aria-label="Leave a note"
                   value={noteBody}
@@ -692,76 +770,24 @@ export function ExpenseSheet({
             </section>
           )}
 
-          <div
-            className="sticky bottom-0 -mx-5 px-5 pt-3
-            bg-[var(--surface-material)]
-            backdrop-blur-[var(--material-blur)]
-            border-t border-rule
-            /* Clears the iOS home indicator, which sits over the very bottom
-               of a bottom sheet. Without this the Save button is under it on
-               a device that has one. */
-            pb-[max(1rem,env(safe-area-inset-bottom))]"
-          >
-            {readOnly ? (
-              <Button
-                type="button"
-                variant="secondary"
-                size="lg"
-                onClick={onClose}
-                className="w-full"
-              >
-                Close
-              </Button>
-            ) : (
-              <div className="flex gap-2.5">
-                {/* The trash, red and on the left where a destructive action
-                  belongs: before the thing it destroys rather than after it.
-                  Icon-only because the row already says what it deletes, and a
-                  word beside every Save would teach people to read past it.
-                  It opens a separate confirm dialog rather than swapping this
-                  footer in place — and that is load-bearing, not style. The
-                  swap was removed because of what it did: the press that
-                  dismissed it unmounted its own button mid-dispatch, and the
-                  browser completed the gesture on the form's default button
-                  instead, silently saving whatever was typed. A dialog has no
-                  form and no submit button, so there is nothing to complete
-                  onto. */}
-                {editing && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="lg"
-                    onClick={() => setConfirmingDelete(true)}
-                    aria-label={`Delete ${editing.purpose}`}
-                    title={`Delete ${editing.purpose}`}
-                    className="shrink-0 px-3 text-[var(--color-danger-fill)] hover:text-[var(--color-danger-fill)]"
-                  >
-                    <Trash2 size={18} aria-hidden />
-                  </Button>
-                )}
-                <Button
-                  type="submit"
-                  size="lg"
-                  className="flex-1"
-                  disabled={!canSave || save.isPending}
-                >
-                  {save.isPending
-                    ? 'Saving…'
-                    : editing
-                      ? 'Save changes'
-                      : 'Save expense'}
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="lg"
-                  onClick={onClose}
-                >
-                  Cancel
-                </Button>
-              </div>
-            )}
-          </div>
+          {/* Provenance, set small and quiet at the bottom of the sheet: who
+              typed this in and when. It is the only place the author is named
+              in full, which is also what makes a read-only entry legible as
+              somebody else's rather than as a dead end. Nothing to tap, so it
+              is a paragraph and not a row. */}
+          {editing && (
+            <p className="text-xs text-ink-faint pt-1">
+              Added by {editing.createdByName ?? 'someone'}
+              {' · '}
+              <time dateTime={editing.createdAt}>
+                {new Date(editing.createdAt).toLocaleDateString('en', {
+                  day: 'numeric',
+                  month: 'short',
+                  year: 'numeric',
+                })}
+              </time>
+            </p>
+          )}
         </form>
       </Sheet>
 

@@ -27,6 +27,7 @@ import {
 } from '#/lib/session'
 import { periodLabel, resolvePeriod } from '#/lib/period'
 import { resolveSpaceId } from '#/lib/space-preference'
+import { UNCATEGORISED_ID } from '#/lib/uncategorised'
 import { useCurrentSpace } from '#/hooks/useCurrentSpace'
 
 export const Route = createFileRoute('/_protected/dashboard')({
@@ -63,7 +64,10 @@ export const Route = createFileRoute('/_protected/dashboard')({
     const period = resolvePeriod(deps.period ?? 'thisMonth', deps.from, deps.to)
 
     const categories = await qc.ensureQueryData(categoriesQuery(spaceId))
-    const allIds = categories.map((c: { id: string }) => c.id)
+    const allIds = [
+      ...categories.map((c: { id: string }) => c.id),
+      UNCATEGORISED_ID,
+    ]
     const categoryIds =
       deps.cats === undefined
         ? undefined
@@ -129,8 +133,13 @@ function DashboardRoute() {
 
   // `cats` undefined means "no category filter"; an empty string means "the
   // user deselected everything", which is a real, empty selection.
+  // The Uncategorised badge toggles like any other: it rides in `allIds` so
+  // the URL keeps it, and `categoryFilter` translates it back to IS NULL on
+  // the server. Listed always, not only when something is uncategorised —
+  // zero-spend categories show chips too, so hiding this one would be the
+  // exception rather than the rule.
   const allIds = useMemo(
-    () => (categories.data ?? []).map((c) => c.id),
+    () => [...(categories.data ?? []).map((c) => c.id), UNCATEGORISED_ID],
     [categories.data],
   )
   const selectedIds = useMemo(() => {

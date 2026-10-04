@@ -84,11 +84,17 @@ export function swatch(key: string): Swatch | undefined {
  * Resolve a stored swatch key to a CSS colour for the current theme.
  * Unknown keys fall back to terracotta rather than rendering `undefined`,
  * so a stale or hand-edited DB value can never blank a chart.
+ *
+ * Passes through raw CSS colours (`var(--…)` and `#…`) untouched. The
+ * Uncategorised pseudo-category is not a swatch — grey is not a choice anyone
+ * should paint a category — so it carries its colour literally rather than
+ * taking up a swatch slot.
  */
 export function swatchColor(
   key: string,
   opts: { dark?: boolean } = {},
 ): string {
+  if (key.startsWith('var(') || key.startsWith('#')) return key
   const s = swatch(key)
   if (!s) return opts.dark ? 'oklch(0.7 0.11 45)' : 'oklch(0.62 0.13 45)'
   return opts.dark ? s.dark : s.light

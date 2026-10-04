@@ -521,6 +521,7 @@ export function Sheet({
   headerAction,
   variant = 'sheet',
   hideBackdrop = false,
+  footer,
   children,
 }: {
   open: boolean
@@ -532,6 +533,18 @@ export function Sheet({
   variant?: 'sheet' | 'dialog'
   /** Drop the dimming layer — when a nested dialog is up, its dim replaces it. */
   hideBackdrop?: boolean
+  /**
+   * Pinned action bar below the scroll area — Save/Cancel, Close, and the
+   * like. A SIBLING of the scrollable body, not a sticky child of it, and
+   * that is load-bearing: a sticky footer inside the scroller shares the
+   * scroller's box, so a classic scrollbar takes its width out of the footer
+   * and the buttons shift whenever the content grows long enough to scroll.
+   * Outside it, the bar never moves and never resizes.
+   *
+   * It is outside any `<form>` the body may hold, so a submit button in here
+   * reaches its form through the `form` attribute rather than ancestry.
+   */
+  footer?: React.ReactNode
   children: React.ReactNode
 }) {
   // document does not exist during SSR. `open` is false on the server, so this
@@ -675,11 +688,11 @@ export function Sheet({
               </h2>
               {headerAction}
             </div>
-            {/* No bottom padding here. A sticky footer pins to the bottom of
-                this box, so padding on it becomes a visible gap between the
-                footer and the panel edge. Sheets that want breathing room put it
-                on their own last child instead. */}
+            {/* No bottom padding here. The footer below is a sibling of this
+                box rather than a sticky child of it, so it never scrolls and
+                a scrollbar never takes its width out of the buttons. */}
             <div className="px-5 pt-2 overflow-y-auto flex-1">{children}</div>
+            {footer && <div className="shrink-0">{footer}</div>}
           </motion.div>
         </>
       )}
