@@ -104,7 +104,11 @@ export function NumberField({
           className={cn(
             'tnum bg-transparent text-ink text-center appearance-none',
             'focus:outline-none min-w-0',
-            size === 'sm' ? 'text-base w-9' : 'text-lg w-14',
+            // `w-11` rather than `w-9` because the value it has to hold is not
+            // always a round number: an uneven split prints one decimal, and
+            // "25.2" in a nine-wide field scrolls its own last digit out of
+            // sight, which reads as a wrong figure rather than a clipped one.
+            size === 'sm' ? 'text-base w-11' : 'text-lg w-14',
           )}
         />
         {suffix && (

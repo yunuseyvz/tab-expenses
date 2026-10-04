@@ -91,7 +91,9 @@ test.describe('ledger', () => {
     const purpose = `E2E save ${Date.now()}`
     await page.getByLabel('Amount').fill('100.00')
     await page.getByLabel('What was it for').fill(purpose)
-    await page.getByRole('radio', { name: 'Sam paid' }).check()
+    // The payer radio sits behind its pill, so click the pill the way a person
+    // does — see the note on checkPayer in split.spec.ts.
+    await page.getByRole('radio', { name: 'Sam paid' }).locator('..').click()
 
     // No split: picking the payer ticks him alone at 100%, so the save button
     // is immediately live.

@@ -136,7 +136,9 @@ test.describe('space invitations', () => {
     await invitee.getByLabel('Your name in this space').fill('Sam')
     await invitee.getByRole('button', { name: 'Create space' }).click()
     await expect(invitee).toHaveURL(/\/dashboard/)
-    await expect(invitee.getByRole('heading', { name: 'Sam alone' })).toBeVisible()
+    await expect(
+      invitee.getByRole('heading', { name: 'Sam alone' }),
+    ).toBeVisible()
 
     // Two households, one account.
     await invitee.locator('button[aria-haspopup=listbox]:visible').click()

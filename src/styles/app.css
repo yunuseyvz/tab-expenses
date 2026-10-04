@@ -650,12 +650,8 @@
       0 0 0 7px color-mix(in oklab, var(--accent) 20%, transparent);
   }
 
-  /* The ring goes on the THUMB. Putting it on the input drew a rectangle around
-   * the whole 1.75rem control, which framed empty space either side of a 0.5rem
-   * track and looked like a bug. */
-  .range-tactile:focus {
-    outline: none;
-  }
+  /* The input's own outline is suppressed further down, unlayered — it cannot
+   * be done from in here. See the note beside the global :focus-visible rule. */
 
   .range-tactile:focus-visible::-webkit-slider-thumb {
     box-shadow:
@@ -727,4 +723,21 @@
   outline: 2px solid var(--color-terracotta);
   outline-offset: 2px;
   border-radius: 2px;
+}
+
+/**
+ * Sliders are the one control whose ring goes on the thumb.
+ *
+ * Drawing a rectangle around the input framed empty space either side of a
+ * 0.5rem track inside a 1.75rem control, which reads as a bug rather than as
+ * focus, so `.range-tactile` sets `outline: none` and halo the thumb instead.
+ *
+ * It has to be restated HERE rather than in the @layer components block with the
+ * rest of the range styling: an unlayered rule beats a layered one whatever the
+ * specificity, so `outline: none` written in the layer lost to the rule above on
+ * every browser and the slider showed the rectangle it was written to prevent —
+ * which is exactly what it did, silently, for as long as it was there.
+ */
+.range-tactile:focus-visible {
+  outline: none;
 }
