@@ -38,8 +38,80 @@ import type { LucideIcon } from 'lucide-react'
 import { cn } from '#/lib/cn'
 
 /**
+ * The card: one list, hairlines between rows.
+ *
+ * `p-0`, because the rows inside bring their own padding and a card that also
+ * padded would double every edge.
+ *
+ * The rules are on the children rather than on the rows themselves: `[&>*+*]`
+ * matches every child but the first, so the list gets a rule between its rows and
+ * none under the last one. A `border-b` with `last:border-b-0` on each row says
+ * the same thing in three places instead of one, and this way a row added to a
+ * card cannot forget it.
+ */
+export function SettingsCard({ children }: { children: ReactNode }) {
+  return (
+    <div className="card overflow-hidden [&>*+*]:border-t [&>*+*]:border-rule">
+      {children}
+    </div>
+  )
+}
+
+/**
+ * A top-level section: the answer to "whose settings are these".
+ *
+ * There are two levels on this screen and they have to be told apart at a
+ * glance, or the structure is only in the markup. A SECTION is a subject —
+ * Household, App settings, Account — and it is sentence case and ink-coloured,
+ * one step under the page title. A GROUP inside it is a list within that subject
+ * — Members, Categories, Data — and it is the small caps, muted, unreadable-if-
+ * you-are-not-looking treatment the rest of the screen uses for labels.
+ *
+ * That difference is the whole reason the members, categories and data lists can
+ * sit under one Household heading without becoming one undifferentiated column of
+ * cards: the size says which layer you are reading before the words do.
+ *
+ * Sections are separated by space rather than a rule. A rule between sections
+ * would compete with the rules inside the cards, and there would then be two
+ * kinds of line on the screen meaning two different things.
+ */
+export function SettingsSection({
+  title,
+  hint,
+  children,
+}: {
+  title: string
+  hint?: ReactNode
+  children: ReactNode
+}) {
+  return (
+    <section className="mt-9 first:mt-0">
+      <h2 className="px-1 text-lg font-medium tracking-tight text-ink">
+        {title}
+      </h2>
+      {hint && (
+        // Smaller than the group headings it would otherwise outrank. At text-sm
+        // the household's own name sat above "Members" in a larger typeface,
+        // which read as though the group were inside the sentence rather than
+        // the other way round. ink-muted rather than ink-faint keeps it as the
+        // section's subtitle without competing with the label beneath it.
+        <p className="px-1 mt-1 text-xs leading-relaxed text-ink-muted">
+          {hint}
+        </p>
+      )}
+      <div className="mt-4 space-y-6">{children}</div>
+    </section>
+  )
+}
+
+/**
  * One labelled group: a heading, an optional line of context, and a card of
  * rows.
+ *
+ * The title is optional, and a group without one is a bare card. That is what a
+ * section holding a single unlabelled list wants — "App settings" with a
+ * heading, a "Appearance" sub-heading and one row underneath would be three
+ * labels for one control.
  *
  * `hint` is a sentence, not a caption fragment. It exists to say what the group
  * is *for* when the heading alone is ambiguous, and it is the only place in this
@@ -51,43 +123,35 @@ export function SettingsGroup({
   children,
   className,
 }: {
-  title: string
+  title?: string
   hint?: ReactNode
   children: ReactNode
   className?: string
 }) {
   return (
-    <section className={cn('mb-7 last:mb-0', className)}>
-      {/*
-       * The heading and its hint share one bottom margin, so the gap between the
-       * block and the card is the same whether or not there is a hint.
-       *
-       * It was on the hint alone, which meant a group without one got no gap at
-       * all and sat flush against its own card, while every group with a hint
-       * looked correct. The margin belongs to the block, not to the sentence
-       * that happens to be in it.
-       */}
-      <div className="px-1 mb-3">
-        <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-ink-faint">
-          {title}
-        </h2>
-        {hint && (
-          <p className="mt-1.5 text-xs leading-relaxed text-ink-faint">
-            {hint}
-          </p>
-        )}
-      </div>
-      {/* `p-0`, because the rows inside bring their own padding and a card that
-          also padded would double every edge.
-
-          The rules are on the children rather than on the rows themselves:
-          `[&>*+*]` matches every child but the first, so the list gets a rule
-          between its rows and none under the last one. A `border-b` with
-          `last:border-b-0` on each row says the same thing in three places
-          instead of one, and this way a row added to a group cannot forget it. */}
-      <div className="card overflow-hidden [&>*+*]:border-t [&>*+*]:border-rule">
-        {children}
-      </div>
+    <section className={cn(className)}>
+      {title && (
+        /*
+         * The heading and its hint share one bottom margin, so the gap between
+         * the block and the card is the same whether or not there is a hint.
+         *
+         * It was on the hint alone, which meant a group without one got no gap
+         * at all and sat flush against its own card, while every group with a
+         * hint looked correct. The margin belongs to the block, not to the
+         * sentence that happens to be in it.
+         */
+        <div className="px-1 mb-3">
+          <h3 className="text-xs font-semibold uppercase tracking-[0.12em] text-ink-faint">
+            {title}
+          </h3>
+          {hint && (
+            <p className="mt-1.5 text-xs leading-relaxed text-ink-faint">
+              {hint}
+            </p>
+          )}
+        </div>
+      )}
+      <SettingsCard>{children}</SettingsCard>
     </section>
   )
 }

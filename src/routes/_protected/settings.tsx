@@ -28,7 +28,11 @@ import { InvitePanel } from '#/components/InvitePanel'
 import { ImportCard } from '#/components/settings/ImportCard'
 import { ConfirmRemoval } from '#/components/settings/ConfirmRemoval'
 import { ConfirmAccountDeletion } from '#/components/settings/ConfirmAccountDeletion'
-import { SettingsGroup, SettingsRow } from '#/components/settings/SettingsGroup'
+import {
+  SettingsGroup,
+  SettingsRow,
+  SettingsSection,
+} from '#/components/settings/SettingsGroup'
 import { Button } from '#/components/ui/Button'
 import { Input, Label, Select } from '#/components/ui/Input'
 import { Switch } from '#/components/ui/Switch'
@@ -363,322 +367,356 @@ function SettingsRoute() {
       <main id="main" className="mx-auto w-full max-w-5xl px-4 py-4 sm:px-6">
         <h1 className="text-2xl sm:text-3xl mb-6 tracking-tight">Settings</h1>
 
-        <SettingsGroup
+        {/*
+          Three levels, and the page is the top one.
+
+          Household is a SECTION with each of its three lists as a GROUP inside
+          it, because that is the truth of the data: one household, with people,
+          with categories, with a ledger. They were three sibling sections, which
+          said the household, its people and its categories were peers of each
+          other and of Account — and the reader had to work out from the words
+          which of those things contained which.
+
+          App settings and Account are sections of their own at the end. They are
+          not about the household at all, and neither is a list.
+
+          Account is last on purpose, and the reason predates this layout: the
+          only irreversible control on the screen is `Delete account`, and the
+          last row of a page is the one nobody reaches by accident. Putting a
+          growing `App settings` section underneath it would move that row into
+          the middle of the page for no gain.
+        */}
+        <SettingsSection
           title="Household"
           hint={space ? `${space.name} · ${space.currency}` : undefined}
         >
-          {/*
-            No household-wide permission switch here any more, and that is the
-            point rather than an absence. "Members can edit each other's
-            expenses" was one answer to a question that is not one question: a
-            deposit you had to correct yourself and a grocery round you would
-            rather nobody touched are the same size of edit and not the same
-            amount of comfort. Set once for the whole ledger, the switch had to
-            be the most cautious value anybody in the household ever needed,
-            which made it useless for every entry that did not need it.
+          <SettingsGroup title="Members">
+            {/*
+              No household-wide permission switch here any more, and that is the
+              point rather than an absence. "Members can edit each other's
+              expenses" was one answer to a question that is not one question: a
+              deposit you had to correct yourself and a grocery round you would
+              rather nobody touched are the same size of edit and not the same
+              amount of comfort. Set once for the whole ledger, the switch had to
+              be the most cautious value anybody in the household ever needed,
+              which made it useless for every entry that did not need it.
 
-            Each entry now carries its own lock instead — the padlock at the top
-            of an expense, set by whoever added it. The column, and the cost of
-            an owner not being able to overrule it, are documented on
-            `expense.locked`.
-          */}
-          {(members.data ?? []).map((m) => (
-            <SettingsRow
-              key={m.id}
-              label={
-                <span className="flex items-center gap-2.5">
-                  <MemberAvatar
-                    memberId={m.id}
-                    avatar={m.userAvatar}
-                    name={m.displayName}
-                    size={22}
-                  />
-                  <span
-                    aria-hidden
-                    className="h-2.5 w-2.5 rounded-full shrink-0"
-                    style={{ background: swatchColor(m.color) }}
-                  />
-                  <span className="truncate">{m.displayName}</span>
-                  {/* The crown carries the role, so the value column does not
+              Each entry now carries its own lock instead — the padlock at the top
+              of an expense, set by whoever added it. The column, and the cost of
+              an owner not being able to overrule it, are documented on
+              `expense.locked`.
+            */}
+            {(members.data ?? []).map((m) => (
+              <SettingsRow
+                key={m.id}
+                label={
+                  <span className="flex items-center gap-2.5">
+                    <MemberAvatar
+                      memberId={m.id}
+                      avatar={m.userAvatar}
+                      name={m.displayName}
+                      size={22}
+                    />
+                    <span
+                      aria-hidden
+                      className="h-2.5 w-2.5 rounded-full shrink-0"
+                      style={{ background: swatchColor(m.color) }}
+                    />
+                    <span className="truncate">{m.displayName}</span>
+                    {/* The crown carries the role, so the value column does not
                       also have to spell it out. A mark beside the name says
                       "owner of this household" without making the reader parse a
                       word in a status column, and it travels with the name
                       instead of sitting at the far end of the row. */}
-                  {m.role === 'owner' && (
-                    <Crown
-                      size={14}
-                      aria-label="Owner of this household"
-                      className="shrink-0 text-[var(--color-terracotta)]"
-                    />
-                  )}
-                </span>
-              }
-              value={m.userId ? 'registered' : 'virtual'}
-            >
-              {canRemove(m) && (
-                <RemoveButton
-                  label={`Remove ${m.displayName}`}
-                  onClick={() =>
-                    setRemoving({
-                      kind: 'member',
-                      id: m.id,
-                      name: m.displayName,
-                    })
-                  }
+                    {m.role === 'owner' && (
+                      <Crown
+                        size={14}
+                        aria-label="Owner of this household"
+                        className="shrink-0 text-[var(--color-terracotta)]"
+                      />
+                    )}
+                  </span>
+                }
+                value={m.userId ? 'registered' : 'virtual'}
+              >
+                {canRemove(m) && (
+                  <RemoveButton
+                    label={`Remove ${m.displayName}`}
+                    onClick={() =>
+                      setRemoving({
+                        kind: 'member',
+                        id: m.id,
+                        name: m.displayName,
+                      })
+                    }
+                  />
+                )}
+              </SettingsRow>
+            ))}
+            {(members.data ?? []).length === 0 && (
+              <SettingsRow label="Nobody in this household yet" />
+            )}
+
+            {open === 'member' ? (
+              <InlineForm>
+                <div>
+                  <Label htmlFor="member-name">Name</Label>
+                  <Input
+                    id="member-name"
+                    required
+                    autoFocus
+                    value={memberName}
+                    onChange={(e) => setMemberName(e.target.value)}
+                    placeholder="Noor"
+                  />
+                </div>
+                <SwatchField
+                  value={memberColor}
+                  onChange={setMemberColor}
+                  label="Colour"
                 />
-              )}
-            </SettingsRow>
-          ))}
-          {(members.data ?? []).length === 0 && (
-            <SettingsRow label="Nobody in this household yet" />
-          )}
-
-          {open === 'member' ? (
-            <InlineForm>
-              <div>
-                <Label htmlFor="member-name">Name</Label>
-                <Input
-                  id="member-name"
-                  required
-                  autoFocus
-                  value={memberName}
-                  onChange={(e) => setMemberName(e.target.value)}
-                  placeholder="Noor"
+                <Submit
+                  label="Add member"
+                  busy={addMember.isPending}
+                  disabled={!memberName.trim()}
+                  onSubmit={() => addMember.mutate()}
+                  onCancel={() => setOpen(null)}
                 />
-              </div>
-              <SwatchField
-                value={memberColor}
-                onChange={setMemberColor}
-                label="Colour"
+              </InlineForm>
+            ) : (
+              <AddRow
+                label="Add a virtual member"
+                hint="No account needed"
+                onClick={() => setOpen('member')}
               />
-              <Submit
-                label="Add member"
-                busy={addMember.isPending}
-                disabled={!memberName.trim()}
-                onSubmit={() => addMember.mutate()}
-                onCancel={() => setOpen(null)}
+            )}
+
+            {isOwner && (
+              <SettingsRow
+                icon={UserPlus}
+                label="Invite people"
+                hint="Via a link"
+                onClick={() => setInviteSheet(true)}
               />
-            </InlineForm>
-          ) : (
-            <AddRow
-              label="Add a virtual member"
-              hint="No account needed"
-              onClick={() => setOpen('member')}
-            />
-          )}
+            )}
 
-          {isOwner && (
-            <SettingsRow
-              icon={UserPlus}
-              label="Invite people"
-              hint="Via a link"
-              onClick={() => setInviteSheet(true)}
-            />
-          )}
-
-          {/* Leaving is available to everybody, and is a different gesture from
+            {/* Leaving is available to everybody, and is a different gesture from
               being removed: it is the one thing on a roster that is always
               yours to do, and somebody removed from a household they no longer
               belong to cannot come back and press it. */}
-          {myMember && (
-            <SettingsRow
-              // A mark in the same left-hand slot the roster and the import rows
-              // use, so the column of leading icons still lines up. DoorOpen
-              // rather than LogOut: the sign-out row in Account already uses the
-              // latter, and two rows meaning "you are leaving something" with the
-              // same glyph is a worse confusion than the near-duplicate.
-              icon={DoorOpen}
-              label="Leave this household"
-              hint={
-                myMember.role === 'owner'
-                  ? 'Someone else becomes the owner'
-                  : 'You can rejoin with an invite'
-              }
-              onClick={() =>
-                setRemoving({
-                  kind: 'leave',
-                  id: myMember.id,
-                  name: space?.name ?? 'this household',
-                })
-              }
-            />
-          )}
-        </SettingsGroup>
-
-        <SettingsGroup
-          title="Categories"
-          hint={space ? `${space.name}'s categories` : undefined}
-        >
-          {(categories.data ?? []).map((c) => {
-            const Glyph = iconFor(c.icon)
-            const owner = ownerName(c.ownerMemberId)
-            return (
+            {myMember && (
               <SettingsRow
-                key={c.id}
-                label={
-                  <span className="flex items-center gap-2.5">
-                    <span
-                      aria-hidden
-                      className="grid place-items-center size-7 shrink-0 rounded-[7px]"
-                      style={{
-                        background: `color-mix(in oklab, ${swatchColor(c.color)} 18%, transparent)`,
-                      }}
-                    >
-                      <Glyph size={15} />
+                // A mark in the same left-hand slot the roster and the import rows
+                // use, so the column of leading icons still lines up. DoorOpen
+                // rather than LogOut: the sign-out row in Account already uses the
+                // latter, and two rows meaning "you are leaving something" with the
+                // same glyph is a worse confusion than the near-duplicate.
+                icon={DoorOpen}
+                label="Leave this household"
+                hint={
+                  myMember.role === 'owner'
+                    ? 'Someone else becomes the owner'
+                    : 'You can rejoin with an invite'
+                }
+                onClick={() =>
+                  setRemoving({
+                    kind: 'leave',
+                    id: myMember.id,
+                    name: space?.name ?? 'this household',
+                  })
+                }
+              />
+            )}
+          </SettingsGroup>
+
+          <SettingsGroup title="Categories">
+            {(categories.data ?? []).map((c) => {
+              const Glyph = iconFor(c.icon)
+              const owner = ownerName(c.ownerMemberId)
+              return (
+                <SettingsRow
+                  key={c.id}
+                  label={
+                    <span className="flex items-center gap-2.5">
+                      <span
+                        aria-hidden
+                        className="grid place-items-center size-7 shrink-0 rounded-[7px]"
+                        style={{
+                          background: `color-mix(in oklab, ${swatchColor(c.color)} 18%, transparent)`,
+                        }}
+                      >
+                        <Glyph size={15} />
+                      </span>
+                      <span className="truncate">{c.name}</span>
                     </span>
-                    <span className="truncate">{c.name}</span>
-                  </span>
-                }
-                value={
-                  c.scope === 'personal'
-                    ? owner
-                      ? `personal · ${owner}`
-                      : 'personal'
-                    : 'shared'
-                }
-              >
-                <RemoveButton
-                  label={`Archive ${c.name}`}
-                  onClick={() =>
-                    setRemoving({ kind: 'category', id: c.id, name: c.name })
                   }
-                />
-              </SettingsRow>
-            )
-          })}
-          {(categories.data ?? []).length === 0 && (
-            <SettingsRow label="No categories yet" />
-          )}
-
-          {open === 'category' ? (
-            <InlineForm>
-              <div>
-                <Label htmlFor="category-name">Name</Label>
-                <div className="flex gap-2">
-                  <IconPicker value={categoryIcon} onChange={setCategoryIcon} />
-                  <Input
-                    id="category-name"
-                    required
-                    autoFocus
-                    value={categoryName}
-                    onChange={(e) => setCategoryName(e.target.value)}
-                    placeholder="Health"
+                  value={
+                    c.scope === 'personal'
+                      ? owner
+                        ? `personal · ${owner}`
+                        : 'personal'
+                      : 'shared'
+                  }
+                >
+                  <RemoveButton
+                    label={`Archive ${c.name}`}
+                    onClick={() =>
+                      setRemoving({ kind: 'category', id: c.id, name: c.name })
+                    }
                   />
-                </div>
-              </div>
-              <Switch
-                checked={personal}
-                onChange={setPersonal}
-                label="Personal, counted only in one member's totals"
-              />
-              {personal && (
+                </SettingsRow>
+              )
+            })}
+            {(categories.data ?? []).length === 0 && (
+              <SettingsRow label="No categories yet" />
+            )}
+
+            {open === 'category' ? (
+              <InlineForm>
                 <div>
-                  <Label htmlFor="personal-owner">Owner</Label>
-                  <Select
-                    id="personal-owner"
-                    aria-label="Owner"
-                    value={personalOwner}
-                    onChange={(e) => setPersonalOwner(e.target.value)}
-                  >
-                    <option value="">Choose...</option>
-                    {(members.data ?? []).map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.displayName}
-                      </option>
-                    ))}
-                  </Select>
+                  <Label htmlFor="category-name">Name</Label>
+                  <div className="flex gap-2">
+                    <IconPicker
+                      value={categoryIcon}
+                      onChange={setCategoryIcon}
+                    />
+                    <Input
+                      id="category-name"
+                      required
+                      autoFocus
+                      value={categoryName}
+                      onChange={(e) => setCategoryName(e.target.value)}
+                      placeholder="Health"
+                    />
+                  </div>
                 </div>
-              )}
-              <SwatchField
-                value={categoryColor}
-                onChange={setCategoryColor}
-                label="Colour"
-              />
-              <Submit
-                label="Add category"
-                busy={addCategory.isPending}
-                disabled={!categoryName.trim()}
-                onSubmit={() => addCategory.mutate()}
-                onCancel={() => setOpen(null)}
-              />
-            </InlineForm>
-          ) : (
-            <AddRow
-              label="Add a category"
-              onClick={() => setOpen('category')}
-            />
-          )}
-        </SettingsGroup>
-
-        <SettingsGroup
-          title="Data"
-          hint={space ? 'Everyone sees the same ledger' : undefined}
-        >
-          <SettingsRow
-            // Down for import, up for export: the arrows point the way the file
-            // travels. Import brings data *into* the app, export takes it out,
-            // and FileUp on the import row had it exactly backwards.
-            icon={FileDown}
-            label="Import from a spreadsheet"
-            hint="CSV"
-            onClick={() => setImportSheet(true)}
-          />
-          <SettingsRow
-            icon={FileUp}
-            label="Export"
-            hint="All expenses"
-            onClick={() => void runExport(spaceId, space?.name ?? null)}
-          />
-        </SettingsGroup>
-
-        <SettingsGroup title="Account">
-          <SettingsRow
-            label={
-              <span className="flex items-center gap-2.5">
-                <Avatar
-                  avatarKey={me.data?.user.avatar ?? null}
-                  // The id, not the name: renaming yourself should not change your face.
-                  seed={me.data?.user.id ?? 'anonymous'}
-                  name={me.data?.user.name}
-                  size={26}
+                <Switch
+                  checked={personal}
+                  onChange={setPersonal}
+                  label="Personal, counted only in one member's totals"
                 />
-                <span className="min-w-0">
-                  <span className="block truncate">{me.data?.user.name}</span>
-                  <span className="block truncate text-xs text-ink-faint">
-                    {me.data?.user.email}
+                {personal && (
+                  <div>
+                    <Label htmlFor="personal-owner">Owner</Label>
+                    <Select
+                      id="personal-owner"
+                      aria-label="Owner"
+                      value={personalOwner}
+                      onChange={(e) => setPersonalOwner(e.target.value)}
+                    >
+                      <option value="">Choose...</option>
+                      {(members.data ?? []).map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.displayName}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+                )}
+                <SwatchField
+                  value={categoryColor}
+                  onChange={setCategoryColor}
+                  label="Colour"
+                />
+                <Submit
+                  label="Add category"
+                  busy={addCategory.isPending}
+                  disabled={!categoryName.trim()}
+                  onSubmit={() => addCategory.mutate()}
+                  onCancel={() => setOpen(null)}
+                />
+              </InlineForm>
+            ) : (
+              <AddRow
+                label="Add a category"
+                onClick={() => setOpen('category')}
+              />
+            )}
+          </SettingsGroup>
+
+          <SettingsGroup
+            title="Data"
+            hint={space ? 'Everyone sees the same ledger' : undefined}
+          >
+            <SettingsRow
+              // Down for import, up for export: the arrows point the way the file
+              // travels. Import brings data *into* the app, export takes it out,
+              // and FileUp on the import row had it exactly backwards.
+              icon={FileDown}
+              label="Import from a spreadsheet"
+              hint="CSV"
+              onClick={() => setImportSheet(true)}
+            />
+            <SettingsRow
+              icon={FileUp}
+              label="Export"
+              hint="All expenses"
+              onClick={() => void runExport(spaceId, space?.name ?? null)}
+            />
+          </SettingsGroup>
+        </SettingsSection>
+
+        {/*
+          Its own section, and not a row under Account. The theme is a property
+          of the app rather than of the person signed into it, and the section is
+          where the next ones will go — a heading that already exists is a cheaper
+          thing to add to than a row that has to be found a home each time.
+        */}
+        <SettingsSection title="App settings">
+          <SettingsGroup>
+            <SettingsRow label="Appearance">
+              <ThemePicker heading={false} />
+            </SettingsRow>
+          </SettingsGroup>
+        </SettingsSection>
+
+        <SettingsSection title="Account">
+          <SettingsGroup>
+            <SettingsRow
+              label={
+                <span className="flex items-center gap-2.5">
+                  <Avatar
+                    avatarKey={me.data?.user.avatar ?? null}
+                    // The id, not the name: renaming yourself should not change your face.
+                    seed={me.data?.user.id ?? 'anonymous'}
+                    name={me.data?.user.name}
+                    size={26}
+                  />
+                  <span className="min-w-0">
+                    <span className="block truncate">{me.data?.user.name}</span>
+                    <span className="block truncate text-xs text-ink-faint">
+                      {me.data?.user.email}
+                    </span>
                   </span>
                 </span>
-              </span>
-            }
-            onClick={openProfile}
-          />
-          <SettingsRow label="Appearance">
-            <ThemePicker heading={false} />
-          </SettingsRow>
-          <SettingsRow
-            label="Sign out"
-            hint={signingOut ? 'Signing you out…' : undefined}
-          >
-            <Button
-              variant="secondary"
-              size="sm"
-              disabled={signingOut}
-              onClick={() => void signOut()}
-              className="shrink-0"
+              }
+              onClick={openProfile}
+            />
+            <SettingsRow
+              label="Sign out"
+              hint={signingOut ? 'Signing you out…' : undefined}
             >
-              <LogOut size={15} aria-hidden />
-              Sign out
-            </Button>
-          </SettingsRow>
-          {/* Last row on the page, and the only irreversible thing in it. It gets
-              no button of its own to mis-click: the row is the target, the
-              dialog is the confirmation, and the dialog asks for the address. */}
-          <SettingsRow
-            label="Delete account"
-            hint="Cannot be undone"
-            onClick={() => setDeletingAccount(true)}
-          />
-        </SettingsGroup>
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={signingOut}
+                onClick={() => void signOut()}
+                className="shrink-0"
+              >
+                <LogOut size={15} aria-hidden />
+                Sign out
+              </Button>
+            </SettingsRow>
+            {/* Last row on the page, and the only irreversible thing in it. It
+                gets no button of its own to mis-click: the row is the target, the
+                dialog is the confirmation, and the dialog asks for the address. */}
+            <SettingsRow
+              label="Delete account"
+              hint="Cannot be undone"
+              onClick={() => setDeletingAccount(true)}
+            />
+          </SettingsGroup>
+        </SettingsSection>
       </main>
 
       {profileSheet && (

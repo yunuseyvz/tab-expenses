@@ -702,6 +702,70 @@ test.describe('design system', () => {
 
     expect(failures, failures.join('\n')).toEqual([])
   })
+
+  /**
+   * Settings is three levels, and the levels have to be told apart without
+   * reading the words.
+   *
+   * A section is a subject — Household, App settings, Account — and a group is a
+   * list inside one — Members, Categories, Data. The first attempt had all four
+   * of the household's lists as sibling sections, so `Categories` and `Account`
+   * arrived as peers and the reader had to work out from the words which
+   * contained which.
+   *
+   * Markup levels are the assertion because that is what a screen reader
+   * navigates by, and it is also the thing a screenshot cannot check: two
+   * headings can look identical and be `h2` and `h3`, or be `h2` twice with one
+   * of them doing a job it was never given.
+   */
+  test('settings reads as sections containing groups', async ({ page }) => {
+    await page.goto('/settings')
+
+    const outline = await page.evaluate(() => {
+      const main = document.querySelector('main')
+      if (!main) return null
+      return [...main.querySelectorAll('h2, h3')].map((el) => ({
+        level: el.tagName,
+        text: el.textContent.trim(),
+      }))
+    })
+
+    expect(outline).toEqual([
+      { level: 'H2', text: 'Household' },
+      { level: 'H3', text: 'Members' },
+      { level: 'H3', text: 'Categories' },
+      { level: 'H3', text: 'Data' },
+      { level: 'H2', text: 'App settings' },
+      { level: 'H2', text: 'Account' },
+    ])
+
+    // And the levels differ on screen, not only in the DOM. A section is
+    // sentence case and larger; a group is the small-caps label the rest of the
+    // app uses. If these ever collapse to the same size the outline above is
+    // true and useless.
+    const sizes = await page.evaluate(() => ({
+      section: getComputedStyle(document.querySelector('main h2')!).fontSize,
+      group: getComputedStyle(document.querySelector('main h3')!).fontSize,
+      groupCase: getComputedStyle(document.querySelector('main h3')!)
+        .textTransform,
+    }))
+    expect(Number.parseFloat(sizes.section)).toBeGreaterThan(
+      Number.parseFloat(sizes.group) + 2,
+    )
+    expect(sizes.groupCase).toBe('uppercase')
+
+    // The irreversible row stays last on the page, which is why the App settings
+    // section sits above Account rather than below it.
+    const lastRow = await page.evaluate(() => {
+      const cards = [...document.querySelectorAll('main .card')]
+      const card = cards[cards.length - 1]
+      if (!card) return ''
+      const rows = [...card.children]
+      const last = rows[rows.length - 1]
+      return last ? last.textContent.trim() : ''
+    })
+    expect(lastRow).toContain('Delete account')
+  })
 })
 
 /**
