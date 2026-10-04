@@ -18,7 +18,7 @@
 import { Sheet } from '#/components/AppShell'
 import { Button } from '#/components/ui/Button'
 
-export type RemovalKind = 'member' | 'category' | 'leave' | 'expense'
+export type RemovalKind = 'member' | 'category' | 'leave'
 
 export function ConfirmRemoval({
   kind,
@@ -27,7 +27,6 @@ export function ConfirmRemoval({
   busy,
   onCancel,
   onConfirm,
-  presentation,
 }: {
   kind: RemovalKind
   name: string
@@ -36,33 +35,20 @@ export function ConfirmRemoval({
   busy: boolean
   onCancel: () => void
   onConfirm: () => void
-  /**
-   * How to present it. `dialog` centres it at every width and lifts it above
-   * any open sheet — for confirms raised from inside the expense sheet, where a
-   * second bottom sheet on a phone reads as one tall card with two drag handles
-   * and two Cancel buttons. Omitted on Settings, where nothing is open beneath
-   * it and the bottom sheet is the house style.
-   */
-  presentation?: { variant: 'dialog'; hideBackdrop: boolean }
 }) {
   const isMember = kind === 'member'
   const isLeave = kind === 'leave'
-  const isExpense = kind === 'expense'
 
   return (
     <Sheet
       open
       onClose={onCancel}
-      variant={presentation?.variant}
-      hideBackdrop={presentation?.hideBackdrop}
       title={
         isLeave
           ? `Leave ${name}?`
           : isMember
             ? `Remove ${name}?`
-            : isExpense
-              ? `Delete ${name}?`
-              : `Archive ${name}?`
+            : `Archive ${name}?`
       }
     >
       <div className="pb-4 space-y-4">
@@ -78,11 +64,6 @@ export function ConfirmRemoval({
               <strong className="text-ink font-medium">{name}</strong> will stop
               being assignable to new expenses, and will no longer be offered in
               the payer or split lists.
-            </>
-          ) : isExpense ? (
-            <>
-              <strong className="text-ink font-medium">{name}</strong> leaves
-              the ledger entirely: the entry, its split and every note under it.
             </>
           ) : (
             <>
@@ -103,11 +84,6 @@ export function ConfirmRemoval({
             <>
               Your name stays on every expense you were part of. Nothing in the
               ledger is rewritten, and no history is lost.
-            </>
-          ) : isExpense ? (
-            <>
-              Totals and balances update. Everything else stays exactly as it
-              is.
             </>
           ) : isMember ? (
             <>
@@ -152,16 +128,12 @@ export function ConfirmRemoval({
             {busy
               ? isLeave
                 ? 'Leaving…'
-                : isExpense
-                  ? 'Deleting…'
-                  : 'Removing…'
+                : 'Removing…'
               : isLeave
                 ? 'Leave household'
                 : isMember
                   ? 'Remove member'
-                  : isExpense
-                    ? 'Delete expense'
-                    : 'Archive category'}
+                  : 'Archive category'}
           </Button>
           <Button
             type="button"

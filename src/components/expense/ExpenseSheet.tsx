@@ -1,4 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { AnimatePresence, motion } from 'motion/react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Eye, Lock, LockOpen, Plus, StickyNote, Trash2, X } from 'lucide-react'
@@ -9,7 +10,6 @@ import type { SplitDraft } from '#/components/expense/SplitEditor'
 import type { ExpenseRow } from '#/lib/expense.functions'
 import { Sheet } from '#/components/AppShell'
 import { Avatar } from '#/components/Avatar'
-import { ConfirmRemoval } from '#/components/settings/ConfirmRemoval'
 import { Button } from '#/components/ui/Button'
 import { DateField } from '#/components/ui/DateField'
 import { Input, Label, Textarea } from '#/components/ui/Input'
@@ -373,9 +373,6 @@ export function ExpenseSheet({
         open={open}
         onClose={onClose}
         title={title}
-        // Drop this sheet's own dimming layer while the delete confirm is up, so
-        // the dialog's dim replaces it rather than stacking with it.
-        hideBackdrop={confirmingDelete}
         headerAction={
           // On a new expense the toggle is local state that rides along with
           // the create: you are the author of what you are typing, so it is
@@ -438,54 +435,100 @@ export function ExpenseSheet({
                 Close
               </Button>
             ) : (
-              <div className="flex gap-2.5">
-                {/* The trash, red and on the left where a destructive action
+              // The two footers crossfade through AnimatePresence in "wait"
+              // mode rather than swapping synchronously — and that is
+              // load-bearing, not polish. Flipping `confirmingDelete` back
+              // unmounts the pressed Keep button mid-dispatch while the
+              // replacement holds the form's submit button, and the browser
+              // then completes the gesture on Save, silently saving whatever
+              // is typed (reproduced with event tracing: submitter=Save, no
+              // click on Save). With an exit animation the pressed footer
+              // stays mounted through the whole dispatch and unmounts later,
+              // asynchronously, with no gesture left to complete onto
+              // anything. `mode="wait"` so the two never overlap into a
+              // double-height footer.
+              <AnimatePresence mode="wait" initial={false}>
+                {confirmingDelete ? (
+                  <motion.div
+                    key="confirm"
+                    className="flex gap-2.5 items-center"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.12 }}
+                  >
+                    {/* Neither button submits: the confirm calls the delete
+                    directly, and Keep only flips this footer back. */}
+                    <Button
+                      type="button"
+                      variant="danger"
+                      size="lg"
+                      disabled={remove.isPending}
+                      onClick={() => remove.mutate()}
+                      className="flex-1"
+                    >
+                      {remove.isPending ? 'Deleting…' : 'Delete expense'}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="lg"
+                      disabled={remove.isPending}
+                      onClick={() => setConfirmingDelete(false)}
+                    >
+                      Keep
+                    </Button>
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key="actions"
+                    className="flex gap-2.5"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.12 }}
+                  >
+                    {/* The trash, red and on the left where a destructive action
                   belongs: before the thing it destroys rather than after it.
                   Icon-only because the row already says what it deletes, and a
-                  word beside every Save would teach people to read past it.
-                  It opens a separate confirm dialog rather than swapping this
-                  footer in place — and that is load-bearing, not style. The
-                  swap was removed because of what it did: the press that
-                  dismissed it unmounted its own button mid-dispatch, and the
-                  browser completed the gesture on the form's default button
-                  instead, silently saving whatever was typed. A dialog has no
-                  form and no submit button, so there is nothing to complete
-                  onto. */}
-                {editing && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="lg"
-                    onClick={() => setConfirmingDelete(true)}
-                    aria-label={`Delete ${editing.purpose}`}
-                    title={`Delete ${editing.purpose}`}
-                    className="shrink-0 px-3 text-[var(--color-danger-fill)] hover:text-[var(--color-danger-fill)]"
-                  >
-                    <Trash2 size={18} aria-hidden />
-                  </Button>
+                  word beside every Save would teach people to read past it. */}
+                    {editing && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="lg"
+                        onClick={() => setConfirmingDelete(true)}
+                        aria-label={`Delete ${editing.purpose}`}
+                        title={`Delete ${editing.purpose}`}
+                        className="shrink-0 px-3 text-[var(--color-danger-fill)] hover:text-[var(--color-danger-fill)]"
+                      >
+                        <Trash2 size={18} aria-hidden />
+                      </Button>
+                    )}
+                    <Button
+                      type="submit"
+                      form={formId}
+                      size="lg"
+                      className="flex-1"
+                      disabled={!canSave || save.isPending}
+                    >
+                      {save.isPending
+                        ? 'Saving…'
+                        : editing
+                          ? 'Save changes'
+                          : 'Save expense'}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="lg"
+                      onClick={onClose}
+                    >
+                      Cancel
+                    </Button>
+                  </motion.div>
                 )}
-                <Button
-                  type="submit"
-                  form={formId}
-                  size="lg"
-                  className="flex-1"
-                  disabled={!canSave || save.isPending}
-                >
-                  {save.isPending
-                    ? 'Saving…'
-                    : editing
-                      ? 'Save changes'
-                      : 'Save expense'}
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="lg"
-                  onClick={onClose}
-                >
-                  Cancel
-                </Button>
-              </div>
+              </AnimatePresence>
             )}
           </div>
         }
@@ -790,28 +833,6 @@ export function ExpenseSheet({
           )}
         </form>
       </Sheet>
-
-      {/* Outside the form, on purpose. A confirm control inside the expense
-          form is exactly the shape that mis-saved: dismissing it unmounts the
-          pressed button mid-dispatch. This dialog is a separate Sheet with no
-          form and no submit button, so closing it can only ever return to the
-          sheet underneath. */}
-      {confirmingDelete && editing && (
-        <ConfirmRemoval
-          kind="expense"
-          name={editing.purpose}
-          busy={remove.isPending}
-          // Centred at every width and above this sheet, with this sheet's dim
-          // dropped while it is up: on a phone two stacked bottom sheets read as
-          // one card with two drag handles and two Cancel buttons, and two dim
-          // layers read as a screen that has been dimmed twice.
-          presentation={{ variant: 'dialog', hideBackdrop: false }}
-          onCancel={() => {
-            if (!remove.isPending) setConfirmingDelete(false)
-          }}
-          onConfirm={() => remove.mutate()}
-        />
-      )}
     </>
   )
 }
