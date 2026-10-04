@@ -485,7 +485,12 @@ export function ExpenseSheet({
                     </Button>
                     <Button
                       type="button"
-                      variant="ghost"
+                      // Secondary, matching Cancel. Keep is the same action as
+                      // Cancel — leave the sheet as it was — so it gets the same
+                      // treatment. As a ghost it had no edge at all, and beside a
+                      // full-width danger button it read as loose text rather
+                      // than as the other half of a choice.
+                      variant="secondary"
                       size="lg"
                       disabled={remove.isPending}
                       onClick={() => setConfirmingDelete(false)}
