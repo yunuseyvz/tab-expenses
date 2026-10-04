@@ -494,11 +494,8 @@ function BottomLink({
  * put a number input in the middle of the screen with the label a foot away.
  * Bounded to a readable measure and centred, it reads as a dialog instead.
  *
- * The panel is a flex column and the *body* scrolls, not the panel. That is
- * what keeps a long form's Save button on screen instead of scrolled away.
- */
-/**
- * A bottom sheet on mobile, a centred dialog on desktop.
+ * The panel is a flex column and the *body* scrolls, not the panel. That is what
+ * keeps a long form's Save button on screen instead of scrolled away.
  *
  * Rendered into `document.body` through a portal, and that is not incidental.
  * Every piece of chrome in this app has a `backdrop-filter` on it — the top
@@ -509,14 +506,21 @@ function BottomLink({
  * only reliable fix; escaping it with a higher z-index does nothing, because the
  * problem is where the box is measured, not what is painted over it.
  *
- * The panel is a flex column and the *body* scrolls, not the panel. That is what
- * keeps a long form's Save button on screen instead of scrolled away.
+ * `variant="dialog"` is for a confirmation raised from *inside* an open sheet.
+ * Two stacked bottom sheets on a phone read as one tall card with two drag
+ * handles and two Cancel buttons — the screenshot that prompted this — so the
+ * nested one is always centred and paints above its parent (z-[70] over the
+ * parent's z-50). `hideBackdrop` on the parent drops the parent's dimming layer
+ * while the nested dialog is up: one dim, not two, and no second dim to click
+ * through.
  */
 export function Sheet({
   open,
   onClose,
   title,
   headerAction,
+  variant = 'sheet',
+  hideBackdrop = false,
   children,
 }: {
   open: boolean
@@ -524,6 +528,10 @@ export function Sheet({
   title: string
   /** Optional control at the top-right, beside the title — a lock toggle. */
   headerAction?: React.ReactNode
+  /** `dialog` = always centred, above any open sheet. For nested confirms. */
+  variant?: 'sheet' | 'dialog'
+  /** Drop the dimming layer — when a nested dialog is up, its dim replaces it. */
+  hideBackdrop?: boolean
   children: React.ReactNode
 }) {
   // document does not exist during SSR. `open` is false on the server, so this
@@ -555,45 +563,95 @@ export function Sheet({
     <AnimatePresence>
       {open && (
         <>
-          <motion.button
-            type="button"
-            aria-label="Close"
-            onClick={onClose}
-            className="fixed inset-0 z-40 bg-[rgb(70_45_25/0.32)] backdrop-blur-[3px]"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
-          />
+          {!hideBackdrop && (
+            <motion.button
+              type="button"
+              aria-label="Close"
+              onClick={onClose}
+              className="fixed inset-0 z-40 bg-[rgb(70_45_25/0.32)] backdrop-blur-[3px]"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
+            />
+          )}
           <motion.div
             role="dialog"
             aria-modal="true"
             aria-label={title}
-            initial={{ y: '100%' }}
-            animate={{ y: 0 }}
-            exit={{ y: '100%' }}
+            // Both variants used to spring up from the bottom edge, and that
+            // was right for a sheet arriving on its own. It is wrong for a
+            // dialog arriving on top of one: the box rose past the frame's top
+            // and then back down, so the first thing on screen was the bottom
+            // half of a confirmation sliding over the header of the form it was
+            // asking about. A dialog has no direction to arrive from, so it
+            // fades and scales from just-below-full — the same spring, aimed at
+            // the panel's own size instead of the viewport's.
+            initial={
+              variant === 'dialog' ? { opacity: 0, scale: 0.96 } : { y: '100%' }
+            }
+            animate={variant === 'dialog' ? { opacity: 1, scale: 1 } : { y: 0 }}
+            exit={
+              variant === 'dialog' ? { opacity: 0, scale: 0.96 } : { y: '100%' }
+            }
             transition={{ type: 'spring', stiffness: 300, damping: 28 }}
-            className="fixed inset-x-0 bottom-0 z-50 max-h-[88dvh]
-              flex flex-col overflow-hidden
-              bg-paper-raised rounded-t-[var(--radius-xl)]
-              shadow-[var(--shadow-float)]
-              md:inset-y-auto md:right-auto md:left-1/2 md:top-1/2
-              md:max-h-[min(88dvh,52rem)]
-              md:w-[min(34rem,calc(100vw-4rem))]
-              md:rounded-[var(--radius-xl)]
-              md:-translate-x-1/2 md:-translate-y-1/2
-              md:backdrop-blur-[var(--material-blur)]
-              md:bg-[var(--surface-material)]
-              md:shadow-[var(--shadow-float),var(--material-edge)]"
+            className={cn(
+              'flex flex-col overflow-hidden',
+              variant === 'dialog'
+                ? [
+                    // Above any sheet, no drag handle: this is a dialog, not
+                    // something you flick away. The material fill, blur and edge
+                    // shadow are the desktop sheet's, so a nested dialog is not
+                    // a flatter object than the sheet it sits on.
+                    //
+                    // Anchored near the top of a phone rather than centred in
+                    // it. A centred box over a full-height bottom sheet leaves
+                    // the form's header above it and its footer below, so the
+                    // two read as one broken sheet with a seam across the middle.
+                    // At the top, with the sheet behind dimmed, it reads as a
+                    // dialog raised over a page.
+                    'fixed inset-x-4 top-16 z-[70] h-fit mx-auto',
+                    'max-h-[min(70dvh,40rem)]',
+                    'w-[min(30rem,calc(100vw-2rem))]',
+                    // Desktop gets the sheet's own centring, because there is
+                    // no sheet underneath it to be confused with.
+                    'md:inset-x-auto md:top-1/2 md:max-h-[min(88dvh,52rem)]',
+                    'md:-translate-x-1/2 md:-translate-y-1/2',
+                    'rounded-[var(--radius-xl)]',
+                    'bg-[var(--surface-material)]',
+                    'backdrop-blur-[var(--material-blur)]',
+                    'shadow-[var(--shadow-float),var(--material-edge)]',
+                  ]
+                : [
+                    'fixed inset-x-0 bottom-0 z-50 max-h-[88dvh]',
+                    // Opaque paper on a phone — a sheet that starts half-way
+                    // down the screen must not be a window onto the list
+                    // beneath it. The material treatment arrives at desktop
+                    // width with the centred geometry, as it always has.
+                    'bg-paper-raised rounded-t-[var(--radius-xl)]',
+                    'shadow-[var(--shadow-float)]',
+                    'md:inset-y-auto md:right-auto md:left-1/2 md:top-1/2',
+                    'md:max-h-[min(88dvh,52rem)]',
+                    'md:w-[min(34rem,calc(100vw-4rem))]',
+                    'md:-translate-x-1/2 md:-translate-y-1/2',
+                    'md:rounded-[var(--radius-xl)]',
+                    'md:backdrop-blur-[var(--material-blur)]',
+                    'md:bg-[var(--surface-material)]',
+                    'md:shadow-[var(--shadow-float),var(--material-edge)]',
+                  ],
+            )}
           >
-            {/* Debossed drag handle. */}
-            <div className="flex justify-center pt-3 pb-1 shrink-0">
-              <span
-                aria-hidden
-                className="h-1.5 w-10 rounded-full bg-rule
-                  shadow-[var(--shadow-deboss)]"
-              />
-            </div>
+            {/* Debossed drag handle. Bottom sheets only — a centred dialog that
+                could be flicked away would be a sheet again. */}
+            {variant === 'sheet' && (
+              <div className="flex justify-center pt-3 pb-1 shrink-0">
+                <span
+                  aria-hidden
+                  className="h-1.5 w-10 rounded-full bg-rule
+                    shadow-[var(--shadow-deboss)]"
+                />
+              </div>
+            )}
             {/* No close control in the header.
              *
              * Every sheet already has three: a Cancel button in its footer, the
@@ -605,7 +663,13 @@ export function Sheet({
              * title belongs anyway. The drag handle is what says "this is
              * dismissible" on a phone, and the backdrop says it everywhere else.
              */}
-            <div className="px-5 py-2.5 shrink-0 flex items-center gap-3">
+            <div
+              className={cn(
+                'px-5 shrink-0 flex items-center gap-3',
+                // A dialog has no handle to breathe under.
+                variant === 'sheet' ? 'py-2.5' : 'pt-5 pb-2',
+              )}
+            >
               <h2 className="text-xl tracking-tight flex-1 min-w-0 truncate">
                 {title}
               </h2>

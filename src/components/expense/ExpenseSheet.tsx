@@ -372,6 +372,9 @@ export function ExpenseSheet({
         open={open}
         onClose={onClose}
         title={title}
+        // Drop this sheet's own dimming layer while the delete confirm is up, so
+        // the dialog's dim replaces it rather than stacking with it.
+        hideBackdrop={confirmingDelete}
         headerAction={
           // On a new expense the toggle is local state that rides along with
           // the create: you are the author of what you are typing, so it is
@@ -772,6 +775,11 @@ export function ExpenseSheet({
           kind="expense"
           name={editing.purpose}
           busy={remove.isPending}
+          // Centred at every width and above this sheet, with this sheet's dim
+          // dropped while it is up: on a phone two stacked bottom sheets read as
+          // one card with two drag handles and two Cancel buttons, and two dim
+          // layers read as a screen that has been dimmed twice.
+          presentation={{ variant: 'dialog', hideBackdrop: false }}
           onCancel={() => {
             if (!remove.isPending) setConfirmingDelete(false)
           }}

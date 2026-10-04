@@ -27,6 +27,7 @@ export function ConfirmRemoval({
   busy,
   onCancel,
   onConfirm,
+  presentation,
 }: {
   kind: RemovalKind
   name: string
@@ -35,6 +36,14 @@ export function ConfirmRemoval({
   busy: boolean
   onCancel: () => void
   onConfirm: () => void
+  /**
+   * How to present it. `dialog` centres it at every width and lifts it above
+   * any open sheet — for confirms raised from inside the expense sheet, where a
+   * second bottom sheet on a phone reads as one tall card with two drag handles
+   * and two Cancel buttons. Omitted on Settings, where nothing is open beneath
+   * it and the bottom sheet is the house style.
+   */
+  presentation?: { variant: 'dialog'; hideBackdrop: boolean }
 }) {
   const isMember = kind === 'member'
   const isLeave = kind === 'leave'
@@ -44,6 +53,8 @@ export function ConfirmRemoval({
     <Sheet
       open
       onClose={onCancel}
+      variant={presentation?.variant}
+      hideBackdrop={presentation?.hideBackdrop}
       title={
         isLeave
           ? `Leave ${name}?`
