@@ -109,4 +109,73 @@ test.describe('ledger', () => {
     await page.reload()
     await expect(page.getByText(purpose)).toBeVisible()
   })
+
+  test('the lock is a labelled badge that says which way it is set', async ({
+    page,
+  }) => {
+    await page.goto('/dashboard?period=all')
+    await page.getByRole('button', { name: 'New expense' }).click()
+    const sheet = page.getByRole('dialog')
+    await expect(sheet).toBeVisible()
+
+    // A new entry starts locked — the author decides whether the household may
+    // change it — and the corner says so in words. An unlabelled padlock was
+    // the problem: at 17px the two glyphs are near identical, so a toggle
+    // reading only as an icon told you neither what it controlled nor which way
+    // it was set.
+    //
+    // Named by its visible word rather than an aria-label. The label used to
+    // name the action while the badge named the state, so a screen reader heard
+    // "Unlock this expense" for a chip visibly reading Locked.
+    const lock = sheet.getByRole('button', { name: 'Locked', exact: true })
+    await expect(lock).toBeVisible()
+    await expect(lock).toHaveAttribute('aria-pressed', 'true')
+
+    await lock.click()
+    const unlocked = sheet.getByRole('button', {
+      name: 'Unlocked',
+      exact: true,
+    })
+    await expect(unlocked).toBeVisible()
+    await expect(unlocked).toHaveAttribute('aria-pressed', 'false')
+
+    // Still one control, and still in the header rather than in the form.
+    await expect(
+      sheet.getByRole('button', { name: /^(Locked|Unlocked)$/ }),
+    ).toHaveCount(1)
+  })
+
+  test("an edit sheet ends with the entry's own record, under a rule", async ({
+    page,
+  }) => {
+    await page.goto('/expenses')
+    const row = page.locator('main button[aria-label^="Edit "]').first()
+    await row.waitFor({ state: 'visible' })
+    await row.click()
+    const sheet = page.getByRole('dialog')
+    await expect(sheet).toBeVisible()
+
+    // Who added it and when, split off from the fields above by its own border.
+    // It is not part of the form: the form stops, and this is the entry's own
+    // record, with a different date from any in the notes above it.
+    const provenance = sheet.locator('form > p').last()
+    await expect(provenance).toContainText(/Added by .+/)
+
+    const rule = await provenance.evaluate((el) => {
+      const styles = getComputedStyle(el)
+      return {
+        borderTopWidth: styles.borderTopWidth,
+        paddingTop: Number.parseFloat(styles.paddingTop),
+      }
+    })
+    expect(rule.borderTopWidth).toBe('1px')
+    expect(rule.paddingTop).toBeGreaterThan(0)
+
+    // And it is the last thing in the form, so it reads as a footer rather than
+    // as a line that happened to land there.
+    const isLast = await provenance.evaluate(
+      (el) => el === el.parentElement?.lastElementChild,
+    )
+    expect(isLast).toBe(true)
+  })
 })

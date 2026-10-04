@@ -386,7 +386,12 @@ export function ExpenseSheet({
             onClick={() =>
               editing ? flipLock.mutate(!locked) : setLocked(!locked)
             }
-            aria-label={locked ? 'Unlock this expense' : 'Lock this expense'}
+            // No aria-label, deliberately. It used to name the ACTION
+            // ("Unlock this expense") while the visible text named the STATE,
+            // and since aria-label wins, a screen reader heard the opposite of
+            // what was on screen — the badge said Locked and the announcement
+            // said Unlock. The name is the visible word now, and aria-pressed
+            // carries that it is a toggle.
             aria-pressed={locked}
             title={
               !editing || editState.isAuthor
@@ -398,8 +403,16 @@ export function ExpenseSheet({
                   : 'Unlocked'
             }
             className={cn(
-              'grid place-items-center size-9 shrink-0 rounded-full',
-              'transition-[color,background-color] duration-150',
+              // A badge, not a bare icon. The lock is the only thing in the
+              // sheet that changes what other people may do to the entry, and an
+              // unlabelled padlock in the corner says neither what it controls
+              // nor which way it is set — the icon flips between two glyphs that
+              // are near-identical at 17px. The word carries the state, the icon
+              // carries the meaning, and the fill carries that it is pressable.
+              'inline-flex items-center gap-1.5 h-8 shrink-0',
+              'pl-2.5 pr-3 rounded-full',
+              'text-[0.7rem] font-medium uppercase tracking-wide',
+              'transition-colors duration-150',
               locked
                 ? 'text-[var(--color-terracotta)] bg-[var(--color-paper-sunk)]'
                 : 'text-ink-faint hover:text-ink hover:bg-[var(--color-paper-sunk)]',
@@ -407,10 +420,11 @@ export function ExpenseSheet({
             )}
           >
             {locked ? (
-              <Lock size={17} aria-hidden />
+              <Lock size={14} aria-hidden />
             ) : (
-              <LockOpen size={17} aria-hidden />
+              <LockOpen size={14} aria-hidden />
             )}
+            {locked ? 'Locked' : 'Unlocked'}
           </button>
         }
         footer={
@@ -817,9 +831,15 @@ export function ExpenseSheet({
               typed this in and when. It is the only place the author is named
               in full, which is also what makes a read-only entry legible as
               somebody else's rather than as a dead end. Nothing to tap, so it
-              is a paragraph and not a row. */}
+              is a paragraph and not a row.
+
+              Its own rule above it, because it is not part of the form: the
+              fields stop, and this is the entry's own record. Without the rule
+              it read as one more line of the notes block above it, and the
+              dates in the two are different dates — when it was added, not when
+              somebody last said something about it. */}
           {editing && (
-            <p className="text-xs text-ink-faint pt-1">
+            <p className="text-xs text-ink-faint mt-5 border-t border-rule pt-3.5">
               Added by {editing.createdByName ?? 'someone'}
               {' · '}
               <time dateTime={editing.createdAt}>
