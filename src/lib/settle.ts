@@ -19,6 +19,52 @@ export interface Settlement {
 }
 
 /**
+ * A recorded payment, in the form the balances need.
+ *
+ * Only the three fields the arithmetic touches. The name columns, the date and
+ * the author are for the screen, and taking them here would mean the test for
+ * "does a payment clear a debt" had to invent a whole row to answer.
+ */
+export interface RecordedPayment {
+  fromMemberId: string
+  toMemberId: string
+  amountMinor: number
+}
+
+/**
+ * Take recorded payments off the nets.
+ *
+ * A payment from A to B discharges A's debt, so A's net rises by it and B's falls.
+ * Both halves matter: moving only one would change the sum of the nets and leave
+ * the household's books unbalanced, which is the one thing a balance sheet must
+ * never be. The sum is asserted in the tests for exactly that reason.
+ *
+ * Pure and exported so it is testable, and applied to the derived nets rather
+ * than to `paidMinor` or `shareMinor`. Those two are the facts — what went out and
+ * what was owed — and a settlement is neither: it changes what remains owed, not
+ * what was spent. Writing it into either would make the column lie.
+ *
+ * A payment naming somebody who is not in this list is skipped rather than
+ * throwing. The list is the household filtered to its active members, so an
+ * archived member's payment is simply not part of the picture — and refusing to
+ * render any balances at all because of a row belonging to somebody who left
+ * would be a worse answer than not counting it.
+ */
+export function applySettlements<T extends SettlementMember>(
+  balances: ReadonlyArray<T>,
+  payments: ReadonlyArray<RecordedPayment>,
+): Array<T> {
+  const byId = new Map(balances.map((b) => [b.memberId, { ...b }]))
+  for (const p of payments) {
+    const from = byId.get(p.fromMemberId)
+    const to = byId.get(p.toMemberId)
+    if (from) from.netMinor += p.amountMinor
+    if (to) to.netMinor -= p.amountMinor
+  }
+  return balances.map((b) => byId.get(b.memberId)!)
+}
+
+/**
  * Minimal settlement plan: repeatedly settle the largest debtor against the
  * largest creditor. Produces at most n−1 transfers for n participants, which
  * is the useful property — fewer payments, same final state.

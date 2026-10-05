@@ -1,6 +1,8 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { createFileRoute, useNavigate, useSearch } from '@tanstack/react-router'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
+import { Check, X } from 'lucide-react'
 
 import type { PeriodPreset } from '#/lib/period'
 import { CountUp } from '#/components/CountUp'
@@ -12,11 +14,14 @@ import {
   Row,
   SectionTitle,
 } from '#/components/ui/Card'
+import { Button } from '#/components/ui/Button'
 import { balancesQuery, rememberedSpaceQuery, spaceKeys } from '#/lib/session'
 import { listMySpaces } from '#/lib/auth.functions'
 import { formatMoney } from '#/lib/money'
-import { resolvePeriod } from '#/lib/period'
+import { resolvePeriod, today } from '#/lib/period'
 import { MemberAvatar } from '#/components/MemberAvatar'
+import { ConfirmRemoval } from '#/components/settings/ConfirmRemoval'
+import { createSettlement, deleteSettlement } from '#/lib/settlement.functions'
 import { swatchColor } from '#/lib/swatches'
 import { useCurrentSpace } from '#/hooks/useCurrentSpace'
 import { resolveSpaceId } from '#/lib/space-preference'
@@ -97,6 +102,53 @@ function BalancesRoute() {
   const currency = space?.currency ?? 'EUR'
   const data = balances.data
   const yourNet = data?.yourNetMinor ?? 0
+
+  const queryClient = useQueryClient()
+  const invalidate = () => {
+    void queryClient.invalidateQueries({
+      queryKey: spaceKeys.balances(spaceId ?? '', period),
+    })
+  }
+
+  const record = useMutation({
+    mutationFn: (s: {
+      fromMemberId: string
+      toMemberId: string
+      amountMinor: number
+    }) =>
+      createSettlement({
+        data: {
+          spaceId: spaceId!,
+          fromMemberId: s.fromMemberId,
+          toMemberId: s.toMemberId,
+          amountMinor: s.amountMinor,
+          // Today, not the expense's date: this is the day the money moved, and
+          // the plan is being cleared now because it just happened.
+          settledOn: today(),
+        },
+      }),
+    onSuccess: () => {
+      toast.success('Payment recorded')
+      invalidate()
+    },
+    onError: () => toast.error('Could not record that payment'),
+  })
+
+  const [removingPayment, setRemovingPayment] = useState<{
+    id: string
+    label: string
+  } | null>(null)
+
+  const remove = useMutation({
+    mutationFn: (settlementId: string) =>
+      deleteSettlement({ data: { spaceId: spaceId!, settlementId } }),
+    onSuccess: () => {
+      toast.success('Payment removed')
+      setRemovingPayment(null)
+      invalidate()
+    },
+    onError: () => toast.error('Could not remove that payment'),
+  })
 
   return (
     <AppShell>
@@ -203,29 +255,133 @@ function BalancesRoute() {
                 <CardTitle>Settle up</CardTitle>
               </CardHeader>
               {data.settlements.length === 0 ? (
-                <p className="text-sm text-ink-faint py-2">
-                  Everyone is square. No payments needed.
-                </p>
+                /*
+                  The one place in the app that gets to celebrate, because this is
+                  the only state that is genuinely finished: every share accounted
+                  for, every debt cleared. It used to read "Everyone is square. No
+                  payments needed." — a sentence doing the job of a mark.
+                */
+                <div className="flex items-center gap-3 py-2">
+                  <span
+                    aria-hidden
+                    className="grid place-items-center size-9 shrink-0 rounded-full
+                      bg-[color-mix(in_oklab,var(--color-sage)_18%,transparent)]
+                      text-[var(--color-sage)]"
+                  >
+                    <Check size={18} strokeWidth={2.5} />
+                  </span>
+                  <span>
+                    <p className="text-sm font-medium">All square</p>
+                    <p className="text-xs text-ink-faint">
+                      Nobody owes anybody. Nothing left to settle.
+                    </p>
+                  </span>
+                </div>
               ) : (
-                <ul className="space-y-1.5">
+                <ul>
                   {data.settlements.map((s, i) => (
-                    <li
-                      key={`${s.fromMemberId}-${s.toMemberId}-${i}`}
-                      className="text-sm"
-                    >
-                      <span className="font-medium">{s.fromName}</span> owes{' '}
-                      <span className="font-medium">{s.toName}</span>{' '}
-                      <span className="tnum">
+                    <Row key={`${s.fromMemberId}-${s.toMemberId}-${i}`}>
+                      <span className="text-sm min-w-0 flex-1">
+                        <span className="font-medium">{s.fromName}</span>
+                        <span className="text-ink-muted"> owes </span>
+                        <span className="font-medium">{s.toName}</span>
+                      </span>
+                      <span className="tnum text-sm font-medium shrink-0">
                         {formatMoney(s.amountMinor, currency)}
                       </span>
-                    </li>
+                      {/* One tap from the plan to the record. The plan is a
+                          suggestion the app has made since it existed, and the
+                          step it was always missing was "and then I paid it". */}
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        disabled={record.isPending}
+                        onClick={() =>
+                          record.mutate({
+                            fromMemberId: s.fromMemberId,
+                            toMemberId: s.toMemberId,
+                            amountMinor: s.amountMinor,
+                          })
+                        }
+                        className="shrink-0"
+                      >
+                        Mark paid
+                      </Button>
+                    </Row>
                   ))}
                 </ul>
               )}
             </Card>
+
+            {/*
+              The payments themselves, not the debts: what was actually handed
+              over, newest first. Separate from the plan above because they are
+              different kinds of fact — the plan is a suggestion, this is a
+              receipt — and folding them into one list would make "Sam owes Alex"
+              and "Sam paid Alex" adjacent rows that read as a contradiction.
+            */}
+            {data.recorded.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Recorded payments</CardTitle>
+                </CardHeader>
+                <ul>
+                  {data.recorded.map((s) => (
+                    <Row key={s.id}>
+                      <span className="text-sm min-w-0 flex-1">
+                        <span className="font-medium">{s.fromName}</span>
+                        <span className="text-ink-muted"> paid </span>
+                        <span className="font-medium">{s.toName}</span>
+                      </span>
+                      <span className="text-xs text-ink-faint shrink-0">
+                        {new Date(`${s.settledOn}T00:00:00`).toLocaleDateString(
+                          'en',
+                          { day: 'numeric', month: 'short' },
+                        )}
+                      </span>
+                      <span className="tnum text-sm font-medium shrink-0">
+                        {formatMoney(s.amountMinor, currency)}
+                      </span>
+                      {s.canDelete && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setRemovingPayment({
+                              id: s.id,
+                              label: `${formatMoney(s.amountMinor, currency)} from ${s.fromName} to ${s.toName}`,
+                            })
+                          }
+                          aria-label={`Remove payment from ${s.fromName} to ${s.toName}`}
+                          title="Remove this payment"
+                          className="shrink-0 -mr-1 grid place-items-center size-7
+                            rounded-full text-ink-faint hover:text-ink
+                            hover:bg-[var(--color-paper-sunk)]
+                            transition-colors duration-150"
+                        >
+                          <X size={15} aria-hidden />
+                        </button>
+                      )}
+                    </Row>
+                  ))}
+                </ul>
+              </Card>
+            )}
           </div>
         )}
       </main>
+
+      {removingPayment && (
+        <ConfirmRemoval
+          kind="settlement"
+          name={removingPayment.label}
+          busy={remove.isPending}
+          onCancel={() => {
+            if (!remove.isPending) setRemovingPayment(null)
+          }}
+          onConfirm={() => remove.mutate(removingPayment.id)}
+        />
+      )}
     </AppShell>
   )
 }

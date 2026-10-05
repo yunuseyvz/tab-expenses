@@ -41,7 +41,9 @@ import {
   uuidSchema,
 } from './guards'
 import { BP_TOTAL, allocate, parseAmountToMinor } from './money'
-import { settle } from './settle'
+import { applySettlements, settle } from './settle'
+import { loadSettlements } from './settlement.functions'
+import type { RecordedSettlement } from './settlement.functions'
 import { displayMemberName } from './member-name'
 import { mayDeleteExpenseNote } from './may-edit'
 import { UNCATEGORISED_ID } from './uncategorised'
@@ -1162,6 +1164,8 @@ export type { Settlement } from './settle'
 export interface BalancesResult {
   balances: Array<MemberBalance>
   settlements: Array<Settlement>
+  /** Payments already recorded in this range, newest first. */
+  recorded: Array<RecordedSettlement>
   yourNetMinor: number
   yourMemberId: string
 }
@@ -1170,6 +1174,10 @@ export interface BalancesResult {
  * Per-member balance over a range, plus a minimal settlement plan.
  *
  * net = paid − share. Positive means the household owes them.
+ *
+ * Recorded payments are taken off the nets before the plan is drawn, which is
+ * what makes the plan clearable: pay somebody, record it, and their line goes
+ * away instead of coming back month after month.
  */
 export const getBalances = createServerFn({ method: 'GET' })
   .inputValidator(periodFilterSchema)
@@ -1255,10 +1263,21 @@ export const getBalances = createServerFn({ method: 'GET' })
       }
     })
 
+    /*
+     * Take recorded payments off the nets. A payment from A to B discharges A's
+     * debt, so A's net rises and B's falls — see `applySettlements`, which is
+     * where the arithmetic and the reasoning live.
+     */
+    const recorded = await loadSettlements(data.spaceId, session.user.id, {
+      from: data.from,
+      to: data.to,
+    })
+    const adjusted = applySettlements(balances, recorded)
+
     // Total of the nets must be zero. If it is not, some share rows are
     // outside the filter and the settlement plan would be wrong; surface it
     // rather than settling a phantom amount.
-    const netSum = balances.reduce((s, b) => s + b.netMinor, 0)
+    const netSum = adjusted.reduce((s, b) => s + b.netMinor, 0)
     if (netSum !== 0) {
       console.warn(
         `[balances] net does not balance (${netSum} minor units) for space ${data.spaceId}`,
@@ -1266,9 +1285,10 @@ export const getBalances = createServerFn({ method: 'GET' })
     }
 
     return {
-      balances,
-      settlements: settle(balances),
-      yourNetMinor: balances.find((b) => b.memberId === me.id)?.netMinor ?? 0,
+      balances: adjusted,
+      settlements: settle(adjusted),
+      recorded,
+      yourNetMinor: adjusted.find((b) => b.memberId === me.id)?.netMinor ?? 0,
       yourMemberId: me.id,
     } satisfies BalancesResult
   })
