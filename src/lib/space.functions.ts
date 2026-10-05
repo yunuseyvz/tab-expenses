@@ -22,6 +22,8 @@ import { getDb } from './db'
 import {
   category,
   expense,
+  recurringExpense,
+  settlement,
   space,
   spaceInvite,
   spaceMember,
@@ -206,9 +208,10 @@ export const spaceSummary = createServerFn({ method: 'GET' })
  * name to get here, which is the only thing standing between a mis-tap and that.
  *
  * THE ORDER IS THE POINT
- * Two foreign keys are `onDelete: 'restrict'` — `expense_split.member_id` and
- * `expense.category_id` — because archiving a member or a category that other
- * rows still point at would silently rewrite history. A bare
+ * Four foreign keys are `onDelete: 'restrict'` — `expense_split.member_id`,
+ * `expense.category_id`, `settlement.from_member_id` and
+ * `recurring_expense_split.member_id` — because archiving a member or a category
+ * that other rows still point at would silently rewrite history. A bare
  * `delete from space` does survive: Postgres happens to fire the
  * space → expense cascade before the space → space_member one, so the splits
  * are already gone by the time RESTRICT is checked.
@@ -216,14 +219,34 @@ export const spaceSummary = createServerFn({ method: 'GET' })
  * "Happens to" is not a property to build on. Cascade order is an artefact of
  * trigger OIDs, not a guarantee, and the day it changes this becomes a delete
  * that fails with a foreign key violation on real data — for the one operation
- * where a failure is least welcome. So the expenses go first, explicitly, and
+ * where a failure is least welcome. So everything goes first, explicitly, and
  * the restrict rules are never asked to make a decision they were not written
  * to make.
+ *
+ * EVERY table with a member-keyed restrict has to be named here, and two were
+ * missed when their features landed. `settlement` and `recurringExpense` were both
+ * added after this function was written and neither was added to the list, so
+ * deleting a household that had recorded a payment — or a rent, or an internet
+ * bill, which is to say almost every household that exists — died on a foreign key
+ * violation, on the one button whose whole purpose is to be reliable. It survived
+ * in tests because the fixture household had neither.
  */
 export async function purgeSpace(db: Db, spaceId: string) {
   return db.transaction(async (tx) => {
-    // Cascades to expense_split, clearing the restrict on member_id.
+    // Cascades to recurring_expense_split, clearing its restrict on member_id.
+    // Before the expenses, because expense.recurring_id is `set null` — deleting
+    // the template first only unhooks the entries, which the next line removes.
+    // Cascades to expense_split and expense_note, clearing the restrict on
+    // expense_split.member_id.
     await tx.delete(expense).where(eq(expense.spaceId, spaceId))
+    // Cascades to recurring_expense_split, clearing its restrict on member_id.
+    await tx
+      .delete(recurringExpense)
+      .where(eq(recurringExpense.spaceId, spaceId))
+    // No children of its own, and it restricts on member_id twice.
+    await tx.delete(settlement).where(eq(settlement.spaceId, spaceId))
+    // Nothing cascades from these — they have no children — and both restrict on
+    // member_id, so they have to be gone before the members are.
     // Cascades to space_member, category and space_invite. Nothing references
     // a category any more, so the restrict on expense.category_id is moot.
     const [row] = await tx
