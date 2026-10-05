@@ -124,9 +124,11 @@ test.describe('ledger', () => {
     // reading only as an icon told you neither what it controlled nor which way
     // it was set.
     //
-    // Named by its visible word rather than an aria-label. The label used to
-    // name the action while the badge named the state, so a screen reader heard
-    // "Unlock this expense" for a chip visibly reading Locked.
+    // Named for its STATE, and it is an aria-label again now that the badge is
+    // icon-only. It went wrong once before: the label used to name the ACTION
+    // ("Unlock this expense") while the badge named the state, so a screen
+    // reader heard the opposite of what was on screen. The word is gone; the
+    // name matches the glyph instead, which is what the rule was for.
     const lock = sheet.getByRole('button', { name: 'Locked', exact: true })
     await expect(lock).toBeVisible()
     await expect(lock).toHaveAttribute('aria-pressed', 'true')

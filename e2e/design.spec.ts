@@ -184,6 +184,290 @@ test.describe('design system', () => {
     })
   }
 
+  /**
+   * Neumorphism is a material, and a material is easy to get wrong in two
+   * specific ways. Both shipped in the first pass of this, so both are asserted.
+   *
+   * ONE SHADOW IS NOT NEUMORPHISM. A single diffuse shadow is a floating card;
+   * the effect needs a pair, a light from one side and a shade from the other,
+   * and the light one has to be light. Asserted as a pair and as the light half,
+   * rather than on exact values, because the numbers will be tuned again.
+   *
+   * AND A WIDE BRIGHT HIGHLIGHT IS A GLOW, NOT A SCULPTURE. The first version
+   * used a 0.92 white at 10px of blur and the pills read as lit from behind. The
+   * ceiling below is here so that the next person to widen it has to argue with
+   * this line rather than rediscover it from a screenshot.
+   */
+  test('neumorphic surfaces are a shadow pair, and not a glow', async ({
+    page,
+  }) => {
+    await page.goto('/dashboard?period=lastMonth')
+    const pills = page.locator('[aria-label="Period"]')
+    await expect(pills).toBeVisible()
+
+    const unchosen = pills
+      .locator('button[role=radio][aria-checked=false]')
+      .first()
+    const chosen = pills.locator('button[role=radio][aria-checked=true]')
+
+    const raised = await unchosen.evaluate(
+      (el) => getComputedStyle(el).boxShadow,
+    )
+
+    // Two shadows, and the first is the highlight.
+    const layers = raised.split(/,(?![^(]*\))/)
+    expect(layers.length).toBe(2)
+
+    const white = layers.find((l) => /255,\s*255,\s*255/.test(l))
+    expect(white).toBeTruthy()
+    const alpha = Number(
+      white!.match(/rgba?\(255,\s*255,\s*255,\s*([\d.]+)\)/)?.[1],
+    )
+    expect(alpha).toBeGreaterThan(0.3)
+    expect(alpha).toBeLessThanOrEqual(0.8)
+
+    // Warm, like every other shadow in the app.
+    expect(raised).not.toMatch(/rgba?\(0,\s*0,\s*0/)
+
+    // The chosen pill is PRESSED IN and the unchosen one is not. That inversion is
+    // the whole look: the options stand proud of the page and the selection sinks
+    // into it.
+    const inset = await chosen.evaluate((el) => getComputedStyle(el).boxShadow)
+    expect(inset).toContain('inset')
+    expect(raised).not.toContain('inset')
+
+    /*
+     * A neumorphic shadow is not an edge. 1.4.11 wants 3:1 on the boundary of a
+     * control and a soft pair does not reliably deliver it, so the controls that
+     * need a legible boundary keep a real border. Asserted on the sheet's Cancel,
+     * which is the clearest secondary button in the app. Asserted because the
+     * tempting version of this design deletes the borders and lets the shadow do
+     * it, and that is the accessibility bug rather than a style opinion.
+     */
+    await page.getByRole('button', { name: 'New expense' }).click()
+    const sheet = page.getByRole('dialog')
+    await expect(sheet).toBeVisible()
+    const borderWidth = await sheet
+      .getByRole('button', { name: 'Cancel' })
+      .evaluate((el) => getComputedStyle(el).borderTopWidth)
+    expect(Number.parseFloat(borderWidth)).toBeGreaterThan(0)
+  })
+
+  test('controls share one corner radius, and only the chips stay round', async ({
+    page,
+  }) => {
+    /*
+     * Opened on the expense sheet rather than the dashboard, because the sheet is
+     * where the controls actually meet: a filled button, a ghosted icon button, a
+     * text field and a select trigger, all within a few centimetres of each other.
+     * On the dashboard at phone width there is no field at all, so a comparison
+     * there measures one button against nothing and passes trivially — which is
+     * how this assertion shipped wrong the first time.
+     */
+    await page.goto('/expenses')
+    await page.locator('main button[aria-label^="Edit "]').first().click()
+    await expect(page.getByRole('dialog')).toBeVisible()
+
+    /*
+     * Radii read off the live elements rather than off the source.
+     *
+     * "Consistent" was being achieved by typing `--radius-md` into six files and
+     * hoping, and it had already drifted three ways inside one screen: the buttons
+     * were on one radius, the household trigger was on `rounded-full`, and the
+     * primary call to action was a lozenge. None of them was wrong alone. So the
+     * assertion is that they all resolve to the SAME number, which is the property
+     * that was actually wanted and cannot then drift silently.
+     */
+    const radii = await page.evaluate<Record<string, number | null>>(`(() => {
+      const sheet = document.querySelector('[role="dialog"]')
+      const px = (el) => {
+        if (!el) return null
+        const r = getComputedStyle(el).borderTopLeftRadius
+        return r.endsWith('px') ? Number.parseFloat(r) : null
+      }
+      const find = (sel, re) => {
+        if (!sheet) return null
+        return px(
+          Array.from(sheet.querySelectorAll(sel)).find((n) =>
+            re.test(n.textContent || ''),
+          ) || null,
+        )
+      }
+      return {
+        trash: px(sheet && sheet.querySelector('button[data-variant="danger"]')),
+        save: find('button', /^Save/),
+        cancel: px(sheet && sheet.querySelector('button[data-variant="secondary"]')),
+        lock: px(
+          (sheet &&
+            sheet.querySelector('button[aria-label="Locked"], button[aria-label="Unlocked"]')) ||
+            null,
+        ),
+        amount: px(sheet && sheet.querySelector('input')),
+      }
+    })()`)
+
+    const values = Object.values(radii).filter((v): v is number => v !== null)
+    expect(
+      values.length,
+      'the sheet must offer several controls to compare: ' +
+        JSON.stringify(radii),
+    ).toBeGreaterThanOrEqual(4)
+    for (const v of values) {
+      expect(v, JSON.stringify(radii)).toBe(values[0])
+    }
+
+    // And that number has to be a real corner, not a pill. A 40px control at
+    // 999px is the thing that was wrong in the first place.
+    expect(values[0]).toBeLessThanOrEqual(12)
+
+    /*
+     * The deliberate exception, asserted so the rule above cannot later be
+     * "fixed" by flattening the chips too. A filter chip is a thing you press with
+     * a fingertip and its roundness says so.
+     */
+    await page.keyboard.press('Escape')
+    await page.waitForTimeout(400)
+    const pill = await page
+      .locator('[aria-label="Period"] button')
+      .first()
+      .evaluate((el) => getComputedStyle(el).borderTopLeftRadius)
+    expect(Number.parseFloat(pill)).toBeGreaterThan(20)
+  })
+
+  test('every button is made of the same fibre', async ({ page }) => {
+    await page.goto('/dashboard')
+
+    /*
+     * Grain on the controls, for a perceptual reason rather than a decorative
+     * one: a neumorphic control is a single flat tone bounded only by a soft
+     * shadow pair, which is very little for the eye to resolve an edge from, and
+     * the boundaries kept reading as weak however far the fill was pushed away
+     * from the paper. Texture gives the surface something to be made of.
+     *
+     * The thing worth guarding is that this reaches the FILLED buttons too. They
+     * are not `.neo` surfaces, so nothing puts the grain on them automatically,
+     * and leaving them out makes the loudest control in the app the one smooth
+     * object on the screen.
+     */
+    const kinds = await page.evaluate<Record<string, number>>(`(() => {
+      const seen = {}
+      for (const b of document.querySelectorAll('button')) {
+        const cs = getComputedStyle(b)
+        if (cs.backgroundImage === 'none') continue
+        const key =
+          (b.dataset.variant || 'hand-rolled') + '|' + cs.backgroundBlendMode
+        seen[key] = (seen[key] || 0) + 1
+      }
+      return seen
+    })()`)
+
+    const entries = Object.entries(kinds)
+    expect(entries.length).toBeGreaterThan(0)
+    for (const [key] of entries) {
+      const [variant, blend] = key.split('|')
+      // multiply is the whole point: grain that lightens the fill would raise
+      // the button's contrast by washing it out, which is the opposite of the
+      // effect it is there for.
+      expect(blend, `${variant} must multiply its grain`).toBe('multiply')
+    }
+
+    // The primary call to action specifically: it is hand-rolled, has a filled
+    // background, and is the one most likely to be missed.
+    const cta = await page
+      .getByRole('button', { name: 'New expense' })
+      .evaluate((el) => getComputedStyle(el).backgroundImage)
+    expect(cta).not.toBe('none')
+  })
+
+  test('the delete control is a filled danger button with a legible icon', async ({
+    page,
+  }) => {
+    await page.goto('/expenses')
+    await page.locator('main button[aria-label^="Edit "]').first().click()
+    const sheet = page.getByRole('dialog')
+    await expect(sheet).toBeVisible()
+
+    const trash = sheet.locator('button[data-variant="danger"]').first()
+    await expect(trash).toBeVisible()
+
+    /*
+     * It was a ghosted neo button with a red GLYPH on it, which is the least
+     * legible way to mark the only irreversible control in the sheet: the red was
+     * a text colour on a surface the same tone as the page, so it read as a warm
+     * smudge. Filled is the only version where "this destroys something" is
+     * carried by the whole object rather than by one colour inside it.
+     */
+
+    /*
+     * Measured, not eyeballed: the icon colour and the fill come back rasterised
+     * through the spec's own __toRgb, so the ratio is computed on the same pixels a
+     * reader sees, oklch token and all.
+     *
+     * An IIFE rather than a function-plus-handle. A string handed to evaluate is
+     * evaluated as an expression and is not called with the argument, so the
+     * handle version silently returns undefined and the assertion fails on the
+     * far side of the mistake.
+     */
+    const READ_DANGER = `(() => {
+      const el = document.querySelector('[role="dialog"] button[data-variant="danger"]')
+      return {
+        icon: window.__toRgb(getComputedStyle(el).color),
+        fill: window.__toRgb(getComputedStyle(el).backgroundColor),
+        hasIcon: !!el.querySelector('svg'),
+        variant: el.dataset.variant,
+      }
+    })()`
+    const pair = await page.evaluate<{
+      icon: Array<number>
+      fill: Array<number>
+      hasIcon: boolean
+      variant: string
+    }>(READ_DANGER)
+
+    expect(pair.hasIcon, 'the delete control must carry an icon').toBe(true)
+    expect(pair.variant).toBe('danger')
+
+    // White on --color-danger-fill is the one combination here with a specified
+    // ratio, and it is the one that failed in dark mode before: the button was
+    // using oxblood-ink, a *text* colour, which is a light step on dark paper.
+    expect(
+      contrast(pair.icon, pair.fill),
+      'the icon on the danger fill',
+    ).toBeGreaterThanOrEqual(4.5)
+
+    // And it must be lighter than what it sits on. A glyph that merely differs
+    // from the fill is not a legible glyph.
+    expect(
+      luminance(pair.icon),
+      'the icon must be lighter than the fill, not merely different',
+    ).toBeGreaterThan(luminance(pair.fill))
+  })
+
+  test('the lock badge is an icon, and it is named', async ({ page }) => {
+    await page.goto('/expenses')
+    await page.locator('main button[aria-label^="Edit "]').first().click()
+    const sheet = page.getByRole('dialog')
+    await expect(sheet).toBeVisible()
+
+    const lock = sheet.getByRole('button', { name: 'Locked', exact: true })
+    await expect(lock).toBeVisible()
+
+    // Icon-only, and that is only allowed because it carries a name. Stripping
+    // the word is fine; stripping the name as well would leave a control with no
+    // accessible name at all, which is worse than the lozenge ever was.
+    await expect(lock).toHaveText('')
+    await expect(lock).toHaveAttribute('aria-pressed', 'true')
+    await expect(lock.locator('svg')).toHaveCount(1)
+
+    // An icon button is square-ish. It was `rounded-full`, which at this size is
+    // a lozenge, and a lozenge in the corner of a sheet reads as a sticker rather
+    // than as one of the controls.
+    const radius = await lock.evaluate(
+      (el) => getComputedStyle(el).borderTopLeftRadius,
+    )
+    expect(Number.parseFloat(radius)).toBeLessThanOrEqual(12)
+  })
+
   test('focus is visible, not suppressed', async ({ page }) => {
     await page.goto('/login')
 
@@ -854,10 +1138,18 @@ test.describe('popover placement', () => {
       .locator('button[aria-haspopup=listbox]')
       .first()
       .click()
-    await page
-      .getByRole('button', { name: /^Edit / })
-      .first()
-      .click()
+    /*
+     * The household's own edit control, by its real name.
+     *
+     * This was `/^Edit /` `.first()`, which is a selector that quietly stopped
+     * meaning what it was written to mean: the ledger now opens each expense with
+     * a button named `Edit <what it was for>`, and those sit earlier in the DOM
+     * than the switcher menu, so the test opened the expense sheet and then sat
+     * waiting sixty seconds for a `Change` button that was never on screen. A
+     * stale selector does not fail as "not found" — it fails as a timeout, which
+     * reads like a performance problem and is not one.
+     */
+    await page.getByRole('button', { name: 'Edit Flat 3B' }).click()
     await expect(page.getByRole('dialog')).toBeVisible()
 
     await page
@@ -887,16 +1179,33 @@ test.describe('popover placement', () => {
       'the panel must not run off the bottom of the viewport',
     ).toBeLessThanOrEqual(vh)
 
-    // The real assertion: hit-test every option. A clipped panel still *renders*
-    // its full height in the DOM, so counting options proves nothing and
-    // asserting the bounding box proves little — what fails is the click.
+    // There are 84 of them and the panel caps itself at 70dvh, so it scrolls —
+    // which this loop used to deny, and it failed on options 30 through 83 for
+    // exactly that reason. Nothing is wrong with a scrollable list; the premise
+    // was. It went unnoticed because the selector above it had gone stale and
+    // this code was not running.
+    //
+    // Scrolling each option into view first is not a loophole, it is the actual
+    // question: once the option is on screen, is anything on top of it? That
+    // catches the sticky header, the sheet's own footer and the floating action
+    // bar — all of which sit over this panel and none of which care whether the
+    // option was scrolled to. The bug this test was originally written for, the
+    // panel being clipped by an ancestor, is caught structurally above, by the
+    // assertion that the panel is not inside the form.
+    expect(
+      await panel.evaluate((el) => getComputedStyle(el).overflowY),
+      'a panel taller than its cap has to scroll, or the rest is unreachable',
+    ).toBe('auto')
+
     const options = panel.getByRole('option')
     const total = await options.count()
     expect(total).toBeGreaterThanOrEqual(30)
 
     const unreachable: Array<number> = []
     for (let i = 0; i < total; i++) {
-      const b = await options.nth(i).boundingBox()
+      const option = options.nth(i)
+      await option.scrollIntoViewIfNeeded()
+      const b = await option.boundingBox()
       if (!b) {
         unreachable.push(i)
         continue
