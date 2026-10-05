@@ -15,6 +15,7 @@ import { queryOptions } from '@tanstack/react-query'
 
 import { getRememberedSpaceId } from './auth.functions'
 import { getBalances, getTotals, listExpenses } from './expense.functions'
+import { getRecap } from './recap.functions'
 import { listCategories, listMembers } from './space.functions'
 import type { QueryClient } from '@tanstack/react-query'
 import type { Period } from './period'
@@ -33,6 +34,8 @@ export const spaceKeys = {
     ['spaces', spaceId, 'totals', filter] as const,
   balances: (spaceId: string, filter: unknown) =>
     ['spaces', spaceId, 'balances', filter] as const,
+  recap: (spaceId: string, filter: unknown) =>
+    ['spaces', spaceId, 'recap', filter] as const,
 }
 
 export interface ListFilter extends Period {
@@ -99,6 +102,21 @@ export function totalsQuery(spaceId: string, filter: ListFilter) {
   return queryOptions({
     queryKey: spaceKeys.totals(spaceId, filter),
     queryFn: () => fetchTotals(spaceId, filter),
+  })
+}
+
+/**
+ * The month in review.
+ *
+ * Keyed on the period alone, not on the category filter: "your groceries were
+ * down 12%" is a recap, and "your selected categories were down 12%" is a
+ * spreadsheet the filter chips already are.
+ */
+export function recapQuery(spaceId: string, filter: Period) {
+  return queryOptions({
+    queryKey: spaceKeys.recap(spaceId, filter),
+    queryFn: () =>
+      getRecap({ data: { spaceId, from: filter.from, to: filter.to } }),
   })
 }
 

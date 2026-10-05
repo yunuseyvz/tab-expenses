@@ -1,7 +1,7 @@
 import { useNavigate } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { motion } from 'motion/react'
-import { Lock, StickyNote } from 'lucide-react'
+import { Lock, Repeat, StickyNote } from 'lucide-react'
 
 import type { Category } from '#/lib/db/schema'
 import type { PeriodPreset } from '#/lib/period'
@@ -18,6 +18,7 @@ import {
 } from '#/components/ui/Card'
 import { CategoryChips } from '#/components/dashboard/CategoryChips'
 import { CategoryBars } from '#/components/dashboard/CategoryBars'
+import { RecapCard } from '#/components/dashboard/RecapCard'
 import { balancesQuery, expensesQuery, totalsQuery } from '#/lib/session'
 import { formatMoney } from '#/lib/money'
 import { swatchColor } from '#/lib/swatches'
@@ -182,6 +183,16 @@ export function Dashboard({
         />
       </Card>
 
+      {/* The review sits with the other reading material, above the list. It is
+          the summary of the same period the two headline cards are showing, so
+          putting it after the entries would file it below the details it is
+          summarising. */}
+      <RecapCard
+        spaceId={spaceId}
+        currency={currency}
+        filter={{ from: filter.from, to: filter.to }}
+      />
+
       <Card>
         <CardHeader>
           <CardTitle>Recent entries</CardTitle>
@@ -214,7 +225,16 @@ export function Dashboard({
                         ? `Edit ${e.purpose}, ${formatMoney(e.amountMinor, currency)}`
                         : `View ${e.purpose}, ${formatMoney(e.amountMinor, currency)}. ${edit.reason}`
                     }
-                    className="w-full text-left transition-colors duration-150"
+                    /*
+                     * A wash on hover and nothing else. No travel: the rows sit
+                     * directly above each other with hairlines between them, and
+                     * a row that moves under the pointer makes you re-find it.
+                     * The tap is acknowledged by the sheet, which is the whole
+                     * point of the sheet.
+                     */
+                    className="w-full text-left rounded-[var(--radius-md)]
+                      transition-[background-color] duration-150
+                      hover:bg-[var(--color-paper-sunk)]"
                   >
                     <Row>
                       <span
@@ -257,6 +277,18 @@ export function Dashboard({
                         <span className="flex items-center gap-1 shrink-0 text-ink-faint">
                           <StickyNote size={13} aria-hidden />
                           <span className="text-xs tnum">{e.noteCount}</span>
+                        </span>
+                      )}
+                      {/* Only while the series is still running. A stopped one
+                          leaves entries behind that are ordinary entries now, and
+                          a marker claiming they repeat would be a lie the moment
+                          the series was stopped. */}
+                      {e.recurringId && !e.recurringArchivedAt && (
+                        <span
+                          className="flex items-center gap-1 shrink-0 text-ink-faint"
+                          title={`Repeats every ${e.recurringFrequency === 'monthly' ? 'month' : 'week'}`}
+                        >
+                          <Repeat size={13} aria-hidden />
                         </span>
                       )}
                       <span className="tnum text-sm font-medium shrink-0">
