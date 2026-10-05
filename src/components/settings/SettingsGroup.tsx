@@ -244,7 +244,13 @@ export function SettingsRow({
 
   const rowClass = cn(
     'flex w-full items-center gap-3 px-4 py-3 text-left',
-    'transition-colors duration-150',
+    'transition-[background-color,color] duration-150',
+    /*
+     * No press feedback, deliberately. The row's own destination is the
+     * acknowledgement, and it arrives within a frame or two on every platform
+     * this runs on. A pixel of travel in the meantime reads as the row dodging
+     * the finger rather than answering it, and it made the list feel loose.
+     */
     className,
   )
 

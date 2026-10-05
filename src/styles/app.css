@@ -171,6 +171,77 @@
   /* the active state of a button: 1px lower and flatter */
   --shadow-press: inset 0 2px 4px rgb(28 34 46 / 0.2);
 
+  /* ── neumorphism ─────────────────────────────────────────────────────
+   * The shape comes out of the plane instead of sitting on it, so the SHADOW is
+   * the border. That is the whole idea, and it is also the cost: a control
+   * identified only by a soft shadow has no hard edge, which is why nothing here
+   * is allowed to remove a border and leave the shadow to do the work of one.
+   *
+   * A PAIR, always. One diffuse shadow is a floating card; two, one light from
+   * the top-left and one dark to the bottom-right, is an extrusion, and the light
+   * has to be a real highlight rather than a lighter shadow or the effect
+   * collapses into a smudge. Same warm ink as every other shadow in this file —
+   * a neutral black highlight-and-shade pair reads as a rendering trick.
+   *
+   * The offsets are asymmetric on purpose (4px out, 10px blur): matched pairs
+   * read as a halo around the shape, and the slight mismatch is what makes it
+   * read as a light source.
+   *
+   * TIGHT AND DIM ON PURPOSE, and revised twice.
+   *
+   * First a 0.92 white at 10px of blur, which was not soft-sculpted plastic but
+   * bloom: a wide, near-opaque highlight stops being a light source, and the pill
+   * stopped looking pressed into the page and started looking lit from behind.
+   * Then 0.7 at 7px, which fixed the highlight and left the SHADE spreading
+   * further than the shape — a 7px blur on a 3px offset reaches ten pixels past
+   * the edge, and on paper this pale that reads as a grey halo the pill is
+   * standing in rather than a shadow it is casting.
+   *
+   * So the blur is now smaller than the offset rather than larger, and both
+   * halves are dim. A shadow that stops just past the edge of a shape is what
+   * makes it look pressed into something. One that fades out across the whole
+   * area around the shape is what makes it look lit.
+   */
+  --shadow-neo:
+    -2px -2px 4px rgb(255 255 255 / 0.5), 2px 2px 5px rgb(28 34 46 / 0.09);
+  /* Pressed in. Same pair, swapped inside, and the dark side stronger: a recess
+     * needs more contrast than a bulge to read at all, because the eye expects a
+     * bump. The selected pill in a set of identical pills is carrying a whole
+     * state, and a difference in softness is not something anybody can read
+     * across a table.
+     */
+  --shadow-neo-inset:
+    inset -2px -2px 5px rgb(255 255 255 / 0.55),
+    inset 2px 2px 6px rgb(28 34 46 / 0.16);
+  /* A softer pair for small controls, where even 2px of blur is a lot on a 32px
+     pill. */
+  --shadow-neo-sm:
+    -1.5px -1.5px 3px rgb(255 255 255 / 0.5),
+    1.5px 1.5px 3px rgb(28 34 46 / 0.09);
+  --shadow-neo-inset-sm:
+    inset -1.5px -1.5px 3px rgb(255 255 255 / 0.55),
+    inset 1.5px 1.5px 4px rgb(28 34 46 / 0.16);
+
+  /*
+   * The surface a neo control is extruded FROM.
+   *
+   * This is the token that decides whether the look works or washes out, and it
+   * is worth being precise about. Neumorphism wants the control to be the SAME
+   * colour as the page — that is what makes it look moulded out of one sheet
+   * rather than laid on top. But "the same" cannot mean "the same value" on a
+   * page this pale: at 0.958 against a 0.968 page the step is 0.010, which is
+   * about one pixel of tone, and a Cancel button on that measures as no boundary
+   * at all. The shadow alone was doing all of the work, and a soft pair cannot.
+   *
+   * So the fill carries a real step — about four times what it was — and the
+   * shadow carries the shape. The gap between raised and sunk is widened for a
+   * second reason: with the two fills nearly equal, "which one is pressed in"
+   * was answerable only from the direction of a soft shadow, which is not a
+   * difference anybody can read on a 32px pill.
+   */
+  --color-neo: oklch(0.944 0.005 255);
+  --color-neo-sunk: oklch(0.925 0.006 255);
+
   /* ── radii ────────────────────────────────────────────────────────────
    * A real scale rather than hand-written `rounded-[3px]` on every component.
    * Two reasons: the 3px that predated it reads as 1998 — Apple's system sits
@@ -186,6 +257,29 @@
   --radius-lg: 1rem;
   --radius-xl: 1.375rem;
   --radius-2xl: 1.75rem;
+
+  /*
+   * The corner on every control that is a control: buttons, inputs, selects, the
+   * date field, the household trigger.
+   *
+   * This exists because "consistent" was being achieved by typing
+   * `--radius-md` into six files and hoping, and it had already drifted — the
+   * buttons were on `--radius-md`, the household trigger was on `rounded-full`,
+   * and the primary "New expense" call to action, which is the single most
+   * prominent control in the app, was a lozenge. Three controls, three radii,
+   * none of them wrong in isolation.
+   *
+   * One step below `--radius-md` on purpose. At 12px a 48px button is a lozenge
+   * and reads as a toy, which is the thing this material is most prone to: a
+   * soft shadow pair already rounds a shape optically, so the corner is doing the
+   * rounding twice and the control loses its edges. At 8px the highlight still
+   * reads and the button still looks pressed, but it looks like a button.
+   *
+   * Chips, pills and avatars are NOT on this token. They are round on purpose —
+   * a filter chip is a thing you press with a fingertip, and a round one says so
+   * in a way a rounded rectangle does not.
+   */
+  --radius-control: var(--radius-sm);
 
   /* ── type ──────────────────────────────────────────────────────────── */
   --font-sans:
@@ -219,6 +313,28 @@
    * requests, zero animation cost. Page background ONLY — grain behind text
    * destroys legibility. */
   --paper-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.55' numOctaves='3' stitchTiles='stitch'/%3E%3CfeDiffuseLighting lighting-color='%23fff' surfaceScale='1.4'%3E%3CfeDistantLight azimuth='45' elevation='62'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
+
+  /*
+   * The same fibre, weaker, for the neo controls.
+   *
+   * The page gets 0.5 because it is a full viewport of background with nothing on
+   * it. A control is a 40px rectangle with a label in the middle, and at 0.5 the
+   * noise was measurably fighting the glyphs rather than sitting behind them —
+   * so this is 0.22, roughly half again as strong as nothing and well short of
+   * the page.
+   *
+   * It is there for a perceptual reason rather than a decorative one. A neumorphic
+   * control is, by construction, a single flat tone bounded only by a soft shadow
+   * pair — which is very little for the eye to resolve an edge from, and the
+   * reason the boundaries kept reading as weak no matter how far the fill was
+   * pushed away from the paper. Grain gives the surface something to be *made
+   * of*. The eye reads texture as material, and material has a boundary.
+   *
+   * Lower frequency than the page's, deliberately: 0.4 against 0.55, so the
+   * fibres are large enough to survive being 40px wide and read as texture rather
+   * than as dirt on the glass.
+   */
+  --control-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='c'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.4' numOctaves='3' stitchTiles='stitch'/%3E%3CfeDiffuseLighting lighting-color='%23fff' surfaceScale='1.2'%3E%3CfeDistantLight azimuth='45' elevation='58'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23c)' opacity='0.22'/%3E%3C/svg%3E");
 
   /* Apple's "material": a translucent surface that lets the grain and the
    * colour behind it show through, softened by a backdrop blur, with a hairline
@@ -356,6 +472,26 @@
   --shadow-deboss:
     inset 0 1px 2px rgb(0 0 0 / 0.55), inset 0 -1px 0 rgb(255 255 255 / 0.045);
   --shadow-raise: 0 1px 2px rgb(0 0 0 / 0.4), 0 6px 16px -4px rgb(0 0 0 / 0.5);
+
+  /*
+   * Neumorphism, inverted for dark paper. Same pair, and the same reason for it:
+   * the shadow is the border. What changes is which half does the work — on dark
+   * the highlight has almost nothing to be lighter than, so the shade carries the
+   * edge and the highlight is kept very faint to stop the pill looking like it
+   * has a grey rim.
+   */
+  --shadow-neo:
+    -2px -2px 4px rgb(255 255 255 / 0.045), 2px 2px 5px rgb(0 0 0 / 0.5);
+  --shadow-neo-inset:
+    inset -2px -2px 5px rgb(255 255 255 / 0.045),
+    inset 2px 2px 6px rgb(0 0 0 / 0.62);
+  --shadow-neo-sm:
+    -1.5px -1.5px 3px rgb(255 255 255 / 0.045), 1.5px 1.5px 3px rgb(0 0 0 / 0.5);
+  --shadow-neo-inset-sm:
+    inset -1.5px -1.5px 3px rgb(255 255 255 / 0.045),
+    inset 1.5px 1.5px 4px rgb(0 0 0 / 0.62);
+  --color-neo: oklch(0.268 0.007 255);
+  --color-neo-sunk: oklch(0.234 0.007 255);
   --shadow-float:
     0 2px 6px rgb(0 0 0 / 0.45), 0 18px 40px -8px rgb(0 0 0 / 0.65);
   --shadow-press: inset 0 2px 5px rgb(0 0 0 / 0.6);
@@ -363,6 +499,12 @@
   /* Quieter than light mode. Grain that reads as fibre on cream reads as noise
    * on charcoal, and it sits under text. */
   --paper-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.55' numOctaves='3' stitchTiles='stitch'/%3E%3CfeDiffuseLighting lighting-color='%23fff' surfaceScale='1.4'%3E%3CfeDistantLight azimuth='45' elevation='62'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.14'/%3E%3C/svg%3E");
+
+  /* Quieter still, for the same reason the page's is: the control already sits
+   * on a dark surface where the grain has less tonal room to work with, and
+   * white-on-dark labels are the ones that suffer first when noise creeps up
+   * behind them. */
+  --control-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='c'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.4' numOctaves='3' stitchTiles='stitch'/%3E%3CfeDiffuseLighting lighting-color='%23fff' surfaceScale='1.2'%3E%3CfeDistantLight azimuth='45' elevation='58'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23c)' opacity='0.12'/%3E%3C/svg%3E");
 
   /* Apple's material: a translucent surface that lets the grain and colour
    * behind it show through, softened by a backdrop blur, with a hairline of
@@ -683,10 +825,100 @@
     border-radius: var(--radius-lg);
   }
 
-  .well {
-    background-color: var(--color-paper-sunk);
-    box-shadow: var(--shadow-deboss);
-    border-radius: var(--radius-md);
+  /*
+   * The recessed-surface primitive this file used to have, `.well`, is gone: it
+   * was a single inset shadow on a sunk fill, which is what `.neo-inset` now
+   * does properly — as a pair, with the highlight. Nothing referenced it after
+   * the segmented controls moved over, and a class kept only by a comment is a
+   * class somebody will reach for instead of the two that are used.
+   */
+
+  /*
+   * Neumorphic surfaces: extruded, and pressed in.
+   *
+   * Classes rather than more tokens because they are always used together — a
+   * component that got the shadow without the surface, or the surface without
+   * the shadow, is the two mistakes this look is prone to, and one class is
+   * harder to half-apply than one shadow.
+   *
+   * They carry the SHAPE of a control and nothing else. Contrast is still
+   * carried by the ink tokens, and the boundary still has to clear 3:1 from
+   * whichever token draws it — a soft shadow is a material, not a border, and
+   * `.neo` deliberately does not replace a border on a control that relies on one.
+   *
+   * The grain is here for the same reason it is on the page: a surface with no
+   * texture in it has no edge the eye can hold on to. See --control-grain for why
+   * it is a separate, weaker token rather than the page's.
+   */
+  .neo {
+    background-color: var(--color-neo);
+    background-image: var(--control-grain);
+    background-blend-mode: multiply;
+    box-shadow: var(--shadow-neo);
+  }
+
+  .neo-inset {
+    background-color: var(--color-neo-sunk);
+    background-image: var(--control-grain);
+    background-blend-mode: multiply;
+    box-shadow: var(--shadow-neo-inset);
+  }
+
+  /* The same treatment at a size where 2px of blur is a lot. */
+  .neo-sm {
+    background-color: var(--color-neo);
+    background-image: var(--control-grain);
+    background-blend-mode: multiply;
+    box-shadow: var(--shadow-neo-sm);
+  }
+
+  .neo-sm-inset {
+    background-color: var(--color-neo-sunk);
+    background-image: var(--control-grain);
+    background-blend-mode: multiply;
+    box-shadow: var(--shadow-neo-inset-sm);
+  }
+
+  /*
+   * The filled buttons, which do not use `.neo` and would otherwise be the only
+   * controls in the app made of a different material.
+   *
+   * Keyed on the `data-variant` the Button component already writes, so this
+   * cannot drift out of sync with the component the way a class name passed at
+   * each call site would. It covers primary and danger; secondary and ghost pick
+   * the grain up from `.neo` above, harmlessly twice over.
+   */
+  button[data-variant='primary'],
+  button[data-variant='danger'] {
+    background-image: var(--control-grain);
+    background-blend-mode: multiply;
+  }
+
+  /*
+   * The press.
+   *
+   * Neumorphism is a tactile language, and a control that does not visibly sink
+   * when you push it has opted out of the one thing the language is for. This is
+   * the whole micro-interaction, and it is why it belongs on every neo surface
+   * rather than only on the buttons: a pill that acknowledges a press is a
+   * different object from one that does not.
+   *
+   * `:active` alone rather than `[data-pressed]`, so it is driven by the pointer
+   * and fires on the frame the finger goes down. `:not(:disabled)` because a
+   * control that cannot be pressed must not look like it was.
+   *
+   * The transition lives on the component, not here. A rule that set
+   * `transition` on every surface would also transition the shadow on hover,
+   * which is a second, slower change happening under the same property.
+   */
+  .neo-press:active:not(:disabled) {
+    background-color: var(--color-neo-sunk);
+    box-shadow: var(--shadow-neo-inset);
+  }
+
+  .neo-sm-press:active:not(:disabled) {
+    background-color: var(--color-neo-sunk);
+    box-shadow: var(--shadow-neo-inset-sm);
   }
 }
 

@@ -188,7 +188,7 @@ export function DateField({
         title={value ? longDate(value, locale) : undefined}
         className={cn(
           'w-full flex items-center gap-2 text-left',
-          'bg-paper-sunk text-ink rounded-[var(--radius-md)]',
+          'bg-paper-sunk text-ink rounded-[var(--radius-control)]',
           compact ? 'px-2.5 py-1.5 text-sm' : 'px-3.5 py-2.5',
           'border border-[color:var(--rule-field)]',
           'shadow-[var(--shadow-deboss)]',

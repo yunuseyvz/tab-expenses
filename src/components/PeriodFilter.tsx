@@ -119,11 +119,24 @@ export function PeriodFilter({
                 setOpen((o) => (active ? !o : true))
               }}
               className={cn(
-                'px-2.5 py-1.5 text-sm rounded-[var(--radius-sm)]',
-                'transition-[background-color,box-shadow] duration-150',
+                'px-2.5 py-1.5 text-sm rounded-full',
+                'transition-[background-color,box-shadow,color] duration-150',
+                /*
+                 * Neumorphism, and the states are INVERTED from what they were.
+                 *
+                 * Unselected used to be the recessed one, because "not chosen"
+                 * was drawn as pushed in. Neumorphism wants the opposite: the
+                 * choices are all standing proud of the page, and the chosen one
+                 * is pressed into it — a toggle rather than a list of buttons.
+                 *
+                 * The shadow alone cannot carry that, so the label changes weight
+                 * with it. A recessed pill and a proud one made of the same
+                 * material are the same colour, and a difference in softness is
+                 * not a difference anybody can read at arm's length.
+                 */
                 active
-                  ? 'bg-paper-raised shadow-[var(--shadow-raise)]'
-                  : 'bg-paper-sunk shadow-[var(--shadow-deboss)]',
+                  ? 'neo-inset text-ink font-medium'
+                  : 'neo text-ink-muted hover:text-ink',
               )}
             >
               {p.label}

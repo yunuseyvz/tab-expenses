@@ -18,8 +18,21 @@ import { cn } from '#/lib/cn'
 const buttonVariants = cva(
   [
     'inline-flex items-center justify-center gap-2 font-medium whitespace-nowrap',
-    'rounded-[var(--radius-md)]',
-    'transition-[transform,background-color,border-color,color] duration-150 ease-[var(--ease-out-soft)]',
+    /*
+     * The radius scale, not `rounded-full`. The pills are pills because they are
+     * filter chips — small, round, and shaped like a thing you press with a
+     * fingertip. A 48px Save button at the same radius stops being a button and
+     * starts being a lozenge, and a row of them reads as a toy. The neumorphism
+     * does not need the roundness to work; it needs the shadow pair.
+     */
+    'rounded-[var(--radius-control)]',
+    'transition-[transform,background-color,border-color,color,box-shadow] duration-150 ease-[var(--ease-out-soft)]',
+    /*
+     * The press is a scale AND the shadow swapping to its inset twin. Neumorphism
+     * is a tactile language and a scale alone says "this moved"; a scale plus a
+     * surface that visibly sinks says "this was pressed". Both are cheap, and the
+     * second is the one the rest of this design is speaking in.
+     */
     'active:scale-[0.97] motion-reduce:active:scale-100',
     'disabled:pointer-events-none disabled:opacity-50',
     'select-none',
@@ -36,9 +49,23 @@ const buttonVariants = cva(
         // drops the label straight back under 4.5:1. The pressed state is
         // carried by the transform and the inset shadow instead.
         primary: 'bg-terracotta text-ink hover:bg-terracotta-strong',
+        /*
+         * The two neutrals are extruded from the page rather than outlined on
+         * it, which is the same material the pills and chips are made of.
+         *
+         * Secondary KEEPS its border, and on `--rule-field` rather than
+         * `--color-rule`, which is a real find. The two look interchangeable and
+         * are not: `--color-rule` is the hairline between rows, and in light it
+         * is 0.875 — which against a button is not an edge. `--rule-field` is the
+         * one tuned to clear 1.4.11's 3:1 against all three paper surfaces, which
+         * is exactly the job this border is doing.
+         *
+         * Ghost takes no border, because it is an icon control sitting inside a
+         * surface that already separates it and the tonal step does the work.
+         */
         secondary:
-          'bg-transparent text-ink border border-rule hover:border-terracotta-ink',
-        ghost: 'bg-transparent text-ink-muted hover:text-ink',
+          'neo neo-press text-ink border border-[color:var(--rule-field)] hover:border-terracotta-ink hover:text-ink',
+        ghost: 'neo-sm neo-sm-press text-ink-muted hover:text-ink',
         // A per-theme token, not oxblood-ink: that is a text colour, and on
         // dark paper it is a light step, so white on it fails (2.6:1).
         danger: 'bg-[var(--color-danger-fill)] text-white hover:brightness-110',
@@ -72,10 +99,18 @@ export function Button({
       data-size={size ?? 'md'}
       className={cn(
         buttonVariants({ variant, size }),
-        // Pressed state is physical: 1px lower and flatter.
-        'active:translate-y-px',
+        /*
+         * The press, for the two filled variants. The neutrals carry their own —
+         * `.neo-press` sinks them into the page, which is the neumorphic way to
+         * say "pushed" and the reason this material has a tactile language at all.
+         *
+         * A filled control cannot sink into a page it is a different colour from,
+         * so it does what a filled control has always done here: one pixel lower,
+         * and its own shadow collapsing to a single inset. Both are physical
+         * rather than chromatic, which is why neither costs a repaint.
+         */
         variant === 'primary' || variant === 'danger'
-          ? 'shadow-[var(--shadow-raise)] active:shadow-[var(--shadow-press)]'
+          ? 'shadow-[var(--shadow-raise)] active:shadow-[var(--shadow-press)] active:translate-y-px'
           : '',
         className,
       )}

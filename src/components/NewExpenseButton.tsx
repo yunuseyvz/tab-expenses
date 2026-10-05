@@ -44,9 +44,14 @@ export function NewExpenseButton({
       aria-label="New expense"
       className={cn(
         'inline-flex items-center gap-1.5 shrink-0',
-        'h-9 pl-2.5 pr-3.5 rounded-full',
+        'h-9 pl-2.5 pr-3.5 rounded-[var(--radius-control)]',
         'text-sm font-medium text-[var(--color-ink)]',
         'bg-[var(--color-terracotta)]',
+        // The fibre, same as every other control. It is not a `.neo` surface so
+        // it does not pick the grain up from there, and this is the single most
+        // prominent button in the app — leaving the loudest control as the one
+        // smooth surface would have been the most obvious inconsistency of the lot.
+        'bg-blend-multiply bg-[image:var(--control-grain)]',
         'shadow-[var(--shadow-raise)]',
         'transition-[background-color,box-shadow,transform] duration-150',
         'ease-[var(--ease-out-soft)]',

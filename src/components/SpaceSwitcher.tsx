@@ -264,7 +264,7 @@ function AvatarTrigger({
       // and reading as part of it rather than as a separate control: the avatar
       // carries a hairline ring, so anything closer than a real gap looks like
       // it is drawn on the disc.
-      className="flex items-center gap-1.5 rounded-full px-1.5
+      className="flex items-center gap-1.5 rounded-[var(--radius-control)] px-1.5
         transition-[background-color,transform] duration-150
         hover:bg-[var(--color-paper-sunk)]
         active:scale-[0.96] motion-reduce:active:scale-100"

@@ -29,16 +29,22 @@ export function CardTitle({ className, ...props }: ComponentProps<'h2'>) {
 }
 
 /**
- * A list row: flat, separated by hairlines, like ruled paper. Hover raises it
- * 1px. Rows are not individually shadowed — nesting shadows inside shadows is
- * how a skeuomorphic UI starts to look cheap.
+ * A list row: flat, separated by hairlines, like ruled paper. Rows are not
+ * individually shadowed — nesting shadows inside shadows is how a skeuomorphic
+ * UI starts to look cheap.
+ *
+ * Hover does NOT move the row. It used to raise it a pixel, and on the balances
+ * screen — where a member list and a settle-up list sit directly above each other
+ * — that pixel was worse than no feedback at all: the row visibly jumped away
+ * from the hairline under it while you were trying to read which of two adjacent
+ * numbers it belonged to. A list that moves when you point at it is a list you
+ * point at more than once.
  */
 export function Row({ className, ...props }: ComponentProps<'div'>) {
   return (
     <div
       className={cn(
         'flex items-center gap-3 py-3 border-b border-rule last:border-b-0',
-        'transition-transform duration-150 hover:translate-y-px',
         className,
       )}
       {...props}

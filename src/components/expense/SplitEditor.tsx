@@ -79,8 +79,19 @@ function evenSplit(count: number, totalBp: number): Array<number> {
  *
  * A zero weight sum falls back to an even split, because it means every weight
  * is zero and dividing by it is not an answer.
+ *
+ * Exported because `scripts/seed-load.ts` needs to turn arbitrary weights into a
+ * set that sums to exactly BP_TOTAL, and it is the only implementation of that in
+ * the codebase. Rolling a second one there is how the two drift apart — and the
+ * earlier version of that script did exactly that, dumping the whole rounding
+ * residue onto the last entry, which on a 700bp row meant −50 and a hard throw
+ * from `allocate` on the very first expense. The fixture and the app should
+ * generate splits by the same arithmetic, or the fixture is not testing the app.
  */
-function apportion(weights: Array<number>, totalBp: number): Array<number> {
+export function apportion(
+  weights: Array<number>,
+  totalBp: number,
+): Array<number> {
   const count = weights.length
   if (count === 0) return []
 
@@ -388,20 +399,30 @@ export function SplitEditor({
                   />
                   <span
                     className={cn(
-                      'inline-flex items-center gap-2 h-9 pl-1.5 pr-3 rounded-full border',
-                      'text-sm transition-colors duration-150',
+                      'inline-flex items-center gap-2 h-9 pl-1.5 pr-3 rounded-full',
+                      'text-sm',
+                      'transition-[background-color,box-shadow,color] duration-150',
                       'peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2',
                       'peer-focus-visible:outline-[var(--color-terracotta)]',
-                      // Ink on terracotta, not white, for the same reason the
-                      // primary button is: 4.8:1 against 2.6:1, and it reads as
-                      // ink on paper, which is the art direction anyway.
+                      // The payer chip is the clearest case for the neumorphic
+                      // treatment: it is one of a small set, one of them on, and
+                      // it sits on the sheet's paper rather than on a card.
+                      //
+                      // Chosen is pressed in and *inked* with the accent rather
+                      // than filled with it. A filled terracotta pill is a
+                      // stronger mark than the surrounding material can produce
+                      // with a shadow, and it would put a slab of colour in the
+                      // middle of a panel that is otherwise paper and light. The
+                      // check beside the name is what makes it unmistakable, so
+                      // the selection is never colour alone.
                       isPayer
-                        ? 'border-transparent bg-[var(--color-terracotta)] text-ink'
+                        ? cn(
+                            'neo-sm-inset text-ink font-medium',
+                            disabled ? '' : 'text-terracotta-ink',
+                          )
                         : cn(
-                            'border-rule text-ink-muted',
-                            disabled
-                              ? ''
-                              : 'hover:border-terracotta-ink hover:text-ink',
+                            'neo-sm neo-sm-press text-ink-muted',
+                            disabled ? '' : 'hover:text-ink',
                           ),
                     )}
                   >

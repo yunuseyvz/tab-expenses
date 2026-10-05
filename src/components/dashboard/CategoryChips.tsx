@@ -1,4 +1,5 @@
 import { Check } from 'lucide-react'
+import { motion, useReducedMotion } from 'motion/react'
 
 import type { Category } from '#/lib/db/schema'
 import { cn } from '#/lib/cn'
@@ -24,6 +25,10 @@ export function CategoryChips({
   onChange: (next: Array<string> | undefined) => void
 }) {
   if (categories.length === 0) return null
+
+  // Read once, here: the check's spring is the only motion on this screen and it
+  // has to be able to arrive without travelling.
+  const reduceMotion = useReducedMotion()
 
   const isAll = selected === undefined || selected.length === allIds.length
   const isNone = selected !== undefined && selected.length === 0
@@ -74,21 +79,70 @@ export function CategoryChips({
               aria-pressed={on}
               className={cn(
                 'inline-flex items-center gap-1.5 pl-2 pr-2.5 py-1.5 text-sm',
-                'rounded-[var(--radius-sm)] border-l-4 transition-[background-color,box-shadow,border-width] duration-150',
+                'rounded-full border-l-4',
+                'transition-[background-color,box-shadow,border-width,color] duration-150',
+                /*
+                 * Same inversion as the period pills: chosen is pressed into the
+                 * page, unchosen stands proud of it. The category's colour is on
+                 * the left edge either way, which is what identifies the chip —
+                 * a 2px rule versus a 4px one is too small a difference to be
+                 * doing that work on its own.
+                 */
                 on
-                  ? 'bg-paper-raised text-ink shadow-[var(--shadow-raise)]'
-                  : 'bg-paper-sunk text-ink-muted shadow-[var(--shadow-deboss)]',
+                  ? 'neo-inset text-ink font-medium'
+                  : 'neo neo-press text-ink-muted hover:text-ink',
               )}
               style={{
                 borderLeftColor: swatchColor(c.color),
                 borderLeftWidth: on ? 4 : 2,
               }}
             >
-              {on ? (
-                <Check size={13} aria-hidden className="shrink-0" />
-              ) : (
-                <Icon size={13} aria-hidden className="shrink-0 opacity-70" />
-              )}
+              {/*
+                The glyph is animated rather than swapped, and it is the one piece
+                of motion on this screen that earns its place: a check that
+                appears at full size is a fact, and a check that springs up out of
+                the chip says the chip did something. It is a spring on scale and
+                opacity only — no layout, no width, nothing for the row to reflow
+                around, which on a wrapping row of chips is the difference between
+                a flourish and a jiggle.
+
+                Reduced motion gets the same end state with no travel, rather than
+                a different end state: the chip still says selected, it just
+                arrives rather than springs.
+              */}
+              <span className="relative grid size-[13px] shrink-0 place-items-center">
+                <Icon
+                  size={13}
+                  aria-hidden
+                  className={cn(
+                    'shrink-0',
+                    on ? 'opacity-0' : 'opacity-70',
+                    reduceMotion ? '' : 'transition-opacity duration-150',
+                  )}
+                />
+                <motion.span
+                  aria-hidden
+                  className="absolute inset-0 grid place-items-center"
+                  initial={false}
+                  animate={
+                    on
+                      ? { scale: 1, opacity: 1 }
+                      : { scale: reduceMotion ? 1 : 0.5, opacity: 0 }
+                  }
+                  transition={
+                    reduceMotion
+                      ? { duration: 0 }
+                      : {
+                          type: 'spring',
+                          stiffness: 520,
+                          damping: 26,
+                          mass: 0.7,
+                        }
+                  }
+                >
+                  <Check size={13} />
+                </motion.span>
+              </span>
               <span className="truncate">{c.name}</span>
             </button>
           )

@@ -250,7 +250,7 @@ export function Listbox({
         onKeyDown={onKeyDown}
         className={cn(
           'w-full flex items-center gap-2 text-left',
-          'bg-paper-sunk text-ink rounded-[var(--radius-md)]',
+          'bg-paper-sunk text-ink rounded-[var(--radius-control)]',
           'px-3.5 py-2.5 border border-[color:var(--rule-field)] cursor-pointer',
           'shadow-[var(--shadow-deboss)]',
           'transition-[background-color,border-color,box-shadow] duration-150',
