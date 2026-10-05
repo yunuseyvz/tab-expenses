@@ -31,6 +31,8 @@ import {
   expense,
   expenseNote,
   expenseSplit,
+  recurringExpense,
+  recurringExpenseSplit,
   spaceMember,
   user,
 } from './db/schema'
@@ -41,12 +43,14 @@ import {
   uuidSchema,
 } from './guards'
 import { BP_TOTAL, allocate, parseAmountToMinor } from './money'
+import { anchorDayOf, nextOccurrence, periodKey } from './recurrence'
+import { materialiseRecurring } from './recurring.functions'
 import { applySettlements, settle } from './settle'
 import { loadSettlements } from './settlement.functions'
-import type { RecordedSettlement } from './settlement.functions'
 import { displayMemberName } from './member-name'
 import { mayDeleteExpenseNote } from './may-edit'
 import { UNCATEGORISED_ID } from './uncategorised'
+import type { RecordedSettlement } from './settlement.functions'
 import type { Db } from './db'
 import type { SQL } from 'drizzle-orm'
 import type { Settlement } from './settle'
@@ -124,6 +128,14 @@ export interface ExpenseRow {
   splits: Array<SplitRow>
   /** How many notes are attached, for the list's marker. Not the notes. */
   noteCount: number
+  /**
+   * The repeating series this entry came from, if it did. `frequency` and
+   * `archivedAt` describe that series: a stopped one is no longer repeating, so
+   * the list says nothing about it and the entry reads as a plain expense.
+   */
+  recurringId: string | null
+  recurringFrequency: 'monthly' | 'weekly' | null
+  recurringArchivedAt: Date | null
 }
 
 export interface NoteRow {
@@ -174,6 +186,17 @@ function expenseSelect() {
     createdByName: author.name,
     createdByAvatar: author.avatar,
     createdAt: expense.createdAt,
+    /**
+     * The series this entry belongs to, for the "Repeats monthly" marker.
+     *
+     * The frequency and the series' archived state come along with it, because
+     * the marker has to distinguish three cases and an id alone cannot: no series
+     * at all, a live series (repeats), and a stopped one, which is a plain entry
+     * from here on and should say nothing.
+     */
+    recurringId: expense.recurringId,
+    recurringFrequency: recurringExpense.frequency,
+    recurringArchivedAt: recurringExpense.archivedAt,
   }
 }
 
@@ -385,6 +408,49 @@ export const createExpense = createServerFn({ method: 'POST' })
     )
 
     const created = await db.transaction(async (tx) => {
+      /**
+       * The series, when this entry starts one.
+       *
+       * Created inside the same transaction as the expense it came from, and the
+       * expense is the series' first occurrence rather than a separate seed row.
+       * The alternative — commit the expense, then create the series, then link
+       * them — has a window where a rent exists that repeats nothing, and the
+       * user's next action is to wonder why.
+       *
+       * `spentOn` is the anchor. The series repeats on the day of the month the
+       * first one was dated, so "rent, the 1st" is set up by dating it the 1st,
+       * which is how somebody would say it out loud anyway.
+       */
+      // Narrowed once, here, so the series code below is not written inside a
+      // condition that TypeScript has to re-derive at every use.
+      const frequency = data.repeat === 'never' ? null : data.repeat
+
+      const series =
+        frequency === null
+          ? null
+          : (
+              await tx
+                .insert(recurringExpense)
+                .values({
+                  spaceId: data.spaceId,
+                  purpose: data.purpose,
+                  amountMinor,
+                  categoryId: data.categoryId,
+                  paidByMemberId: data.paidByMemberId,
+                  frequency,
+                  anchorDay: anchorDayOf(data.spentOn),
+                  startsOn: data.spentOn,
+                  nextDueOn: nextOccurrence(
+                    data.spentOn,
+                    frequency,
+                    anchorDayOf(data.spentOn),
+                  ),
+                  locked: data.locked,
+                  createdByUserId: session.user.id,
+                })
+                .returning({ id: recurringExpense.id })
+            )[0]!
+
       const [row] = await tx
         .insert(expense)
         .values({
@@ -396,9 +462,23 @@ export const createExpense = createServerFn({ method: 'POST' })
           amountMinor,
           locked: data.locked,
           createdByUserId: session.user.id,
+          recurringId: series?.id ?? null,
+          // The first occurrence's key, so materialisation on a later read
+          // recognises this month as already done instead of making a second rent.
+          periodKey: frequency ? periodKey(frequency, data.spentOn) : null,
         })
         .returning()
       if (!row) throw new Error('Failed to create expense')
+
+      if (series) {
+        await tx.insert(recurringExpenseSplit).values(
+          splits.map((s) => ({
+            recurringId: series.id,
+            memberId: s.memberId,
+            weightBp: s.weightBp,
+          })),
+        )
+      }
 
       // The sheet's note field, written as the first note rather than as a
       // column. Same transaction as the expense, so an entry never exists
@@ -965,6 +1045,11 @@ export const listExpenses = createServerFn({ method: 'GET' })
     await requireSpaceMember(session.user.id, data.spaceId)
     const db = getDb()
 
+    // Catch up any repeating expenses before reading. See `recurring_expense`:
+    // there is no scheduler here, so "due" is resolved the first time anybody
+    // looks. Cheap when nothing is due — one indexed query on a partial index.
+    await materialiseRecurring(data.spaceId)
+
     // Typed to allow undefined: drizzle's and() drops undefined entries, which
     // is how an absent bound is expressed.
     const conditions: Array<SQL | undefined> = [
@@ -997,6 +1082,10 @@ export const listExpenses = createServerFn({ method: 'GET' })
       // And a second alias for whoever typed the entry in, which is a different
       // person from the payer as often as not.
       .leftJoin(author, eq(expense.createdByUserId, author.id))
+      // Left, not inner: a hand-typed expense has no series and must still be
+      // listed. This join is only here so the "Repeats monthly" marker can tell a
+      // live series from a stopped one.
+      .leftJoin(recurringExpense, eq(expense.recurringId, recurringExpense.id))
       .where(and(...conditions))
       .orderBy(desc(expense.spentOn), desc(expense.createdAt))
       .limit(data.limit)
@@ -1053,6 +1142,11 @@ export const getTotals = createServerFn({ method: 'GET' })
     const session = await ensureSession()
     const member = await requireSpaceMember(session.user.id, data.spaceId)
     const db = getDb()
+
+    // Same catch-up as `listExpenses`, and it has to be here too: the dashboard
+    // is the landing page, so if only the ledger page materialised, the first
+    // thing anybody saw each month would be last month's total.
+    await materialiseRecurring(data.spaceId)
 
     // Typed to allow undefined: drizzle's and() drops undefined entries, which
     // is how an absent bound is expressed.
@@ -1185,6 +1279,11 @@ export const getBalances = createServerFn({ method: 'GET' })
     const session = await ensureSession()
     const me = await requireSpaceMember(session.user.id, data.spaceId)
     const db = getDb()
+
+    // Balances reads the same ledger, so it catches up too. Without this, a tab
+    // left open on Balances would show last month's rent as the only one there
+    // was.
+    await materialiseRecurring(data.spaceId)
 
     // Typed to allow undefined: drizzle's and() drops undefined entries, which
     // is how an absent bound is expressed.

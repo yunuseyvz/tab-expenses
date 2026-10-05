@@ -44,6 +44,16 @@ export function toISODate(d: Date): string {
   return `${y}-${m}-${day}`
 }
 
+/**
+ * How many days a month has, 1-based month.
+ *
+ * Day 0 of the following month is the last day of this one, which is the only
+ * way to ask without a lookup table and a leap-year branch.
+ */
+export function daysInMonth(year: number, month1to12: number): number {
+  return new Date(year, month1to12, 0).getDate()
+}
+
 export function fromISODate(s: string): Date {
   const [y, m, d] = s.split('-').map(Number)
   return new Date(y ?? 1970, (m ?? 1) - 1, d ?? 1)

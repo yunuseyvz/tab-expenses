@@ -181,6 +181,13 @@ export const expenseInputSchema = z
      * `expense.locked`.
      */
     locked: z.boolean().default(true),
+    /**
+     * Whether this entry starts a repeating series, and how often.
+     *
+     * On create only. Editing an occurrence never changes the series — see
+     * `recurring_expense` for why the template does not own its entries.
+     */
+    repeat: z.enum(['never', 'weekly', 'monthly']).default('never'),
     splits: z.array(splitInputSchema).max(50).default([]),
   })
   .refine((v) => v.splits.length === 0 || v.splits.length > 0, {
