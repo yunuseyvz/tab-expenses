@@ -34,7 +34,8 @@
     "format:check": "prettier --check .",
     "guard:auth": "node scripts/check-auth-guards.mjs",
     "guard:vite-env": "node scripts/check-no-vite-env.mjs",
-    "db:verify-constraints": "sh scripts/run-constraints.sh"
+    "db:verify-constraints": "sh scripts/run-constraints.sh",
+    "db:seed-load": "tsx scripts/seed-load.ts"
   },
   "dependencies": {
     "@base-ui/react": "1.6.0",
