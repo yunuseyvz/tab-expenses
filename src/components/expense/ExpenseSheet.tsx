@@ -2,7 +2,17 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { Eye, Lock, LockOpen, Plus, StickyNote, Trash2, X } from 'lucide-react'
+import {
+  Eye,
+  Lock,
+  LockOpen,
+  Plus,
+  Repeat,
+  Save,
+  StickyNote,
+  Trash2,
+  X,
+} from 'lucide-react'
 
 import type { Category } from '#/lib/db/schema'
 import type { MemberListItem } from '#/lib/space.functions'
@@ -14,6 +24,7 @@ import { Button } from '#/components/ui/Button'
 import { DateField } from '#/components/ui/DateField'
 import { Input, Label, Textarea } from '#/components/ui/Input'
 import { Listbox } from '#/components/ui/Listbox'
+import { SegmentedControl } from '#/components/ui/SegmentedControl'
 import { CategoryDot } from '#/components/CategoryDot'
 import { SplitEditor } from '#/components/expense/SplitEditor'
 import {
@@ -25,6 +36,7 @@ import {
   setExpenseLock,
   updateExpense,
 } from '#/lib/expense.functions'
+import { stopRecurring } from '#/lib/recurring.functions'
 import { getSession } from '#/lib/auth.functions'
 import {
   MAX_AMOUNT,
@@ -98,9 +110,24 @@ export function ExpenseSheet({
   // not a live subscription, so `editing.locked` goes stale the moment this
   // sheet changes it.
   const [locked, setLocked] = useState(false)
+  /**
+   * How often this new entry repeats. Create-only, and deliberately not a
+   * property of an existing entry: editing one month of rent must not silently
+   * rewrite every future month. See `recurring_expense`.
+   */
+  const [repeat, setRepeat] = useState<'never' | 'weekly' | 'monthly'>('never')
+  /**
+   * The series, as last seen from the server, for the same reason as `locked`
+   * below: the parent hands this sheet a row snapshot rather than a live
+   * subscription, so `editing.recurringArchivedAt` goes stale the moment this
+   * sheet stops the series — leaving "Repeats every month" on screen beside a
+   * toast that says it just stopped.
+   */
+  const [stoppedRepeating, setStoppedRepeating] = useState(false)
 
   const editingId = editing?.id ?? null
   const formId = useId()
+  // Read once here so the lock's swing can be refused without a travel.
 
   // The roster as of this render, for the prefill effect below to read without
   // depending on. `members` is a fresh array identity on every refetch, and an
@@ -119,6 +146,7 @@ export function ExpenseSheet({
     if (!open) return
     setConfirmingDelete(false)
     setNoteBody('')
+    setStoppedRepeating(false)
     if (!editing) {
       // Cleared inline rather than via reset(): that function is rebuilt on
       // every render, so putting it in the deps would re-run this constantly
@@ -132,6 +160,8 @@ export function ExpenseSheet({
       // New entries start locked: the author decides whether the household may
       // change them. See `expense.locked`.
       setLocked(true)
+      // And they do not repeat unless asked.
+      setRepeat('never')
       return
     }
     setAmount((editing.amountMinor / 100).toFixed(2))
@@ -235,6 +265,7 @@ export function ExpenseSheet({
               purpose: purpose.trim(),
               note: firstNote.trim() || null,
               locked,
+              repeat,
               categoryId: categoryId || null,
               paidByMemberId,
               spentOn,
@@ -293,6 +324,22 @@ export function ExpenseSheet({
       setLocked(editing?.locked ?? false)
       toast.error(err instanceof Error ? err.message : 'Could not save')
     },
+  })
+
+  /**
+   * Stop the series this entry belongs to. Future occurrences only; this entry
+   * and every other already made stay exactly as they are.
+   */
+  const stopRepeating = useMutation({
+    mutationFn: () =>
+      stopRecurring({ data: { spaceId: spaceId!, expenseId: editingId! } }),
+    onSuccess: () => {
+      setStoppedRepeating(true)
+      toast.success('No more repeats')
+      invalidateLedger()
+    },
+    onError: (err) =>
+      toast.error(err instanceof Error ? err.message : 'Could not stop that'),
   })
 
   const notes = useQuery({
@@ -356,6 +403,7 @@ export function ExpenseSheet({
     setLocked(true)
     setConfirmingDelete(false)
     setNoteBody('')
+    setStoppedRepeating(false)
     setDeletingNoteId(null)
   }
 
@@ -386,12 +434,18 @@ export function ExpenseSheet({
             onClick={() =>
               editing ? flipLock.mutate(!locked) : setLocked(!locked)
             }
-            // No aria-label, deliberately. It used to name the ACTION
-            // ("Unlock this expense") while the visible text named the STATE,
-            // and since aria-label wins, a screen reader heard the opposite of
-            // what was on screen — the badge said Locked and the announcement
-            // said Unlock. The name is the visible word now, and aria-pressed
-            // carries that it is a toggle.
+            /*
+             * Named for its STATE, and the state is what the icon is showing.
+             *
+             * This badge used to carry a word next to the padlock and was named
+             * by that word, which was right and also unnecessary: a padlock and an
+             * open padlock are distinguishable at this size in a way that two
+             * near-identical 11px silhouettes are not. An icon-only control still
+             * needs a name, so it gets one here — matching the glyph rather than
+             * describing the tap, because `aria-pressed` already says it is a
+             * toggle.
+             */
+            aria-label={locked ? 'Locked' : 'Unlocked'}
             aria-pressed={locked}
             title={
               !editing || editState.isAuthor
@@ -403,28 +457,27 @@ export function ExpenseSheet({
                   : 'Unlocked'
             }
             className={cn(
-              // A badge, not a bare icon. The lock is the only thing in the
-              // sheet that changes what other people may do to the entry, and an
-              // unlabelled padlock in the corner says neither what it controls
-              // nor which way it is set — the icon flips between two glyphs that
-              // are near-identical at 17px. The word carries the state, the icon
-              // carries the meaning, and the fill carries that it is pressable.
-              'inline-flex items-center gap-1.5 h-8 shrink-0',
-              'pl-2.5 pr-3 rounded-full',
-              'text-[0.7rem] font-medium uppercase tracking-wide',
+              // A square-ish icon button on the radius scale. It was a lozenge
+              // because it had a word in it; with the word gone there is nothing
+              // left to justify 999px, and a round icon button in the corner of a
+              // sheet reads as a sticker rather than as part of the controls.
+              'inline-grid place-items-center size-8 shrink-0',
+              'rounded-[var(--radius-sm)]',
               'transition-colors duration-150',
+              // The same material as every other pill on the sheet, so the lock
+              // reads as one of them rather than as a badge somebody added.
+              'neo-sm neo-sm-press',
               locked
-                ? 'text-[var(--color-terracotta)] bg-[var(--color-paper-sunk)]'
-                : 'text-ink-faint hover:text-ink hover:bg-[var(--color-paper-sunk)]',
+                ? 'neo-sm-inset text-[var(--color-terracotta)]'
+                : 'text-ink-faint hover:text-ink',
               'disabled:opacity-70 disabled:pointer-events-none',
             )}
           >
             {locked ? (
-              <Lock size={14} aria-hidden />
+              <Lock size={15} aria-hidden />
             ) : (
-              <LockOpen size={14} aria-hidden />
+              <LockOpen size={15} aria-hidden />
             )}
-            {locked ? 'Locked' : 'Unlocked'}
           </button>
         }
         footer={
@@ -507,19 +560,32 @@ export function ExpenseSheet({
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.12 }}
                   >
-                    {/* The trash, red and on the left where a destructive action
-                  belongs: before the thing it destroys rather than after it.
-                  Icon-only because the row already says what it deletes, and a
-                  word beside every Save would teach people to read past it. */}
+                    {/*
+                     * The trash, on the left where a destructive action belongs:
+                     * before the thing it destroys rather than after it.
+                     *
+                     * Filled, not ghosted. It was an outline-less neo button with a
+                     * red glyph on it, which is the least legible way to mark the
+                     * only irreversible control in the sheet — the red was the
+                     * *text colour* of a control whose whole surface is the same
+                     * tone as the page, so it read as a slightly warm smudge rather
+                     * than as a delete button. `danger` is the one variant in this
+                     * file with a real fill under its label, and white on
+                     * `--color-danger-fill` is 9.1:1, so the icon is legible
+                     * rather than merely coloured.
+                     *
+                     * Icon-only because the row already says what it deletes, and
+                     * a word beside every Save would teach people to read past it.
+                     */}
                     {editing && (
                       <Button
                         type="button"
-                        variant="ghost"
+                        variant="danger"
                         size="lg"
                         onClick={() => setConfirmingDelete(true)}
                         aria-label={`Delete ${editing.purpose}`}
                         title={`Delete ${editing.purpose}`}
-                        className="shrink-0 px-3 text-[var(--color-danger-fill)] hover:text-[var(--color-danger-fill)]"
+                        className="shrink-0 w-12 px-0"
                       >
                         <Trash2 size={18} aria-hidden />
                       </Button>
@@ -531,6 +597,14 @@ export function ExpenseSheet({
                       className="flex-1"
                       disabled={!canSave || save.isPending}
                     >
+                      {/*
+                       * The icon leads the word and is `aria-hidden`, so the
+                       * accessible name is still exactly "Save changes". It is
+                       * there because the footer's other control is a pictogram,
+                       * and a Save that is the only bare word on the row reads as
+                       * the label of the row rather than as a button.
+                       */}
+                      <Save size={17} aria-hidden />
                       {save.isPending
                         ? 'Saving…'
                         : editing
@@ -677,6 +751,63 @@ export function ExpenseSheet({
               />
             </div>
           </div>
+
+          {/*
+            Repeats. On a new expense it is a choice; on an existing one it is
+            either a fact you can stop or nothing at all.
+
+            Deliberately absent from the edit form: an existing occurrence is a
+            ledger entry, and letting an edit change the schedule would mean
+            correcting one month's amount decided every future month's. To change
+            the series you stop it and start another, which is a bigger gesture for
+            a bigger decision.
+          */}
+          {!editing ? (
+            <div>
+              <Label>Repeat</Label>
+              <SegmentedControl
+                label="Repeat"
+                value={repeat}
+                options={[
+                  { value: 'never', label: 'Never' },
+                  { value: 'monthly', label: 'Monthly' },
+                  { value: 'weekly', label: 'Weekly' },
+                ]}
+                onChange={setRepeat}
+                disabled={readOnly}
+              />
+              {repeat !== 'never' && (
+                <p className="text-xs text-ink-faint mt-1.5">
+                  Every {repeat === 'monthly' ? 'month' : 'week'} from this
+                  date, until you stop it.
+                </p>
+              )}
+            </div>
+          ) : (
+            editing.recurringId &&
+            !editing.recurringArchivedAt &&
+            !stoppedRepeating && (
+              <div className="flex items-center gap-2.5 text-sm">
+                <Repeat size={15} aria-hidden className="text-ink-faint" />
+                <span className="min-w-0 flex-1 truncate">
+                  Repeats{' '}
+                  {editing.recurringFrequency === 'monthly'
+                    ? 'every month'
+                    : 'every week'}
+                </span>
+                <button
+                  type="button"
+                  disabled={readOnly || stopRepeating.isPending}
+                  onClick={() => stopRepeating.mutate()}
+                  className="text-xs text-terracotta-ink underline underline-offset-2
+                    disabled:opacity-40 disabled:no-underline
+                    motion-reduce:no-underline shrink-0"
+                >
+                  {stopRepeating.isPending ? 'Stopping…' : 'Stop repeating'}
+                </button>
+              </div>
+            )
+          )}
 
           <hr className="border-rule" />
 

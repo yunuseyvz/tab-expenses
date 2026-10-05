@@ -4,11 +4,16 @@
  * Dark mode is a separate art pass, so the choice is explicit and persisted
  * rather than inferred. Light is the default rather than the OS preference; see
  * DEFAULT_THEME in #/lib/theme.
+ *
+ * A segmented control, because the choice is one of three and all three are
+ * legible at a glance. It was a set of buttons and it was worse: three separate
+ * surfaces, and pressing one gave no sense of the other two being part of the
+ * same decision.
  */
 import { useEffect, useState } from 'react'
 
 import type { Theme } from '#/lib/theme'
-import { cn } from '#/lib/cn'
+import { SegmentedControl } from '#/components/ui/SegmentedControl'
 import {
   DEFAULT_THEME,
   applyTheme,
@@ -56,37 +61,18 @@ export function ThemePicker({ heading = true }: { heading?: boolean } = {}) {
           Theme
         </h2>
       )}
-      <div
-        role="radiogroup"
-        aria-label="Theme"
-        className="inline-flex p-1 gap-1 well rounded-[var(--radius-sm)]"
-      >
-        {OPTIONS.map((o) => {
-          const active = ready && theme === o.value
-          return (
-            <button
-              key={o.value}
-              type="button"
-              role="radio"
-              aria-checked={active}
-              title={o.hint}
-              onClick={() => {
-                setTheme(o.value)
-                setThemeState(o.value)
-              }}
-              className={cn(
-                'px-3 py-1.5 text-sm rounded-[2px]',
-                'transition-[background-color,box-shadow,color] duration-150',
-                active
-                  ? 'bg-paper-raised text-ink shadow-[var(--shadow-raise)]'
-                  : 'text-ink-muted hover:text-ink',
-              )}
-            >
-              {o.label}
-            </button>
-          )
-        })}
-      </div>
+      <SegmentedControl
+        label="Theme"
+        // `ready` gates the selection: before the stored value has been read the
+        // thumb would slide from Light to wherever it actually is on mount, which
+        // is an animation of something nobody asked for.
+        value={ready ? theme : DEFAULT_THEME}
+        options={OPTIONS}
+        onChange={(next) => {
+          setTheme(next)
+          setThemeState(next)
+        }}
+      />
     </div>
   )
 }
