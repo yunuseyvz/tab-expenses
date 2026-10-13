@@ -1265,14 +1265,135 @@ export interface BalancesResult {
 }
 
 /**
- * Per-member balance over a range, plus a minimal settlement plan.
+ * Per-member balance over a range: what each person paid, and what they owe.
  *
- * net = paid − share. Positive means the household owes them.
- *
- * Recorded payments are taken off the nets before the plan is drawn, which is
- * what makes the plan clearable: pay somebody, record it, and their line goes
- * away instead of coming back month after month.
+ * Extracted from the server function so the SQL is reachable from a test. The
+ * arithmetic in settle.ts is pure and always was, which is why `applySettlements`
+ * could be asserted directly — but the aggregation that PRODUCES the nets was
+ * inside a createServerFn handler, and a handler cannot be called outside a
+ * request. So the one part of the balance sheet that can silently be wrong, and
+ * that no pure test can see, had no test at all.
  */
+export async function loadBalances(
+  db: Db,
+  filter: {
+    spaceId: string
+    from: string | null
+    to: string | null
+    categoryIds: Array<string> | undefined
+  },
+): Promise<Array<MemberBalance>> {
+  // Conditions on the expense itself. Typed to allow undefined because drizzle's
+  // and() drops undefined entries, which is how an absent bound is expressed.
+  const expenseWhere: Array<SQL | undefined> = [
+    eq(expense.spaceId, filter.spaceId),
+    filter.from ? gte(expense.spentOn, filter.from) : undefined,
+    filter.to ? lte(expense.spentOn, filter.to) : undefined,
+    categoryFilter(filter.categoryIds),
+  ]
+
+  // What each person PAID, over the expenses they are the payer of.
+  const paidRows = await db
+    .select({
+      memberId: spaceMember.id,
+      paidMinor: sql<number>`coalesce(sum(${expense.amountMinor}), 0)::int`,
+    })
+    .from(expense)
+    .innerJoin(spaceMember, eq(expense.paidByMemberId, spaceMember.id))
+    .where(and(...expenseWhere))
+    .groupBy(spaceMember.id)
+
+  // What each person OWES, over the split rows naming them.
+  const shareRows = await db
+    .select({
+      memberId: expenseSplit.memberId,
+      shareMinor: sql<number>`coalesce(sum(${expenseSplit.shareMinor}), 0)::int`,
+    })
+    .from(expenseSplit)
+    .innerJoin(expense, eq(expense.id, expenseSplit.expenseId))
+    .where(and(...expenseWhere))
+    .groupBy(expenseSplit.memberId)
+
+  /*
+   * What each person owes is the split rows naming them PLUS, for an expense with
+   * no split rows at all, the whole amount against the payer.
+   *
+   * That second half is not a rounding nicety, it is the difference between a
+   * balance sheet and a wrong one. `splits: []` is a real state — the sheet sends
+   * it to mean "nobody is sharing this" — and the payer's implied share is the
+   * entire amount. Without charging it to them they show as OWED that amount for
+   * a cost nobody shared: Sam pays €33.33 for a dinner the household did not
+   * have, and the screen says the household owes Sam €33.33 and offers to write
+   * a settlement for it.
+   *
+   * It is also what makes the nets sum to zero at all. sum(paid) counts every
+   * euro that went out; sum(share) has to count every euro of it too, or the
+   * household is permanently short by exactly the unshared total.
+   */
+  const impliedRows = await db
+    .select({
+      memberId: expense.paidByMemberId,
+      impliedMinor: sql<number>`coalesce(sum(${expense.amountMinor}), 0)::int`,
+    })
+    .from(expense)
+    .where(
+      and(
+        ...expenseWhere,
+        sql`not exists (
+          select 1 from ${expenseSplit} s
+          where s.expense_id = ${expense.id}
+        )`,
+      ),
+    )
+    .groupBy(expense.paidByMemberId)
+
+  const paidBy = new Map(paidRows.map((r) => [r.memberId, Number(r.paidMinor)]))
+  const shareBy = new Map(
+    shareRows.map((r) => [r.memberId, Number(r.shareMinor)]),
+  )
+  const impliedBy = new Map(
+    impliedRows.map((r) => [r.memberId, Number(r.impliedMinor)]),
+  )
+
+  // The roster, which is the frame the two aggregates are hung on. A member with
+  // neither an expense paid nor a share owed still gets a row, at zero, because
+  // "Sam owes nothing" is a fact the screen has to be able to state.
+  const roster = await db
+    .select({
+      memberId: spaceMember.id,
+      displayName: spaceMember.displayName,
+      color: spaceMember.color,
+      userId: spaceMember.userId,
+      avatar: user.avatar,
+    })
+    .from(spaceMember)
+    .leftJoin(user, eq(spaceMember.userId, user.id))
+    .where(
+      and(
+        eq(spaceMember.spaceId, filter.spaceId),
+        isNull(spaceMember.archivedAt),
+      ),
+    )
+
+  return roster.map((r) => {
+    const paid = paidBy.get(r.memberId) ?? 0
+    // Split rows naming them, plus their implied share of anything they paid that
+    // nobody is sharing. Zero for a member who appears in neither.
+    const share =
+      (shareBy.get(r.memberId) ?? 0) + (impliedBy.get(r.memberId) ?? 0)
+    return {
+      memberId: r.memberId,
+      displayName: r.displayName,
+      color: r.color,
+      userId: r.userId,
+      avatar: r.avatar,
+      paidMinor: paid,
+      shareMinor: share,
+      netMinor: paid - share,
+    }
+  })
+}
+
 export const getBalances = createServerFn({ method: 'GET' })
   .inputValidator(periodFilterSchema)
   .handler(async ({ data }) => {
@@ -1285,81 +1406,11 @@ export const getBalances = createServerFn({ method: 'GET' })
     // was.
     await materialiseRecurring(data.spaceId)
 
-    // Typed to allow undefined: drizzle's and() drops undefined entries, which
-    // is how an absent bound is expressed.
-    const conditions: Array<SQL | undefined> = [
-      eq(expense.spaceId, data.spaceId),
-    ]
-    if (data.from) conditions.push(gte(expense.spentOn, data.from))
-    if (data.to) conditions.push(lte(expense.spentOn, data.to))
-    conditions.push(categoryFilter(data.categoryIds))
-
-    // Join conditions for the expense, built as a list. An empty `sql`
-    // fragment inside `and()` renders as nothing and leaves a dangling "and",
-    // which is a syntax error — and "All time" (no bounds at all) is the
-    // default period, so this path must work with zero conditions.
-    const expenseJoin = [eq(expense.id, expenseSplit.expenseId)]
-    if (data.from) expenseJoin.push(sql`${expense.spentOn} >= ${data.from}`)
-    if (data.to) expenseJoin.push(sql`${expense.spentOn} <= ${data.to}`)
-    if (data.categoryIds !== undefined) {
-      expenseJoin.push(categoryFilter(data.categoryIds)!)
-    }
-
-    const rows = await db
-      .select({
-        memberId: spaceMember.id,
-        displayName: spaceMember.displayName,
-        color: spaceMember.color,
-        userId: spaceMember.userId,
-        avatar: user.avatar,
-        paidMinor: sql<number>`coalesce(
-          sum(${expense.amountMinor}) filter (where ${expense.paidByMemberId} = ${spaceMember.id}),
-          0
-        )::int`,
-        // `e.id is not null` is load-bearing. The split row joins regardless of
-        // the range, so without it an out-of-period split would still be
-        // counted and a period with no expenses would report the full
-        // all-time balance.
-        shareMinor: sql<number>`coalesce(
-          sum(${expenseSplit.shareMinor}) filter (where ${expense.id} is not null),
-          0
-        )::int`,
-      })
-      .from(spaceMember)
-      .leftJoin(user, eq(spaceMember.userId, user.id))
-      .leftJoin(expenseSplit, eq(expenseSplit.memberId, spaceMember.id))
-      .leftJoin(expense, and(...expenseJoin))
-      .where(
-        and(
-          eq(spaceMember.spaceId, data.spaceId),
-          isNull(spaceMember.archivedAt),
-        ),
-      )
-      .groupBy(
-        spaceMember.id,
-        spaceMember.displayName,
-        spaceMember.color,
-        spaceMember.userId,
-        // Postgres requires every selected column to be grouped or aggregated, and
-        // the avatar is selected. It is functionally dependent on space_member.id
-        // but only because it is the primary key, and relying on that is not
-        // portable — so it is grouped like the rest.
-        user.avatar,
-      )
-
-    const balances: Array<MemberBalance> = rows.map((r) => {
-      const paid = Number(r.paidMinor)
-      const share = Number(r.shareMinor)
-      return {
-        memberId: r.memberId,
-        displayName: r.displayName,
-        color: r.color,
-        userId: r.userId,
-        avatar: r.avatar,
-        paidMinor: paid,
-        shareMinor: share,
-        netMinor: paid - share,
-      }
+    const balances = await loadBalances(db, {
+      spaceId: data.spaceId,
+      from: data.from,
+      to: data.to,
+      categoryIds: data.categoryIds,
     })
 
     /*
@@ -1373,13 +1424,33 @@ export const getBalances = createServerFn({ method: 'GET' })
     })
     const adjusted = applySettlements(balances, recorded)
 
-    // Total of the nets must be zero. If it is not, some share rows are
-    // outside the filter and the settlement plan would be wrong; surface it
-    // rather than settling a phantom amount.
+    /*
+     * The nets should sum to zero, and that has to mean "nobody is short" rather
+     * than merely "nobody is over". Two things make it non-zero, and they are not
+     * the same kind of thing:
+     *
+     *  - A share belonging to somebody who has since left. The roster is active
+     *    members only, by design — see `applySettlements` — so their share has
+     *    nobody to land on. Expected, and a plan that told you to pay a person who
+     *    has gone would be worse than one that leaves the remainder visible.
+     *
+     *  - The nets genuinely not adding up, which is a bug. A payer who is not in
+     *    the split is the one that shipped: `paid` was aggregated through the
+     *    split join, so an expense counted for its payer only if the payer also
+     *    happened to have a split row on it. "Alex paid, and only Robin owes it"
+     *    is entirely legal — the payer is chosen from a separate strip — and Alex
+     *    vanished from their own paid column, which put the household permanently
+     *    €X in the hole and showed every member as owing.
+     *
+     * The per-expense cases are asserted in balances.test.ts instead, where they
+     * can be told apart. This stays a warning because it cannot distinguish them
+     * without re-querying every share in the range.
+     */
     const netSum = adjusted.reduce((s, b) => s + b.netMinor, 0)
     if (netSum !== 0) {
       console.warn(
-        `[balances] net does not balance (${netSum} minor units) for space ${data.spaceId}`,
+        `[balances] nets do not sum to zero (${netSum} minor units) for space ${data.spaceId}; ` +
+          `expected if a share belongs to a member who has since left`,
       )
     }
 
