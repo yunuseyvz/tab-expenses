@@ -1035,11 +1035,8 @@ async function noteCountsFor(
 // ── reads ─────────────────────────────────────────────────────────────────
 
 export const listExpenses = createServerFn({ method: 'GET' })
-  .inputValidator(
-    periodFilterSchema.extend({
-      limit: z.number().int().min(1).max(500).default(200),
-    }),
-  )
+  .inputValidator(periodFilterSchema)
+
   .handler(async ({ data }) => {
     const session = await ensureSession()
     await requireSpaceMember(session.user.id, data.spaceId)
@@ -1088,7 +1085,7 @@ export const listExpenses = createServerFn({ method: 'GET' })
       .leftJoin(recurringExpense, eq(expense.recurringId, recurringExpense.id))
       .where(and(...conditions))
       .orderBy(desc(expense.spentOn), desc(expense.createdAt))
-      .limit(data.limit)
+      .limit(200)
 
     const splitMap = await splitsFor(
       data.spaceId,
@@ -1101,8 +1098,8 @@ export const listExpenses = createServerFn({ method: 'GET' })
     )
 
     return rows.map<ExpenseRow>((r) => ({
-      ...r,
-      paidByName: displayMemberName(r.paidByName, r.paidByArchivedAt),
+        ...r,
+        paidByName: displayMemberName(r.paidByName, r.paidByArchivedAt),
       // Drizzle's `date()` mode already yields a 'YYYY-MM-DD' string.
       spentOn: r.spentOn,
       createdAt:
@@ -1217,20 +1214,23 @@ export const getTotals = createServerFn({ method: 'GET' })
       })
     }
 
-    // "Your share" = your portion of the filtered expenses, read from the
-    // stored share_minor rather than recomputed from weights.
-    const [share] = await db
-      .select({
-        total: sql<number>`coalesce(sum(${expenseSplit.shareMinor}), 0)::int`,
-      })
-      .from(expenseSplit)
-      .innerJoin(expense, eq(expenseSplit.expenseId, expense.id))
-      .where(and(eq(expenseSplit.memberId, member.id), ...conditions))
+    /*
+     * "Your share" is your portion of the filtered expenses, and it is read from
+     * the SAME function the balance sheet uses.
+     *
+     * It was its own query summing `expense_split.share_minor`, which is correct
+     * for every expense that has splits and silently wrong for every expense that
+     * has none — the implied share of anything you paid that nobody was sharing.
+     * So the dashboard could tell you your share was €8,475.93 on the same
+     * expenses the balances screen said you owed €10,859.10 of, and both were
+     * labelled the same word. One number, one definition.
+     */
+    const shares = await loadShareTotals(db, conditions)
 
     return {
       totalMinor,
       count,
-      yourShareMinor: Number(share?.total ?? 0),
+      yourShareMinor: shares.get(member.id) ?? 0,
       byCategory: byCategory
         .map((c) => ({
           ...c,
@@ -1262,6 +1262,77 @@ export interface BalancesResult {
   recorded: Array<RecordedSettlement>
   yourNetMinor: number
   yourMemberId: string
+}
+
+/**
+ * What each member owes over a set of expense conditions.
+ *
+ * THE definition of a share, and there is exactly one of them. It used to be
+ * written twice — once in the balances query and once in the dashboard's totals —
+ * and the two drifted, which is how the dashboard came to say "Your share" was
+ * smaller than the balance sheet said the same person owed, on the same expenses,
+ * for the same period. On one household that gap reached 28%.
+ *
+ * A share is the split rows naming you, PLUS the whole amount of any expense with
+ * no split rows at all, charged to whoever paid it.
+ *
+ * That second half is not a rounding nicety, it is the difference between a
+ * balance sheet and a wrong one. `splits: []` is a real state — the sheet sends it
+ * to mean "nobody is sharing this" — and the payer's implied share is the entire
+ * amount. Without charging it to them they show as OWED that amount for a cost
+ * nobody shared: Sam pays €33.33 for a dinner the household did not have, and the
+ * screen says the household owes Sam €33.33 and offers to write a settlement for
+ * it. "100 to nobody" has to mean the household is €100 better off, not €100 in
+ * debt to one man.
+ *
+ * It is also what makes the columns comparable at all: sum(paid) counts every
+ * euro that went out, so sum(share) has to count every euro of it too or the
+ * household is permanently short by the unshared total.
+ */
+export async function loadShareTotals(
+  db: Db,
+  expenseWhere: Array<SQL | undefined>,
+): Promise<Map<string, number>> {
+  // The split rows naming them.
+  const splitRows = await db
+    .select({
+      memberId: expenseSplit.memberId,
+      shareMinor: sql<number>`coalesce(sum(${expenseSplit.shareMinor}), 0)::int`,
+    })
+    .from(expenseSplit)
+    .innerJoin(expense, eq(expense.id, expenseSplit.expenseId))
+    .where(and(...expenseWhere))
+    .groupBy(expenseSplit.memberId)
+
+  // The implied share: every expense in range that has no split rows at all,
+  // against its payer.
+  const impliedRows = await db
+    .select({
+      memberId: expense.paidByMemberId,
+      impliedMinor: sql<number>`coalesce(sum(${expense.amountMinor}), 0)::int`,
+    })
+    .from(expense)
+    .where(
+      and(
+        ...expenseWhere,
+        sql`not exists (
+          select 1 from ${expenseSplit} s
+          where s.expense_id = ${expense.id}
+        )`,
+      ),
+    )
+    .groupBy(expense.paidByMemberId)
+
+  const totals = new Map<string, number>(
+    splitRows.map((r) => [r.memberId, Number(r.shareMinor)]),
+  )
+  for (const r of impliedRows) {
+    totals.set(
+      r.memberId,
+      (totals.get(r.memberId) ?? 0) + Number(r.impliedMinor),
+    )
+  }
+  return totals
 }
 
 /**
@@ -1303,57 +1374,8 @@ export async function loadBalances(
     .where(and(...expenseWhere))
     .groupBy(spaceMember.id)
 
-  // What each person OWES, over the split rows naming them.
-  const shareRows = await db
-    .select({
-      memberId: expenseSplit.memberId,
-      shareMinor: sql<number>`coalesce(sum(${expenseSplit.shareMinor}), 0)::int`,
-    })
-    .from(expenseSplit)
-    .innerJoin(expense, eq(expense.id, expenseSplit.expenseId))
-    .where(and(...expenseWhere))
-    .groupBy(expenseSplit.memberId)
-
-  /*
-   * What each person owes is the split rows naming them PLUS, for an expense with
-   * no split rows at all, the whole amount against the payer.
-   *
-   * That second half is not a rounding nicety, it is the difference between a
-   * balance sheet and a wrong one. `splits: []` is a real state — the sheet sends
-   * it to mean "nobody is sharing this" — and the payer's implied share is the
-   * entire amount. Without charging it to them they show as OWED that amount for
-   * a cost nobody shared: Sam pays €33.33 for a dinner the household did not
-   * have, and the screen says the household owes Sam €33.33 and offers to write
-   * a settlement for it.
-   *
-   * It is also what makes the nets sum to zero at all. sum(paid) counts every
-   * euro that went out; sum(share) has to count every euro of it too, or the
-   * household is permanently short by exactly the unshared total.
-   */
-  const impliedRows = await db
-    .select({
-      memberId: expense.paidByMemberId,
-      impliedMinor: sql<number>`coalesce(sum(${expense.amountMinor}), 0)::int`,
-    })
-    .from(expense)
-    .where(
-      and(
-        ...expenseWhere,
-        sql`not exists (
-          select 1 from ${expenseSplit} s
-          where s.expense_id = ${expense.id}
-        )`,
-      ),
-    )
-    .groupBy(expense.paidByMemberId)
-
   const paidBy = new Map(paidRows.map((r) => [r.memberId, Number(r.paidMinor)]))
-  const shareBy = new Map(
-    shareRows.map((r) => [r.memberId, Number(r.shareMinor)]),
-  )
-  const impliedBy = new Map(
-    impliedRows.map((r) => [r.memberId, Number(r.impliedMinor)]),
-  )
+  const shareBy = await loadShareTotals(db, expenseWhere)
 
   // The roster, which is the frame the two aggregates are hung on. A member with
   // neither an expense paid nor a share owed still gets a row, at zero, because
@@ -1377,10 +1399,7 @@ export async function loadBalances(
 
   return roster.map((r) => {
     const paid = paidBy.get(r.memberId) ?? 0
-    // Split rows naming them, plus their implied share of anything they paid that
-    // nobody is sharing. Zero for a member who appears in neither.
-    const share =
-      (shareBy.get(r.memberId) ?? 0) + (impliedBy.get(r.memberId) ?? 0)
+    const share = shareBy.get(r.memberId) ?? 0
     return {
       memberId: r.memberId,
       displayName: r.displayName,
@@ -1424,28 +1443,6 @@ export const getBalances = createServerFn({ method: 'GET' })
     })
     const adjusted = applySettlements(balances, recorded)
 
-    /*
-     * The nets should sum to zero, and that has to mean "nobody is short" rather
-     * than merely "nobody is over". Two things make it non-zero, and they are not
-     * the same kind of thing:
-     *
-     *  - A share belonging to somebody who has since left. The roster is active
-     *    members only, by design — see `applySettlements` — so their share has
-     *    nobody to land on. Expected, and a plan that told you to pay a person who
-     *    has gone would be worse than one that leaves the remainder visible.
-     *
-     *  - The nets genuinely not adding up, which is a bug. A payer who is not in
-     *    the split is the one that shipped: `paid` was aggregated through the
-     *    split join, so an expense counted for its payer only if the payer also
-     *    happened to have a split row on it. "Alex paid, and only Robin owes it"
-     *    is entirely legal — the payer is chosen from a separate strip — and Alex
-     *    vanished from their own paid column, which put the household permanently
-     *    €X in the hole and showed every member as owing.
-     *
-     * The per-expense cases are asserted in balances.test.ts instead, where they
-     * can be told apart. This stays a warning because it cannot distinguish them
-     * without re-querying every share in the range.
-     */
     const netSum = adjusted.reduce((s, b) => s + b.netMinor, 0)
     if (netSum !== 0) {
       console.warn(

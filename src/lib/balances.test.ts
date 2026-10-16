@@ -53,7 +53,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { eq } from 'drizzle-orm'
 
 import { closeDb, getDb } from '#/lib/db'
-import { loadBalances } from '#/lib/expense.functions'
+import { loadBalances, loadShareTotals } from '#/lib/expense.functions'
 import { describeIfDatabase } from '#/lib/test-db'
 import {
   expense,
@@ -287,6 +287,38 @@ describe.runIf(await describeIfDatabase())('balances add up', () => {
     const m = byName(rows)
     expect(m.get(other.name)!.paidMinor).toBe(7_500)
     expect(m.get(other.name)!.shareMinor).toBe(1)
+  })
+
+  it('gives the dashboard and the balance sheet the same share', async () => {
+    /*
+     * The second half of the same bug, found the day after the first was fixed.
+     *
+     * `getTotals` computed "Your share" from its own query over `expense_split`,
+     * which is right for every expense that has splits and wrong for every expense
+     * that has none. So the dashboard said your share was EUR 8,475.93 on the same
+     * expenses the balance sheet said you owed EUR 10,859.10 of — one number, two
+     * meanings, 28% apart.
+     *
+     * Two implementations of one definition is the actual defect, so what is
+     * asserted is that both readers now come from the same function and therefore
+     * cannot drift again.
+     */
+    const rows = await balances()
+    const me = byName(rows).get(owner.name)!
+    const shared = await loadShareTotals(getDb(), [
+      eq(expense.spaceId, ids.space),
+    ])
+
+    expect(shared.get(me.memberId)).toBe(me.shareMinor)
+
+    // And the difference from the split-only reading is exactly the unshared
+    // money Fede fronted — which is the part that was being dropped.
+    const splitRows = await getDb()
+      .select({ shareMinor: expenseSplit.shareMinor })
+      .from(expenseSplit)
+      .where(eq(expenseSplit.memberId, me.memberId))
+    const splitOnly = splitRows.reduce((s, r) => s + Number(r.shareMinor), 0)
+    expect(me.shareMinor).toBe(splitOnly + 3_333)
   })
 
   it('ignores an expense outside the period, on both sides', async () => {
