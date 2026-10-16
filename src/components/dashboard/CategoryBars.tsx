@@ -1,6 +1,9 @@
+import { ChevronRight } from 'lucide-react'
 import { motion, useReducedMotion } from 'motion/react'
 
 import type { CategoryTotal } from '#/lib/expense.functions'
+import { cn } from '#/lib/cn'
+
 import { iconFor } from '#/lib/category-icons'
 import { formatMoney } from '#/lib/money'
 import { swatchColor } from '#/lib/swatches'
@@ -31,10 +34,16 @@ export function CategoryBars({
   data,
   currency,
   totalMinor,
+  onSelect,
+  selectedId,
 }: {
   data: Array<CategoryTotal>
   currency: string
   totalMinor: number
+  /** Opens the ledger filtered to this category. Omit for a plain breakdown. */
+  onSelect?: (categoryId: string) => void
+  /** The category currently filtering the ledger, so its row can say so. */
+  selectedId?: string
 }) {
   const reduceMotion = useReducedMotion()
 
@@ -64,11 +73,23 @@ export function CategoryBars({
           // and read as "no data" rather than "a very small amount".
           const width = `${Math.max((row.totalMinor / largest) * 100, 1.5)}%`
 
-          return (
-            <li
-              key={row.id}
-              className="relative isolate overflow-hidden rounded-[7px]"
-            >
+          const isSelected = selectedId === row.id
+          /*
+           * The whole row is the control, rather than a small "see all" link at
+           * the end of it.
+           *
+           * A breakdown is a list of questions and this one had no way to ask any
+           * of them: EUR 1,925 in Home is an answer, and the reader's next thought
+           * is "of what?". A row you can press is the shortest route from the
+           * number to the entries behind it, and it puts the affordance where the
+           * eye already is instead of in a separate column competing for attention.
+           *
+           * Only when `onSelect` is given. The same bars are used in contexts that
+           * are not the ledger's, and a control that navigates somewhere the caller
+           * did not ask for is worse than a static row.
+           */
+          const inner = (
+            <>
               {/* The track spans the whole row, so the bar is read as the row's
                   own background rather than a widget inside it. */}
               <span
@@ -112,6 +133,41 @@ export function CategoryBars({
                   </span>
                 </span>
               </div>
+            </>
+          )
+
+          return (
+            <li key={row.id}>
+              {onSelect ? (
+                <button
+                  type="button"
+                  onClick={() => onSelect(row.id)}
+                  aria-current={isSelected ? 'true' : undefined}
+                  className={cn(
+                    'group relative isolate block w-full overflow-hidden rounded-[7px] text-left',
+                    'transition-shadow duration-150',
+                    isSelected &&
+                      'shadow-[inset_0_0_0_1.5px_var(--color-terracotta)]',
+                  )}
+                >
+                  {inner}
+                  {/* The affordance. A chevron rather than a colour change,
+                      because a tinted row among a list of tinted rows says nothing
+                      about where it will take you. */}
+                  <ChevronRight
+                    size={14}
+                    aria-hidden
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 shrink-0
+                      text-ink-faint opacity-0 transition-opacity duration-150
+                      group-hover:opacity-100 group-focus-visible:opacity-100
+                      aria-[current]:opacity-100"
+                  />
+                </button>
+              ) : (
+                <div className="relative isolate overflow-hidden rounded-[7px]">
+                  {inner}
+                </div>
+              )}
             </li>
           )
         })}

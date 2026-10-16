@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 
 import { createFileRoute, useNavigate, useSearch } from '@tanstack/react-router'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
-import { Lock, StickyNote } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Lock, StickyNote } from 'lucide-react'
 import type { ExpenseRow } from '#/lib/expense.functions'
 
 import type { PeriodPreset } from '#/lib/period'
@@ -10,6 +10,7 @@ import type { ListFilter } from '#/lib/session'
 import { AppShell } from '#/components/AppShell'
 import { NewExpenseButton } from '#/components/NewExpenseButton'
 import { Select } from '#/components/ui/Input'
+import { Button } from '#/components/ui/Button'
 import { Card } from '#/components/ui/Card'
 import { MemberAvatar } from '#/components/MemberAvatar'
 import { ExpenseSheet } from '#/components/expense/ExpenseSheet'
@@ -28,6 +29,8 @@ import { useCurrentSpace } from '#/hooks/useCurrentSpace'
 import { useMayEditExpense } from '#/hooks/useMayEditExpense'
 import { resolveSpaceId } from '#/lib/space-preference'
 import { PeriodFilter } from '#/components/PeriodFilter'
+import { CategoryChips } from '#/components/dashboard/CategoryChips'
+import { UNCATEGORISED_CHIP } from '#/lib/uncategorised'
 
 export const Route = createFileRoute('/_protected/expenses')({
   validateSearch: (s: Record<string, unknown>) => ({
@@ -35,6 +38,25 @@ export const Route = createFileRoute('/_protected/expenses')({
     period: (typeof s.period === 'string' ? s.period : 'all') as PeriodPreset,
     member: typeof s.member === 'string' ? s.member : undefined,
     cats: typeof s.cats === 'string' ? s.cats : undefined,
+    /*
+     * 1-based, in the URL, so a page of the ledger is a thing you can send
+     * somebody. See the note on `offset` in listExpenses for why this is not a
+     * cursor.
+     *
+     * A NUMBER, and the string form is accepted only on the way in. The router
+     * JSON-stringifies search values and parses them back with a fallback to raw
+     * text when the parse throws — which is why `period=all` and a uuid come back
+     * looking clean while a numeric string silently round-trips as `"2"`,
+     * quotes and all. That is invisible in the address bar until you notice the
+     * page does not survive a reload. Passing a number cannot be quoted, and the
+     * string branch keeps any link written by hand working.
+     */
+    page:
+      typeof s.page === 'number'
+        ? s.page
+        : typeof s.page === 'string'
+          ? Math.max(1, Number.parseInt(s.page, 10) || 1)
+          : 1,
     from: typeof s.from === 'string' ? s.from : undefined,
     to: typeof s.to === 'string' ? s.to : undefined,
   }),
@@ -55,15 +77,25 @@ export const Route = createFileRoute('/_protected/expenses')({
     if (!spaceId) return
 
     const period = resolvePeriod(deps.period, deps.from, deps.to)
-    const categories = await qc.ensureQueryData(categoriesQuery(spaceId))
-    const allIds = categories.map((c: { id: string }) => c.id)
 
     const filter: ListFilter = {
       ...period,
       memberId: deps.member ?? null,
-      categoryIds: deps.cats
-        ? deps.cats.split(',').filter((id: string) => allIds.includes(id))
-        : undefined,
+      /*
+       * Built the same way the component builds it, which is the whole point.
+       *
+       * This used to intersect the ids against `allIds`, the real category rows.
+       * That silently dropped `UNCATEGORISED_ID` — a pseudo-id by design, so it
+       * is never in `allIds` — while the component below passed it straight
+       * through. The two therefore keyed their queries differently for that one
+       * filter, so the server fetched the right page, threw it away, and the
+       * client asked again. Filtering by Uncategorised cost two round trips and
+       * flashed the wrong thing on the way.
+       *
+       * The server does not need the intersection: an id that is not a category
+       * matches nothing, which is the right answer anyway.
+       */
+      categoryIds: deps.cats ? deps.cats.split(',') : undefined,
     }
 
     await Promise.all([
@@ -103,15 +135,36 @@ function ExpensesRoute() {
     [period, search.member, search.cats],
   )
 
+  const PAGE_SIZE = 50
+  const page = Math.max(1, search.page)
+
   const expenses = useQuery({
-    ...expensesQuery(spaceId ?? '', filter),
+    ...expensesQuery(spaceId ?? '', filter, {
+      limit: PAGE_SIZE,
+      offset: (page - 1) * PAGE_SIZE,
+    }),
     enabled: Boolean(spaceId),
     // Debounce-ish: keep the previous page visible while the next loads, so
     // dragging a filter does not flash an empty screen every frame.
     placeholderData: keepPreviousData,
   })
 
-  const groups = useMemo(() => groupByDay(expenses.data ?? []), [expenses.data])
+  const rows = expenses.data?.rows ?? []
+  const total = expenses.data?.total ?? 0
+  const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE))
+
+  /*
+   * The chip list, built the same way the dashboard builds it: the real
+   * categories plus the Uncategorised pseudo-id. That id is not a row in
+   * `category`, which is why the loader above used to drop it, so it is added
+   * here explicitly rather than being assumed to come with the query.
+   */
+  const chipCategories = useMemo(
+    () => [...(categories.data ?? []), UNCATEGORISED_CHIP],
+    [categories.data],
+  )
+
+  const groups = useMemo(() => groupByDay(rows), [rows])
   const currency = space?.currency ?? 'EUR'
   const mayEdit = useMayEditExpense()
 
@@ -140,6 +193,7 @@ function ExpensesRoute() {
       period: PeriodPreset
       member: string | undefined
       cats: string | undefined
+      page: number | undefined
       from: string | undefined
       to: string | undefined
     }>,
@@ -147,10 +201,17 @@ function ExpensesRoute() {
     void navigate({ to: '/expenses', search: { ...search, ...patch } })
   }
 
-  const totalShown = (expenses.data ?? []).reduce(
-    (s, e) => s + e.amountMinor,
-    0,
-  )
+  /*
+   * The sum on screen is the sum of THIS PAGE, and the header has to say so.
+   *
+   * Before paging there was no difference — everything loaded was everything, so
+   * the header could state a figure that meant the whole filter. With a page of
+   * fifty it cannot: the same sentence over a different page's rows would move,
+   * and a number that changes when you turn the page reads as a bug rather than
+   * as a page boundary.
+   */
+  const pageTotal = rows.reduce((s, e) => s + e.amountMinor, 0)
+  const whole = lastPage <= 1
 
   return (
     <AppShell>
@@ -159,8 +220,11 @@ function ExpensesRoute() {
           <div>
             <h1 className="text-2xl sm:text-3xl tracking-tight">Expenses</h1>
             <p className="text-xs text-ink-faint tnum">
-              {expenses.data?.length ?? 0} entries ·{' '}
-              {formatMoney(totalShown, currency)}
+              {whole
+                ? `${total.toLocaleString()} ${total === 1 ? 'entry' : 'entries'} · `
+                : `Showing ${(page - 1) * PAGE_SIZE + 1}–${Math.min(page * PAGE_SIZE, total)} of ${total.toLocaleString()} · `}
+              {formatMoney(pageTotal, currency)}
+              {whole ? '' : ' on this page'}
             </p>
           </div>
           <NewExpenseButton onClick={openNew} disabled={!spaceId} />
@@ -188,6 +252,29 @@ function ExpensesRoute() {
               ))}
             </Select>
           </div>
+        </div>
+
+        {/*
+          The same chips the dashboard uses, on the screen the dashboard's chips
+          lead to.
+
+          `?cats=` has been in this route's search schema and has filtered the
+          ledger correctly the whole time — there was simply no control that set
+          it, so the one place a reader could see every entry in a category was
+          reachable only by editing the URL by hand. The capability was finished
+          and the door was missing.
+
+          Sharing the component is the point rather than a convenience: a chip
+          that means the same thing on two screens, and is pressed the same way,
+          is one thing to learn rather than two that look alike.
+        */}
+        <div>
+          <CategoryChips
+            categories={chipCategories}
+            allIds={chipCategories.map((c) => c.id)}
+            selected={search.cats ? search.cats.split(',') : undefined}
+            onChange={(next) => go({ cats: next?.join(',') })}
+          />
         </div>
 
         {expenses.isPending ? (
@@ -296,6 +383,43 @@ function ExpensesRoute() {
               </section>
             ))}
           </div>
+        )}
+
+        {/*
+          Paging. Two buttons and the count, rather than a scroller that loads on
+          approach: a ledger is something people go *back* through looking for
+          something, and "find March" means paging to it, not discovering where
+          the infinite scroll happened to stop.
+        */}
+        {!whole && (
+          <nav
+            aria-label="Ledger pages"
+            className="mt-5 flex items-center justify-between gap-3"
+          >
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={page <= 1 || expenses.isFetching}
+              onClick={() => go({ page: page > 2 ? page - 1 : 1 })}
+            >
+              <ChevronLeft size={15} aria-hidden />
+              Newer
+            </Button>
+            <span className="text-xs text-ink-faint tnum">
+              Page {page} of {lastPage}
+            </span>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={page >= lastPage || expenses.isFetching}
+              onClick={() => go({ page: page + 1 })}
+            >
+              Older
+              <ChevronRight size={15} aria-hidden />
+            </Button>
+          </nav>
         )}
 
         <ExpenseSheet

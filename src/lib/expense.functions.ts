@@ -1035,8 +1035,28 @@ async function noteCountsFor(
 // ── reads ─────────────────────────────────────────────────────────────────
 
 export const listExpenses = createServerFn({ method: 'GET' })
-  .inputValidator(periodFilterSchema)
-
+  .inputValidator(
+    periodFilterSchema.extend({
+      limit: z.number().int().min(1).max(200).default(50),
+      /**
+       * Paging by offset, and the choice is worth stating.
+       *
+       * A cursor keyed on (spentOn, createdAt, id) is the textbook answer and it
+       * is wrong for this screen. Cursors cannot be pointed at twice: the URL is
+       * not the state, so "page 3" is not a thing anyone can link to, and the
+       * browser's back button has nothing to step back to.
+       *
+       * The usual argument against offsets — a row inserted at the top shifts
+       * everything and you get a duplicate — does not bite here, because entries
+       * are read newest-first and new ones land *above* what you are looking at.
+       * Adding an expense while you are on page 3 shifts page 3 down by one entry,
+       * and the cost is one row of overlap at a page boundary in a list that grows
+       * by a handful a week. Paying for that with a control you cannot share is the
+       * worse trade.
+       */
+      offset: z.number().int().min(0).default(0),
+    }),
+  )
   .handler(async ({ data }) => {
     const session = await ensureSession()
     await requireSpaceMember(session.user.id, data.spaceId)
@@ -1084,8 +1104,25 @@ export const listExpenses = createServerFn({ method: 'GET' })
       // live series from a stopped one.
       .leftJoin(recurringExpense, eq(expense.recurringId, recurringExpense.id))
       .where(and(...conditions))
-      .orderBy(desc(expense.spentOn), desc(expense.createdAt))
-      .limit(200)
+      // `id` last so the order is TOTAL. Without it, two entries on the same day
+      // created in the same millisecond have no defined order between them, and a
+      // page boundary that lands between them can show one twice or not at all.
+      .orderBy(desc(expense.spentOn), desc(expense.createdAt), desc(expense.id))
+      .limit(data.limit)
+      .offset(data.offset)
+
+    /*
+     * How many there are, so the screen can say so.
+     *
+     * This is the whole reason the limit exists at all. It used to be a hard cap
+     * at 200 with nothing on screen to admit it: a household with more than 200
+     * entries in range got the first 200 and no indication that the rest existed,
+     * which is the worst of both — a truncated list that reads as a complete one.
+     */
+    const [countRow] = await db
+      .select({ total: drizzleCount() })
+      .from(expense)
+      .where(and(...conditions))
 
     const splitMap = await splitsFor(
       data.spaceId,
@@ -1097,19 +1134,32 @@ export const listExpenses = createServerFn({ method: 'GET' })
       rows.map((r) => r.id),
     )
 
-    return rows.map<ExpenseRow>((r) => ({
+    return {
+      rows: rows.map<ExpenseRow>((r) => ({
         ...r,
         paidByName: displayMemberName(r.paidByName, r.paidByArchivedAt),
-      // Drizzle's `date()` mode already yields a 'YYYY-MM-DD' string.
-      spentOn: r.spentOn,
-      createdAt:
-        r.createdAt instanceof Date
-          ? r.createdAt.toISOString()
-          : String(r.createdAt),
-      splits: splitMap.get(r.id) ?? [],
-      noteCount: noteMap.get(r.id) ?? 0,
-    }))
+        // Drizzle's `date()` mode already yields a 'YYYY-MM-DD' string.
+        spentOn: r.spentOn,
+        createdAt:
+          r.createdAt instanceof Date
+            ? r.createdAt.toISOString()
+            : String(r.createdAt),
+        splits: splitMap.get(r.id) ?? [],
+        noteCount: noteMap.get(r.id) ?? 0,
+      })),
+      total: Number(countRow?.total ?? 0),
+      limit: data.limit,
+      offset: data.offset,
+    }
   })
+
+export interface ExpensePage {
+  rows: Array<ExpenseRow>
+  /** Everything matching the filter, not just this page. */
+  total: number
+  limit: number
+  offset: number
+}
 
 export interface CategoryTotal {
   id: string

@@ -99,8 +99,24 @@ test.describe('csv import', () => {
     await commit.click()
     await expect(page.getByText(/Imported 2 row\(s\)/)).toBeVisible()
 
-    // And the rows really landed in the ledger.
-    await page.goto(`/expenses?period=all&space=`)
+    /*
+     * And the rows really landed in the ledger — looked for inside June, where this
+     * test put them.
+     *
+     * It used to look at the whole ledger and find the row by its text, which was
+     * only true while the ledger fitted on a page. The ledger pages now, so a row
+     * can be real and still not on page one; a custom range makes the assertion
+     * about whether the import worked rather than about how big the ledger is.
+     *
+     * `period=custom` is load-bearing and easy to leave out: resolvePeriod ignores
+     * `from`/`to` entirely for any other preset, so the range would silently widen
+     * to all time and the very rows this was written to isolate would come back
+     * with everything else. May, because these rows are May and nothing else in
+     * the suite writes there.
+     */
+    await page.goto(
+      '/expenses?space=&period=custom&from=2026-05-01&to=2026-05-31',
+    )
     await expect(page.getByText(`Imported groceries ${stamp}`)).toBeVisible()
   })
 

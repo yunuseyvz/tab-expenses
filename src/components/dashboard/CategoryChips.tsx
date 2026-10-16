@@ -33,16 +33,35 @@ export function CategoryChips({
   const isAll = selected === undefined || selected.length === allIds.length
   const isNone = selected !== undefined && selected.length === 0
 
+  /*
+   * The first press on a chip SELECTS IT, rather than removing it from an
+   * implicit "everything".
+   *
+   * With nothing chosen the chips all render pressed, because "All" does mean
+   * every category is in the filter. Treating that as the starting point for a
+   * toggle made the first press on "Groceries" mean "everything except
+   * groceries" — the opposite of what a reader who has just looked at a
+   * groceries total is asking for, and the opposite of what the by-category bars
+   * now do when they hand you a category. It was survivable on the dashboard
+   * because the All/None links were right there; as a filter you use to answer a
+   * question it is actively misleading.
+   *
+   * So from All, a press isolates. After that it is an ordinary multi-select, and
+   * "All" is one tap away.
+   */
   const toggle = (id: string) => {
-    const current = selected ?? allIds
-    const next = current.includes(id)
-      ? current.filter((x) => x !== id)
-      : [...current, id]
+    if (selected === undefined) {
+      onChange([id])
+      return
+    }
+    const next = selected.includes(id)
+      ? selected.filter((x) => x !== id)
+      : [...selected, id]
     onChange(next)
   }
 
   return (
-    <div className="mb-4">
+    <div className="mb-4" data-testid="category-chips">
       <div className="flex items-center justify-between mb-2">
         <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-ink-faint">
           Categories

@@ -68,8 +68,15 @@ export function Dashboard({
     enabled: Boolean(spaceId),
   })
 
+  /*
+   * Asks for the eight it renders. It used to ask for two hundred and slice to
+   * eight on the client, because the ledger had no paging and this was the only
+   * way to be sure of filling the list — so the dashboard's landing page shipped
+   * a couple of hundred rows of a ledger to draw a short one.
+   */
+  const RECENT_COUNT = 8
   const recent = useQuery({
-    ...expensesQuery(spaceId ?? '', filter),
+    ...expensesQuery(spaceId ?? '', filter, { limit: RECENT_COUNT }),
     enabled: Boolean(spaceId),
   })
 
@@ -101,7 +108,7 @@ export function Dashboard({
   }
 
   const yourNet = balances.data?.yourNetMinor ?? 0
-  const recentRows = (recent.data ?? []).slice(0, 8)
+  const recentRows = recent.data?.rows ?? []
 
   return (
     <div className="space-y-4">
@@ -176,11 +183,43 @@ export function Dashboard({
         <CardHeader>
           <CardTitle>By category</CardTitle>
         </CardHeader>
-        <CategoryBars
-          data={totals.data?.byCategory ?? []}
-          currency={currency}
-          totalMinor={totals.data?.totalMinor ?? 0}
-        />
+        <div data-testid="by-category">
+          <CategoryBars
+            data={totals.data?.byCategory ?? []}
+            currency={currency}
+            totalMinor={totals.data?.totalMinor ?? 0}
+            /*
+            A press opens the ledger on that category, carrying the period and the
+            household across. Both matter: landing on "all time" when you were
+            reading October is a worse answer than no drill-down at all, because
+            the figure you clicked no longer matches the list you get.
+          */
+            selectedId={
+              search.cats && !search.cats.includes(',')
+                ? search.cats
+                : undefined
+            }
+            onSelect={(id) => {
+              void navigate({
+                to: '/expenses',
+                search: {
+                  space: spaceId,
+                  period: search.period,
+                  from: search.from,
+                  to: search.to,
+                  member: undefined,
+                  cats: id,
+                  // Always the first page: a drill-down starts at the top of the
+                  // category, and arriving on page 4 of a filter nobody has set
+                  // before would be nonsense. Page 1 rather than "unset",
+                  // because the parameter is a number now and the router would
+                  // happily quote a string.
+                  page: 1,
+                },
+              })
+            }}
+          />
+        </div>
       </Card>
 
       {/* The review sits with the other reading material, above the list. It is

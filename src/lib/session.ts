@@ -51,7 +51,11 @@ export const fetchMembers = (spaceId: string) =>
 export const fetchCategories = (spaceId: string, includePersonal = true) =>
   listCategories({ data: { spaceId, includePersonal } })
 
-export const fetchExpenses = (spaceId: string, filter: ListFilter) =>
+export const fetchExpenses = (
+  spaceId: string,
+  filter: ListFilter,
+  page: { limit?: number; offset?: number } = {},
+) =>
   listExpenses({
     data: {
       spaceId,
@@ -59,6 +63,7 @@ export const fetchExpenses = (spaceId: string, filter: ListFilter) =>
       to: filter.to,
       categoryIds: filter.categoryIds,
       memberId: filter.memberId,
+      ...page,
     },
   })
 
@@ -91,10 +96,23 @@ export function categoriesQuery(spaceId: string, includePersonal = true) {
   })
 }
 
-export function expensesQuery(spaceId: string, filter: ListFilter) {
+/**
+ * Paging is part of the KEY, not applied afterwards.
+ *
+ * Which is the point of doing it here rather than in each caller: the page is
+ * what the server was asked for, so two pages of the same filter are two
+ * different queries and the cache can hold both. Folding the page into the data
+ * while leaving it out of the key would have every page overwriting the last.
+ */
+export function expensesQuery(
+  spaceId: string,
+  filter: ListFilter,
+  page: { limit?: number; offset?: number } = {},
+) {
+  const keyPage = { limit: page.limit ?? 50, offset: page.offset ?? 0 }
   return queryOptions({
-    queryKey: spaceKeys.expenses(spaceId, filter),
-    queryFn: () => fetchExpenses(spaceId, filter),
+    queryKey: spaceKeys.expenses(spaceId, { ...filter, ...keyPage }),
+    queryFn: () => fetchExpenses(spaceId, filter, keyPage),
   })
 }
 
