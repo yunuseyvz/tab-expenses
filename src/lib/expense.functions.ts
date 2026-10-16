@@ -1262,6 +1262,15 @@ export interface BalancesResult {
   recorded: Array<RecordedSettlement>
   yourNetMinor: number
   yourMemberId: string
+  /**
+   * Spending in this range that is counted against nobody on the roster.
+   *
+   * Total spend, minus every active member's share. Normally zero, and it is only
+   * non-zero when a share belongs to somebody who has since left — because the
+   * roster is active members only, on purpose. The balances screen states it in
+   * words rather than leaving the household's own arithmetic to fail quietly.
+   */
+  unassignedShareMinor: number
 }
 
 /**
@@ -1443,6 +1452,56 @@ export const getBalances = createServerFn({ method: 'GET' })
     })
     const adjusted = applySettlements(balances, recorded)
 
+    /*
+     * What the roster cannot carry. Total spend in range minus the sum of every
+     * active member's share: normally exactly zero, and non-zero only when a
+     * share belongs to somebody who is no longer on the roster.
+     *
+     * Derived rather than stored, because there is nothing to store — no row says
+     * "this share is orphaned", it is only true by comparison. Every expense either
+     * has splits that sum to its amount, or has none and charges the whole amount
+     * to its payer, so the difference is exactly the shares with no living
+     * counterparty.
+     */
+    const [spent] = await db
+      .select({
+        totalMinor: sql<number>`coalesce(sum(${expense.amountMinor}), 0)::int`,
+      })
+      .from(expense)
+      .where(
+        and(
+          eq(expense.spaceId, data.spaceId),
+          data.from ? gte(expense.spentOn, data.from) : undefined,
+          data.to ? lte(expense.spentOn, data.to) : undefined,
+          categoryFilter(data.categoryIds),
+        ),
+      )
+    const unassignedShareMinor =
+      Number(spent?.totalMinor ?? 0) -
+      balances.reduce((sum, b) => sum + b.shareMinor, 0)
+
+    /*
+     * The nets should sum to zero, and that has to mean "nobody is short" rather
+     * than merely "nobody is over". Two things make it non-zero, and they are not
+     * the same kind of thing:
+     *
+     *  - A share belonging to somebody who has since left. The roster is active
+     *    members only, by design — see `applySettlements` — so their share has
+     *    nobody to land on. Expected, and a plan that told you to pay a person who
+     *    has gone would be worse than one that leaves the remainder visible.
+     *
+     *  - The nets genuinely not adding up, which is a bug. A payer who is not in
+     *    the split is the one that shipped: `paid` was aggregated through the
+     *    split join, so an expense counted for its payer only if the payer also
+     *    happened to have a split row on it. "Alex paid, and only Robin owes it"
+     *    is entirely legal — the payer is chosen from a separate strip — and Alex
+     *    vanished from their own paid column, which put the household permanently
+     *    €X in the hole and showed every member as owing.
+     *
+     * The per-expense cases are asserted in balances.test.ts instead, where they
+     * can be told apart. This stays a warning because it cannot distinguish them
+     * without re-querying every share in the range.
+     */
     const netSum = adjusted.reduce((s, b) => s + b.netMinor, 0)
     if (netSum !== 0) {
       console.warn(
@@ -1457,5 +1516,6 @@ export const getBalances = createServerFn({ method: 'GET' })
       recorded,
       yourNetMinor: adjusted.find((b) => b.memberId === me.id)?.netMinor ?? 0,
       yourMemberId: me.id,
+      unassignedShareMinor,
     } satisfies BalancesResult
   })

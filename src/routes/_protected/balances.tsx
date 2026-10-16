@@ -102,6 +102,7 @@ function BalancesRoute() {
   const currency = space?.currency ?? 'EUR'
   const data = balances.data
   const yourNet = data?.yourNetMinor ?? 0
+  const unassignedShare = data?.unassignedShareMinor ?? 0
 
   const queryClient = useQueryClient()
   const invalidate = () => {
@@ -200,6 +201,37 @@ function BalancesRoute() {
               </p>
             </Card>
 
+            {/*
+              The one case where these numbers are meant not to add up.
+
+              The roster is active members only — see applySettlements — so a
+              share belonging to somebody who has since left has nobody to land
+              on, and the plan below cannot quite clear it. That is a decision and
+              the right one, because a settlement telling you to pay a person who
+              has gone is worse than one that leaves the remainder visible. It was
+              previously only a console.warn, which means the screen showed a
+              household whose own arithmetic failed and said nothing about why.
+
+              So the remainder is stated, in words, with the amount. Someone doing
+              the sums by hand now has somewhere to put the difference.
+            */}
+            {unassignedShare > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Belonging to someone who has left</CardTitle>
+                  <span className="text-sm font-medium tnum shrink-0 text-ink-faint">
+                    {formatMoney(unassignedShare, currency)}
+                  </span>
+                </CardHeader>
+                <p className="text-xs text-ink-faint">
+                  Part of this period was shared with someone who is no longer
+                  on the roster, so it is counted in the household's spending
+                  and in nobody's share. That is why the totals here do not sum
+                  to zero, and the plan below cannot clear it.
+                </p>
+              </Card>
+            )}
+
             <Card>
               <CardHeader>
                 <CardTitle>Per member</CardTitle>
@@ -253,7 +285,31 @@ function BalancesRoute() {
             <Card>
               <CardHeader>
                 <CardTitle>Settle up</CardTitle>
+                {data.settlements.length > 0 && (
+                  <span className="text-sm font-medium tnum shrink-0">
+                    {formatMoney(
+                      data.settlements.reduce((s, x) => s + x.amountMinor, 0),
+                      currency,
+                    )}
+                  </span>
+                )}
               </CardHeader>
+              {/*
+                The label the card did not have, and it is the whole reason this
+                screen is hard to check by hand. The plan is drawn on balances that
+                already have recorded payments taken off, so "Settle up" is what
+                remains and not what was ever owed. Someone adding up the plan,
+                comparing it against their own arithmetic, and finding a shortfall
+                exactly equal to a payment they had already made has no way to
+                know that from the screen. It says so now.
+              */}
+              {data.settlements.length > 0 && data.recorded.length > 0 && (
+                <p className="text-xs text-ink-faint mb-3">
+                  Still to move, after {data.recorded.length}{' '}
+                  {data.recorded.length === 1 ? 'payment' : 'payments'} already
+                  recorded below.
+                </p>
+              )}
               {data.settlements.length === 0 ? (
                 /*
                   The one place in the app that gets to celebrate, because this is
@@ -325,6 +381,12 @@ function BalancesRoute() {
               <Card>
                 <CardHeader>
                   <CardTitle>Recorded payments</CardTitle>
+                  <span className="text-sm font-medium tnum shrink-0">
+                    {formatMoney(
+                      data.recorded.reduce((s, x) => s + x.amountMinor, 0),
+                      currency,
+                    )}
+                  </span>
                 </CardHeader>
                 <ul>
                   {data.recorded.map((s) => (
