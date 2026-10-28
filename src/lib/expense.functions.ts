@@ -1034,6 +1034,120 @@ async function noteCountsFor(
 
 // ── reads ─────────────────────────────────────────────────────────────────
 
+/**
+ * One page of the ledger, plus the counts and per-day figures for the whole
+ * filter.
+ *
+ * Extracted from the server function so the SQL is reachable from a test, for the
+ * same reason `loadBalances` was: a createServerFn cannot be invoked outside a
+ * request, so the aggregation was the one part of the ledger no test could see.
+ */
+export async function loadExpensePage(
+  db: Db,
+  filter: {
+    spaceId: string
+    from: string | null
+    to: string | null
+    categoryIds: Array<string> | undefined
+    memberId?: string | null
+  },
+  page: { limit: number; offset: number },
+): Promise<ExpensePage> {
+  // Typed to allow undefined because drizzle's and() drops undefined entries,
+  // which is how an absent bound is expressed.
+  const conditions: Array<SQL | undefined> = [
+    eq(expense.spaceId, filter.spaceId),
+  ]
+  if (filter.from) conditions.push(gte(expense.spentOn, filter.from))
+  if (filter.to) conditions.push(lte(expense.spentOn, filter.to))
+  conditions.push(categoryFilter(filter.categoryIds))
+  if (filter.memberId) {
+    // "paid by" or "shared with" — a member filter should not hide an expense
+    // they are part of the split for.
+    conditions.push(
+      sql`(${expense.paidByMemberId} = ${filter.memberId} or exists (
+            select 1 from ${expenseSplit}
+            where ${expenseSplit.expenseId} = ${expense.id}
+              and ${expenseSplit.memberId} = ${filter.memberId}
+          ))`,
+    )
+  }
+
+  const rows = await db
+    .select(expenseSelect())
+    .from(expense)
+    .leftJoin(category, eq(expense.categoryId, category.id))
+    .innerJoin(spaceMember, eq(expense.paidByMemberId, spaceMember.id))
+    .leftJoin(user, eq(spaceMember.userId, user.id))
+    .leftJoin(author, eq(expense.createdByUserId, author.id))
+    .leftJoin(recurringExpense, eq(expense.recurringId, recurringExpense.id))
+    .where(and(...conditions))
+    // `id` last so the order is TOTAL. Without it, two entries on the same day
+    // created in the same millisecond have no defined order between them, and a
+    // page boundary that lands between them can show one twice or not at all.
+    .orderBy(desc(expense.spentOn), desc(expense.createdAt), desc(expense.id))
+    .limit(page.limit)
+    .offset(page.offset)
+
+  /*
+   * Everything the filter matches, and what each day came to.
+   *
+   * Both are deliberately unfiltered by the page: they describe the question the
+   * reader asked, not the slice of the answer currently on screen.
+   */
+  const [totals] = await db
+    .select({
+      total: drizzleCount(),
+      amountMinor: sql<number>`coalesce(sum(${expense.amountMinor}), 0)::int`,
+    })
+    .from(expense)
+    .where(and(...conditions))
+
+  const dayTotals = await db
+    .select({
+      spentOn: expense.spentOn,
+      totalMinor: sql<number>`coalesce(sum(${expense.amountMinor}), 0)::int`,
+      count: drizzleCount(),
+    })
+    .from(expense)
+    .where(and(...conditions))
+    .groupBy(expense.spentOn)
+    .orderBy(desc(expense.spentOn))
+
+  const splitMap = await splitsFor(
+    filter.spaceId,
+    rows.map((r) => r.id),
+  )
+  const noteMap = await noteCountsFor(
+    db,
+    filter.spaceId,
+    rows.map((r) => r.id),
+  )
+
+  return {
+    rows: rows.map<ExpenseRow>((r) => ({
+      ...r,
+      paidByName: displayMemberName(r.paidByName, r.paidByArchivedAt),
+      // Drizzle's `date()` mode already yields a 'YYYY-MM-DD' string.
+      spentOn: r.spentOn,
+      createdAt:
+        r.createdAt instanceof Date
+          ? r.createdAt.toISOString()
+          : String(r.createdAt),
+      splits: splitMap.get(r.id) ?? [],
+      noteCount: noteMap.get(r.id) ?? 0,
+    })),
+    total: Number(totals?.total ?? 0),
+    limit: page.limit,
+    offset: page.offset,
+    dayTotals: dayTotals.map((d) => ({
+      spentOn: d.spentOn,
+      totalMinor: Number(d.totalMinor),
+      count: Number(d.count),
+    })),
+  }
+}
+
 export const listExpenses = createServerFn({ method: 'GET' })
   .inputValidator(
     periodFilterSchema.extend({
@@ -1067,91 +1181,24 @@ export const listExpenses = createServerFn({ method: 'GET' })
     // looks. Cheap when nothing is due — one indexed query on a partial index.
     await materialiseRecurring(data.spaceId)
 
-    // Typed to allow undefined: drizzle's and() drops undefined entries, which
-    // is how an absent bound is expressed.
-    const conditions: Array<SQL | undefined> = [
-      eq(expense.spaceId, data.spaceId),
-    ]
-    if (data.from) conditions.push(gte(expense.spentOn, data.from))
-    if (data.to) conditions.push(lte(expense.spentOn, data.to))
-    conditions.push(categoryFilter(data.categoryIds))
-    if (data.memberId) {
-      // "paid by" or "shared with" — a member filter should not hide an expense
-      // they are part of the split for.
-      conditions.push(
-        sql`(${expense.paidByMemberId} = ${data.memberId} or exists (
-              select 1 from ${expenseSplit}
-              where ${expenseSplit.expenseId} = ${expense.id}
-                and ${expenseSplit.memberId} = ${data.memberId}
-            ))`,
-      )
-    }
-
-    const rows = await db
-      .select(expenseSelect())
-      .from(expense)
-      .leftJoin(category, eq(expense.categoryId, category.id))
-      .innerJoin(spaceMember, eq(expense.paidByMemberId, spaceMember.id))
-      // For the payer's avatar, so a list of expenses shows faces rather than a
-      // column of names. Left, not inner: a virtual payer has no account row, and
-      // an inner join here would drop every expense they paid.
-      .leftJoin(user, eq(spaceMember.userId, user.id))
-      // And a second alias for whoever typed the entry in, which is a different
-      // person from the payer as often as not.
-      .leftJoin(author, eq(expense.createdByUserId, author.id))
-      // Left, not inner: a hand-typed expense has no series and must still be
-      // listed. This join is only here so the "Repeats monthly" marker can tell a
-      // live series from a stopped one.
-      .leftJoin(recurringExpense, eq(expense.recurringId, recurringExpense.id))
-      .where(and(...conditions))
-      // `id` last so the order is TOTAL. Without it, two entries on the same day
-      // created in the same millisecond have no defined order between them, and a
-      // page boundary that lands between them can show one twice or not at all.
-      .orderBy(desc(expense.spentOn), desc(expense.createdAt), desc(expense.id))
-      .limit(data.limit)
-      .offset(data.offset)
-
-    /*
-     * How many there are, so the screen can say so.
-     *
-     * This is the whole reason the limit exists at all. It used to be a hard cap
-     * at 200 with nothing on screen to admit it: a household with more than 200
-     * entries in range got the first 200 and no indication that the rest existed,
-     * which is the worst of both — a truncated list that reads as a complete one.
-     */
-    const [countRow] = await db
-      .select({ total: drizzleCount() })
-      .from(expense)
-      .where(and(...conditions))
-
-    const splitMap = await splitsFor(
-      data.spaceId,
-      rows.map((r) => r.id),
-    )
-    const noteMap = await noteCountsFor(
+    return loadExpensePage(
       db,
-      data.spaceId,
-      rows.map((r) => r.id),
+      {
+        spaceId: data.spaceId,
+        from: data.from,
+        to: data.to,
+        categoryIds: data.categoryIds,
+        memberId: data.memberId,
+      },
+      { limit: data.limit, offset: data.offset },
     )
-
-    return {
-      rows: rows.map<ExpenseRow>((r) => ({
-        ...r,
-        paidByName: displayMemberName(r.paidByName, r.paidByArchivedAt),
-        // Drizzle's `date()` mode already yields a 'YYYY-MM-DD' string.
-        spentOn: r.spentOn,
-        createdAt:
-          r.createdAt instanceof Date
-            ? r.createdAt.toISOString()
-            : String(r.createdAt),
-        splits: splitMap.get(r.id) ?? [],
-        noteCount: noteMap.get(r.id) ?? 0,
-      })),
-      total: Number(countRow?.total ?? 0),
-      limit: data.limit,
-      offset: data.offset,
-    }
   })
+
+export interface DayTotal {
+  spentOn: string
+  totalMinor: number
+  count: number
+}
 
 export interface ExpensePage {
   rows: Array<ExpenseRow>
@@ -1159,6 +1206,20 @@ export interface ExpensePage {
   total: number
   limit: number
   offset: number
+  /**
+   * What each day cost, over the WHOLE filter rather than this page.
+   *
+   * The ledger's day headers used to be summed in the browser from whatever rows
+   * the query happened to return, while the period total above them was summed in
+   * SQL over the whole filter. Those are the same set until the list returns fewer
+   * rows than the filter matches — which it silently did at 200 — and then the day
+   * figures on screen stop adding up to the total on the same screen. Both are
+   * "the app's number", and neither looks like the broken one.
+   *
+   * So the day figure now comes from the same place the period figure does, and
+   * the two agree by construction however the rows are paged.
+   */
+  dayTotals: Array<DayTotal>
 }
 
 export interface CategoryTotal {

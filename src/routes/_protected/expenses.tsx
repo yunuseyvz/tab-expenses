@@ -164,7 +164,30 @@ function ExpensesRoute() {
     [categories.data],
   )
 
-  const groups = useMemo(() => groupByDay(rows), [rows])
+  /*
+   * The day header's figure comes from the server, not from the rows on screen.
+   *
+   * `groupByDay` sums the array it is given, which used to be the whole ledger and
+   * is now one page — so a day split across a page boundary would have had its
+   * total silently halved, and the day figures would no longer add up to the period
+   * total printed above them. The two numbers are on the same screen and a reader
+   * is entitled to expect them to agree.
+   */
+  const dayTotals = useMemo(
+    () =>
+      new Map(
+        (expenses.data?.dayTotals ?? []).map((d) => [d.spentOn, d.totalMinor]),
+      ),
+    [expenses.data],
+  )
+  const groups = useMemo(
+    () =>
+      groupByDay(rows).map((g) => ({
+        ...g,
+        totalMinor: dayTotals.get(g.date) ?? g.totalMinor,
+      })),
+    [rows, dayTotals],
+  )
   const currency = space?.currency ?? 'EUR'
   const mayEdit = useMayEditExpense()
 

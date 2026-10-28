@@ -50,10 +50,14 @@
  */
 import { randomUUID } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { eq } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 
 import { closeDb, getDb } from '#/lib/db'
-import { loadBalances, loadShareTotals } from '#/lib/expense.functions'
+import {
+  loadBalances,
+  loadExpensePage,
+  loadShareTotals,
+} from '#/lib/expense.functions'
 import { describeIfDatabase } from '#/lib/test-db'
 import {
   expense,
@@ -321,7 +325,168 @@ describe.runIf(await describeIfDatabase())('balances add up', () => {
     expect(me.shareMinor).toBe(splitOnly + 3_333)
   })
 
+  /*
+   * ── additivity ────────────────────────────────────────────────────────────
+   *
+   * A balance is a sum over expenses, so the whole period MUST equal the sum of
+   * its days. That is not a nicety: it is what makes the screen checkable by hand,
+   * and it is exactly the property a reader tests without being told to. "Each
+   * day matches my arithmetic, but when the app adds the days up it does something
+   * weird" is a report of this invariant failing, and there is no way to answer it
+   * except by asserting it.
+   *
+   * Three days, different payers, a split that is not even, and an unshared
+   * expense — so the partition crosses every shape that could make an aggregate
+   * non-additive.
+   */
+  it('aggregates over a period exactly as it does day by day', async () => {
+    const db = getDb()
+    // A clean slate, so the days are the only thing in range.
+    await db.delete(expense).where(eq(expense.spaceId, ids.space))
+
+    await writeExpense({
+      payer: Vale,
+      amountMinor: 5_000,
+      splits: [
+        [Fede, 3_000],
+        [Vale, 2_000],
+      ],
+      spentOn: '2026-03-01',
+    })
+    await writeExpense({
+      payer: Fede,
+      amountMinor: 3_333,
+      splits: [],
+      spentOn: '2026-03-02',
+    })
+    await writeExpense({
+      payer: Vale,
+      amountMinor: 2_500,
+      splits: [[Fede, 2_500]],
+      spentOn: '2026-03-03',
+    })
+    await writeExpense({
+      payer: Fede,
+      amountMinor: 1_001,
+      splits: [
+        [Fede, 500],
+        [Vale, 501],
+      ],
+      spentOn: '2026-03-03',
+    })
+
+    const range = async (from: string, to: string) =>
+      loadBalances(db, { spaceId: ids.space, from, to, categoryIds: undefined })
+
+    const whole = await range('2026-03-01', '2026-03-31')
+    const days = await Promise.all([
+      range('2026-03-01', '2026-03-01'),
+      range('2026-03-02', '2026-03-02'),
+      range('2026-03-03', '2026-03-03'),
+    ])
+
+    for (const name of [owner.name, other.name]) {
+      const wholeRow = whole.find((r) => r.displayName === name)!
+      const parts = days.map((d) => d.find((r) => r.displayName === name)!)
+
+      // The three columns separately, because a total that matches while its
+      // parts do not is a coincidence rather than an invariant.
+      expect(
+        parts.reduce((s, p) => s + p.paidMinor, 0),
+        `${name}: paid must add up`,
+      ).toBe(wholeRow.paidMinor)
+      expect(
+        parts.reduce((s, p) => s + p.shareMinor, 0),
+        `${name}: share must add up`,
+      ).toBe(wholeRow.shareMinor)
+      expect(
+        parts.reduce((s, p) => s + p.netMinor, 0),
+        `${name}: net must add up`,
+      ).toBe(wholeRow.netMinor)
+    }
+
+    // And the whole thing still balances, day by day and in total.
+    for (const rows of [...days, whole]) {
+      expect(rows.reduce((s, r) => s + r.netMinor, 0)).toBe(0)
+    }
+  })
+
+  /*
+   * ── the ledger's own daily figures ────────────────────────────────────────
+   *
+   * The report that says each day is right but the days do not add up.
+   *
+   * Two different numbers are on that screen. The day headers are computed in the
+   * BROWSER, from whatever rows the query returned (`groupByDay` sums the array it
+   * is given); the period total is computed in SQL over the whole filter. While
+   * the list was unfiltered and small those were the same set and agreed. They stop
+   * agreeing the moment the list returns fewer rows than the filter matches — and
+   * it did that silently, at 200, with no paging and nothing on screen to say so.
+   *
+   * A reader then does the obvious thing: adds up the day figures, and finds a
+   * total that does not match the app's. Both numbers are "the app's", and neither
+   * is obviously the broken one.
+   */
+  it('has day headers that agree with the period total', async () => {
+    const db = getDb()
+    await db.delete(expense).where(eq(expense.spaceId, ids.space))
+
+    // More days than one page holds, so the query cannot return all of them.
+    const DAYS = 60
+    for (let i = 0; i < DAYS; i++) {
+      await writeExpense({
+        payer: Fede,
+        amountMinor: 1_000 + i,
+        splits: [],
+        spentOn: `2026-04-${String((i % 28) + 1).padStart(2, '0')}`,
+      })
+    }
+
+    const filter = {
+      spaceId: ids.space,
+      from: '2026-04-01',
+      to: '2026-04-30',
+      categoryIds: undefined,
+    }
+
+    // What SQL says the period cost.
+    const { getDb: _unused } = await import('#/lib/db')
+    void _unused
+    const [all] = (await db.execute(
+      sql`select coalesce(sum(amount_minor), 0)::int as total from expense where space_id = ${ids.space}::uuid`,
+    )) as unknown as Array<{ total: number }>
+    const periodTotal = Number(all?.total ?? 0)
+
+    // What the screen would show: one page of rows, grouped by day in the browser.
+    const page = await loadExpensePage(db, filter, { limit: 50, offset: 0 })
+    const pageDayTotal = page.rows.reduce((s, r) => s + r.amountMinor, 0)
+
+    expect(page.total).toBe(DAYS)
+    // The page cannot reach the period, which is the whole reason it must not be
+    // allowed to state a day total as if it were the day's total.
+    expect(pageDayTotal).toBeLessThan(periodTotal)
+
+    // The fix: the server sends the real per-day totals for the whole filter, and
+    // they add up to the period total exactly.
+    const byDay = new Map(page.dayTotals.map((d) => [d.spentOn, d.totalMinor]))
+    const covered = [...byDay.entries()]
+      .filter(([date]) => date >= filter.from && date <= filter.to)
+      .reduce((s, [, v]) => s + v, 0)
+    expect(covered).toBe(periodTotal)
+    expect(page.dayTotals.reduce((s, d) => s + d.count, 0)).toBe(DAYS)
+  })
+
   it('ignores an expense outside the period, on both sides', async () => {
+    // Its own slate: this used to read a figure left behind by earlier tests,
+    // which made it depend on their order and on nothing else.
+    await getDb().delete(expense).where(eq(expense.spaceId, ids.space))
+
+    await writeExpense({
+      payer: Fede,
+      amountMinor: 3_333,
+      splits: [],
+      spentOn: '2026-06-01',
+    })
     await writeExpense({
       payer: Vale,
       amountMinor: 9_999,

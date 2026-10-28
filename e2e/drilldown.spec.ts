@@ -24,7 +24,14 @@
  */
 import { expect, test } from '@playwright/test'
 
-const entryRow = 'main button[aria-label^="Edit "]'
+/*
+ * Every entry row, whether it opens editable or read-only.
+ *
+ * A locked expense still opens — as a view — and its label starts "View", so a
+ * selector for "Edit" alone silently counts zero on a ledger of locked entries.
+ */
+const entryRow =
+  'main button[aria-label^="Edit "], main button[aria-label^="View "]'
 
 test.describe('category drill-down', () => {
   test('a category bar opens the ledger on that category', async ({ page }) => {
@@ -186,6 +193,104 @@ test.describe('category drill-down', () => {
     }
   })
 
+  test('a day split across two pages still states its whole total', async ({
+    page,
+  }) => {
+    /*
+     * The report this exists for, stated as a test.
+     *
+     * "When I look at a day on expenses it matches my own arithmetic, but when the
+     * app adds the days up it does something weird." The day header used to be
+     * summed in the browser from whatever rows the query returned, while the period
+     * total above it was summed in SQL over the whole filter. Same set while the
+     * list was small; different set the moment it was capped — and it was capped at
+     * 200 with nothing on screen saying so. So each day a reader could see was
+     * correct, and the sum of them was short, by exactly the rows that had been
+     * dropped.
+     *
+     * A single day with more entries than fit on a page is the sharpest version of
+     * that: page one shows part of the day, and its header must still be the whole
+     * day.
+     */
+    await page.goto('/settings')
+    await page
+      .getByRole('button', { name: /Import from a spreadsheet/ })
+      .click()
+    await expect(page.getByLabel('CSV contents')).toBeVisible()
+
+    const run = Date.now().toString(36)
+    /*
+     * A date of its own per run.
+     *
+     * A fixed day accumulates sixty more rows every time the suite runs, and the
+     * assertion below would then be comparing one run's sixty against three runs'
+     * hundred and eighty. Spread across year, month and day so consecutive runs
+     * land in different places; a collision is a loud failure rather than a quiet
+     * pass, because the count assertion comes first.
+     */
+    const stamp = Date.now()
+    // Division, not `>>`. A millisecond timestamp exceeds 32 bits, and `>>`
+    // coerces it to int32 — which for this value is negative, so `% 28` came back
+    // negative and the date was written as `2041-02--11`, which the importer
+    // rejected sixty times over with a message about a bad date.
+    /*
+     * A PAST year, and that is not incidental.
+     *
+     * These entries go into the shared demo household, and the ledger is
+     * newest-first. Sixty rows dated in the future sort above everything the rest
+     * of the suite expects to find on the first page — the seeded expenses, and the
+     * entry another spec creates and reloads. So the rows go into the past, where
+     * they extend the ledger without displacing what other specs look for.
+     *
+     * Unique per run regardless: a repeated date accumulates another sixty rows
+     * every time the suite runs.
+     */
+    const year = 2000 + (stamp % 20)
+    const month = 1 + (stamp % 12)
+    const day = 1 + (Math.floor(stamp / 128) % 28)
+    const date = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+    const COUNT = 60
+    // One euro each, so the day's total is a round sixty and any partial sum is
+    // obvious at a glance rather than a difference of a rounding unit.
+    const AMOUNT = 1
+    const rows = Array.from(
+      { length: COUNT },
+      (_, i) =>
+        `${date},Split day ${run} ${i},${AMOUNT.toFixed(2)},Health,Sam,`,
+    )
+    await page
+      .getByLabel('CSV contents')
+      .fill(['date,purpose,amount,category,paid_by,note', ...rows].join('\n'))
+    await page.getByRole('button', { name: 'Preview' }).click()
+    await page.getByRole('button', { name: /^Import \d+ row/ }).click()
+    await expect(page.getByText(/Imported \d+ row/)).toBeVisible()
+
+    // Filtered to that one day, so it is one page and its header must be the sum
+    // of all sixty.
+    await page.goto(`/expenses?space=&period=custom&from=${date}&to=${date}`)
+    /*
+     * The day heading and its figure are siblings in one row, and the chip
+     * strip's "Categories" is an h2 too — so the day row is read straight out of
+     * the DOM as the first heading row that carries money, rather than through a
+     * locator that has to be told which of the two it means.
+     */
+    const dayRow = await page.evaluate<string>(`(() => {
+      const row = Array.from(document.querySelectorAll('main h2'))
+        .map((h) => h.parentElement)
+        .find((p) => p && /€/.test(p.textContent || ''))
+      return row ? (row.textContent || '').trim() : ''
+    })()`)
+
+    // Sixty euros, and fifty rows on the page. That gap IS the bug being guarded:
+    // before the fix the heading was summed from the loaded rows and would have
+    // read €50.00, so a reader adding up the day figures got a total the app
+    // itself contradicted.
+    expect(dayRow, 'the day heading must state the whole day').toContain(
+      '€60.00',
+    )
+    expect(await page.locator(entryRow).count()).toBe(50)
+  })
+
   test('a ledger bigger than one page pages, and says which page it is', async ({
     page,
   }) => {
@@ -230,7 +335,9 @@ test.describe('category drill-down', () => {
      */
     const rows = Array.from({ length: 60 }, (_, i) => {
       const day = String((i % 28) + 1).padStart(2, '0')
-      return `2026-07-${day},Paged ${run} row ${i},${(i + 1) * 0.5},Groceries,Alex,`
+      // 2019, for the same reason as the split-day test: past-dated rows extend
+      // the ledger instead of pushing other specs' rows off the first page.
+      return `2019-07-${day},Paged ${run} row ${i},${(i + 1) * 0.5},Groceries,Alex,`
     })
     await page
       .getByLabel('CSV contents')
