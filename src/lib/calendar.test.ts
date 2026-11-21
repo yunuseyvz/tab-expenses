@@ -11,6 +11,7 @@ import {
   fromISODate,
   isSameDay,
   monthGrid,
+  periodMonth,
   startOfMonth,
   toISODate,
 } from './calendar'
@@ -148,5 +149,33 @@ describe('monthGrid', () => {
     const marked = cells.filter((c) => c.isToday)
     expect(marked).toHaveLength(1)
     expect(marked[0]!.iso).toBe('2026-09-30')
+  })
+})
+
+describe('periodMonth', () => {
+  it('uses the month of `from` when the period has one', () => {
+    const m = periodMonth({ from: '2026-11-09', to: '2026-11-15' })
+    expect(toISODate(m)).toBe('2026-11-01')
+  })
+
+  it('falls back to `to` when the start is open', () => {
+    const m = periodMonth({ from: null, to: '2026-10-31' })
+    expect(toISODate(m)).toBe('2026-10-01')
+  })
+
+  it('uses today’s month for an unbounded period', () => {
+    // "All" has no month of its own; today's is the only month that never
+    // surprises.
+    const today = new Date(2026, 8, 30)
+    expect(toISODate(periodMonth({ from: null, to: null }, today))).toBe(
+      '2026-09-01',
+    )
+  })
+
+  it('picks the start month when a range spans two', () => {
+    // Last week crossing a month boundary: the reading began in October, so
+    // October is the month on screen.
+    const m = periodMonth({ from: '2026-10-26', to: '2026-11-01' })
+    expect(toISODate(m)).toBe('2026-10-01')
   })
 })

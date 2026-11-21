@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 
 import { createFileRoute, useNavigate, useSearch } from '@tanstack/react-router'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
-import { ChevronLeft, ChevronRight, Lock, StickyNote } from 'lucide-react'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import type { ExpenseRow } from '#/lib/expense.functions'
 
 import type { PeriodPreset } from '#/lib/period'
@@ -12,7 +12,9 @@ import { NewExpenseButton } from '#/components/NewExpenseButton'
 import { Select } from '#/components/ui/Input'
 import { Button } from '#/components/ui/Button'
 import { Card } from '#/components/ui/Card'
-import { MemberAvatar } from '#/components/MemberAvatar'
+import { SegmentedControl } from '#/components/ui/SegmentedControl'
+import { ExpensesCalendar } from '#/components/expenses/ExpensesCalendar'
+import { LedgerRow } from '#/components/expenses/LedgerRow'
 import { ExpenseSheet } from '#/components/expense/ExpenseSheet'
 import { listMySpaces } from '#/lib/auth.functions'
 import {
@@ -23,10 +25,16 @@ import {
   spaceKeys,
 } from '#/lib/session'
 import { formatMoney } from '#/lib/money'
-import { fromISODate, groupByDay, resolvePeriod } from '#/lib/period'
-import { swatchColor } from '#/lib/swatches'
+import { addMonths, periodMonth } from '#/lib/calendar'
+import {
+  endOfMonth,
+  fromISODate,
+  groupByDay,
+  resolvePeriod,
+  startOfMonth,
+  toISODate,
+} from '#/lib/period'
 import { useCurrentSpace } from '#/hooks/useCurrentSpace'
-import { useMayEditExpense } from '#/hooks/useMayEditExpense'
 import { resolveSpaceId } from '#/lib/space-preference'
 import { PeriodFilter } from '#/components/PeriodFilter'
 import { CategoryChips } from '#/components/dashboard/CategoryChips'
@@ -36,6 +44,15 @@ export const Route = createFileRoute('/_protected/expenses')({
   validateSearch: (s: Record<string, unknown>) => ({
     space: typeof s.space === 'string' ? s.space : undefined,
     period: (typeof s.period === 'string' ? s.period : 'all') as PeriodPreset,
+    // Which rendering of the same filter: the statement or the month grid. In
+    // the URL for the same reason `page` is — a calendar someone is looking at
+    // is a thing they may want to send or reload, and a view that resets on
+    // refresh reads as forgetting rather than as starting over.
+    //
+    // Each branch is `as const` for the same reason `period` is cast above:
+    // the schema's return type widens literals to string, and every link into
+    // this screen is type-checked against it.
+    view: s.view === 'calendar' ? ('calendar' as const) : ('list' as const),
     member: typeof s.member === 'string' ? s.member : undefined,
     cats: typeof s.cats === 'string' ? s.cats : undefined,
     /*
@@ -116,6 +133,16 @@ function ExpensesRoute() {
     [search.period, search.from, search.to],
   )
 
+  /*
+   * The month the calendar view shows. Derived, never stored: the calendar is a
+   * rendering of the period (see `periodMonth`), so there is no second piece of
+   * state that can drift out of step with the pills above it. Flipping a month
+   * is therefore a period change — the handler below navigates, it does not set
+   * anything.
+   */
+  const focusedMonth = useMemo(() => periodMonth(period), [period])
+  const calendarView = search.view === 'calendar'
+
   const categories = useQuery({
     ...categoriesQuery(spaceId ?? ''),
     enabled: Boolean(spaceId),
@@ -189,7 +216,29 @@ function ExpensesRoute() {
     [rows, dayTotals],
   )
   const currency = space?.currency ?? 'EUR'
-  const mayEdit = useMayEditExpense()
+
+  /*
+   * The calendar's figures, summed from the same `dayTotals` the grid reads
+   * over the shown month — so the header and the grid agree by construction,
+   * the same guarantee the list's day headers have.
+   *
+   * A flip briefly sums zero: `keepPreviousData` is holding last month's totals
+   * against this month's prefix, and the cells blank for exactly as long. The
+   * alternative — summing whatever is on screen — is a number that changes
+   * under the reader, which is worse than one that is briefly empty.
+   */
+  const monthPrefix = toISODate(focusedMonth).slice(0, 7)
+  const calendarTotals = useMemo(() => {
+    let count = 0
+    let totalMinor = 0
+    for (const d of expenses.data?.dayTotals ?? []) {
+      if (d.spentOn.startsWith(monthPrefix)) {
+        count += d.count
+        totalMinor += d.totalMinor
+      }
+    }
+    return { count, totalMinor }
+  }, [expenses.data?.dayTotals, monthPrefix])
 
   // One sheet for both jobs. `editing === null` means "new"; otherwise the row
   // that was tapped comes with it, already filled in.
@@ -219,9 +268,30 @@ function ExpensesRoute() {
       page: number | undefined
       from: string | undefined
       to: string | undefined
+      view: 'list' | 'calendar'
     }>,
   ) => {
-    void navigate({ to: '/expenses', search: { ...search, ...patch } })
+    /*
+     * Any change that narrows what is on screen rewinds to the first page.
+     *
+     * The page is part of the URL, so it otherwise survives a filter it was
+     * never chosen against: page 3 of All narrowed to Last week sits past the
+     * end of a short result, and the screen used to answer "Nothing here for
+     * this filter" — over a filter that had entries. The calendar's month
+     * flips reach the same state without a pill being touched, so the reset
+     * lives here rather than in any one control: the route owns the page, and
+     * the controls do not know it exists.
+     */
+    const narrows =
+      'period' in patch ||
+      'from' in patch ||
+      'to' in patch ||
+      'member' in patch ||
+      'cats' in patch
+    void navigate({
+      to: '/expenses',
+      search: { ...search, ...patch, ...(narrows ? { page: 1 } : {}) },
+    })
   }
 
   /*
@@ -242,12 +312,26 @@ function ExpensesRoute() {
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <div>
             <h1 className="text-2xl sm:text-3xl tracking-tight">Expenses</h1>
+            {/* In the calendar view this line describes the MONTH, summed from
+                the same day figures the grid shows — the page-bound figures
+                below it are a statement about a page, and no page is on
+                screen. */}
             <p className="text-xs text-ink-faint tnum">
-              {whole
-                ? `${total.toLocaleString()} ${total === 1 ? 'entry' : 'entries'} · `
-                : `Showing ${(page - 1) * PAGE_SIZE + 1}–${Math.min(page * PAGE_SIZE, total)} of ${total.toLocaleString()} · `}
-              {formatMoney(pageTotal, currency)}
-              {whole ? '' : ' on this page'}
+              {calendarView ? (
+                expenses.isPending ? (
+                  'Loading…'
+                ) : (
+                  `${calendarTotals.count.toLocaleString()} ${calendarTotals.count === 1 ? 'entry' : 'entries'} · ${formatMoney(calendarTotals.totalMinor, currency)}`
+                )
+              ) : (
+                <>
+                  {whole
+                    ? `${total.toLocaleString()} ${total === 1 ? 'entry' : 'entries'} · `
+                    : `Showing ${(page - 1) * PAGE_SIZE + 1}–${Math.min(page * PAGE_SIZE, total)} of ${total.toLocaleString()} · `}
+                  {formatMoney(pageTotal, currency)}
+                  {whole ? '' : ' on this page'}
+                </>
+              )}
             </p>
           </div>
           <NewExpenseButton onClick={openNew} disabled={!spaceId} />
@@ -260,7 +344,7 @@ function ExpensesRoute() {
           onChange={(patch) => go(patch)}
         />
 
-        <div className="mb-4 flex flex-wrap items-center gap-2">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
           <div className="w-48">
             <Select
               value={search.member ?? ''}
@@ -275,6 +359,21 @@ function ExpensesRoute() {
               ))}
             </Select>
           </div>
+          {/*
+            Two renderings of one filter, not two filters. The segmented
+            control rather than two links, because a view you are IN is a
+            selected state — and the slide is the app telling you the ledger
+            moved rather than the page changed.
+          */}
+          <SegmentedControl
+            label="Ledger view"
+            value={search.view}
+            options={[
+              { value: 'list', label: 'List' },
+              { value: 'calendar', label: 'Calendar' },
+            ]}
+            onChange={(view) => go({ view })}
+          />
         </div>
 
         {/*
@@ -300,7 +399,30 @@ function ExpensesRoute() {
           />
         </div>
 
-        {expenses.isPending ? (
+        {calendarView ? (
+          <ExpensesCalendar
+            spaceId={spaceId ?? undefined}
+            month={focusedMonth}
+            onMonthChange={(delta) => {
+              // A flip is a period change, so the pills move with the calendar
+              // and the URL stays the one state — see ExpensesCalendar, which
+              // is why this navigates rather than holding a month locally.
+              const next = addMonths(focusedMonth, delta)
+              go({
+                period: 'custom',
+                from: toISODate(startOfMonth(next)),
+                to: toISODate(endOfMonth(next)),
+              })
+            }}
+            period={period}
+            memberId={filter.memberId}
+            categoryIds={filter.categoryIds}
+            dayTotals={expenses.data?.dayTotals ?? []}
+            pending={expenses.isPending}
+            currency={currency}
+            onOpenRow={openEdit}
+          />
+        ) : expenses.isPending ? (
           <p className="text-sm text-ink-muted">Loading…</p>
         ) : groups.length === 0 ? (
           <p className="text-sm text-ink-muted">
@@ -327,81 +449,14 @@ function ExpensesRoute() {
                 </div>
 
                 <Card className="p-0">
-                  {g.items.map((e) => {
-                    const edit = mayEdit(e)
-                    return (
-                      <button
-                        key={e.id}
-                        type="button"
-                        onClick={() => openEdit(e)}
-                        aria-label={
-                          edit.canEdit
-                            ? `Edit ${e.purpose}, ${formatMoney(e.amountMinor, currency)}`
-                            : `View ${e.purpose}, ${formatMoney(e.amountMinor, currency)}. ${edit.reason}`
-                        }
-                        className="w-full flex items-center gap-3 px-4 py-3 text-left
-                        border-b border-rule last:border-b-0
-                        transition-colors duration-150
-                        enabled:hover:bg-[var(--color-paper-sunk)]"
-                      >
-                        <span
-                          aria-hidden
-                          className="h-8 w-1 rounded-sm shrink-0"
-                          style={{
-                            background:
-                              e.categoryColor !== null
-                                ? swatchColor(e.categoryColor)
-                                : 'var(--color-rule)',
-                          }}
-                        />
-                        <span className="min-w-0 flex-1">
-                          <span className="truncate text-sm font-medium block">
-                            {e.purpose}
-                          </span>
-                          <span className="flex items-center gap-1.5 min-w-0 mt-0.5">
-                            {/* The payer's face, not their name alone. On a household
-                                ledger "who is this" is asked far more often than "how
-                                much", and a column of identical text asked the reader to
-                                hold the roster in their head to answer it. */}
-                            <MemberAvatar
-                              memberId={e.paidByMemberId}
-                              avatar={e.paidByAvatar}
-                              name={e.paidByName}
-                              size={15}
-                            />
-                            <span className="truncate text-xs text-ink-faint">
-                              {e.paidByName}
-                            </span>
-                            <span className="truncate text-xs text-ink-faint/70">
-                              {e.categoryName ?? 'Uncategorised'}
-                              {e.splits.length > 1 &&
-                                ` · split ${e.splits.length} ways`}
-                            </span>
-                          </span>
-                        </span>
-                        {/* Read-only and conversation markers, beside the amount
-                            rather than under it: the row's job is to say at a
-                            glance whether this opens editable, and whether there
-                            is anything to read under it. */}
-                        {!edit.canEdit && (
-                          <Lock
-                            size={13}
-                            aria-hidden
-                            className="shrink-0 text-ink-faint"
-                          />
-                        )}
-                        {e.noteCount > 0 && (
-                          <span className="flex items-center gap-1 shrink-0 text-ink-faint">
-                            <StickyNote size={13} aria-hidden />
-                            <span className="text-xs tnum">{e.noteCount}</span>
-                          </span>
-                        )}
-                        <span className="tnum text-sm font-medium shrink-0">
-                          {formatMoney(e.amountMinor, currency)}
-                        </span>
-                      </button>
-                    )
-                  })}
+                  {g.items.map((e) => (
+                    <LedgerRow
+                      key={e.id}
+                      row={e}
+                      currency={currency}
+                      onOpen={openEdit}
+                    />
+                  ))}
                 </Card>
               </section>
             ))}

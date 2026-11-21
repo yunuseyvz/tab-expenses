@@ -205,6 +205,9 @@ export function Dashboard({
                 search: {
                   space: spaceId,
                   period: search.period,
+                  // The statement, not the calendar: a drill-down answers "what
+                  // is behind this figure", and the answer is a list.
+                  view: 'list',
                   from: search.from,
                   to: search.to,
                   member: undefined,

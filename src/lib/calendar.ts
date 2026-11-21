@@ -1,3 +1,5 @@
+import type { Period } from './period'
+
 /**
  * The calendar grid, as a pure function.
  *
@@ -156,4 +158,23 @@ export function longDate(iso: string, locale = 'en'): string {
   } catch {
     return iso
   }
+}
+
+/**
+ * The month a calendar view of `period` should open on.
+ *
+ * The calendar is a rendering of the current filter, not a second filter of its
+ * own, so the month it shows has to come from somewhere — and the only honest
+ * source is the period itself. A bounded period names its own month: the month
+ * of `from`, the anchor a person picked first, falling back to `to` only when
+ * the start is open. An unbounded one names no month at all, and today's is the
+ * only month that never surprises.
+ *
+ * A range that spans a month boundary (Last week over one, or a hand-typed
+ * Custom range) still resolves to a single month, because a calendar can only
+ * show one — and the *start* is where the reading began.
+ */
+export function periodMonth(period: Period, today = new Date()): Date {
+  const anchor = period.from ?? period.to
+  return anchor ? startOfMonth(fromISODate(anchor)) : startOfMonth(today)
 }
