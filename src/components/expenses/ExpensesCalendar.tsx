@@ -171,7 +171,14 @@ export function ExpensesCalendar({
   }
 
   return (
-    <div>
+    /*
+     * Narrower than the statement beside it, on purpose. The ledger's rows are
+     * long and read best wide; a month grid is small figures in boxes, and
+     * past ~40rem it is mostly box — the cells stretch, the figures do not,
+     * and the eye spends its travel on emptiness. Capped, the cells land
+     * near-square at desktop widths; on a phone the cap never engages.
+     */
+    <div className="max-w-2xl">
       {pending && <p className="text-sm text-ink-muted mb-2">Loading…</p>}
 
       <div className="flex items-center justify-between mb-1.5">
