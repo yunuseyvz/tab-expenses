@@ -27,6 +27,7 @@ import {
 import { formatMoney } from '#/lib/money'
 import { addMonths, periodMonth } from '#/lib/calendar'
 import {
+  clampDayToPeriod,
   endOfMonth,
   fromISODate,
   groupByDay,
@@ -34,8 +35,10 @@ import {
   startOfMonth,
   toISODate,
 } from '#/lib/period'
+import { DayEntries } from '#/components/expenses/DayEntries'
 import { useCurrentSpace } from '#/hooks/useCurrentSpace'
 import { resolveSpaceId } from '#/lib/space-preference'
+import { cn } from '#/lib/cn'
 import { PeriodFilter } from '#/components/PeriodFilter'
 import { CategoryChips } from '#/components/dashboard/CategoryChips'
 import { UNCATEGORISED_CHIP } from '#/lib/uncategorised'
@@ -44,9 +47,11 @@ export const Route = createFileRoute('/_protected/expenses')({
   validateSearch: (s: Record<string, unknown>) => ({
     space: typeof s.space === 'string' ? s.space : undefined,
     period: (typeof s.period === 'string' ? s.period : 'all') as PeriodPreset,
-    // Which rendering of the same filter: the statement or the month grid. In
-    // the URL for the same reason `page` is — a calendar someone is looking at
-    // is a thing they may want to send or reload, and a view that resets on
+    // Which rendering of the same filter. On a phone there is room for one,
+    // so this chooses the statement or the month grid; from lg up both are on
+    // screen at once and the control hides, its work done by the layout. In
+    // the URL for the same reason `page` is — a view someone is looking at is
+    // a thing they may want to send or reload, and a view that resets on
     // refresh reads as forgetting rather than as starting over.
     //
     // Each branch is `as const` for the same reason `period` is cast above:
@@ -55,6 +60,16 @@ export const Route = createFileRoute('/_protected/expenses')({
     view: s.view === 'calendar' ? ('calendar' as const) : ('list' as const),
     member: typeof s.member === 'string' ? s.member : undefined,
     cats: typeof s.cats === 'string' ? s.cats : undefined,
+    /*
+     * The day the calendar has chosen, when it has chosen one. Shape-checked
+     * rather than cast, because it is spliced straight into the day filter's
+     * bounds and a hand-typed `?day=14-11-26` would otherwise travel to the
+     * server as a "date" that is not one. Undefined means "the whole period".
+     */
+    day:
+      typeof s.day === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s.day)
+        ? s.day
+        : undefined,
     /*
      * 1-based, in the URL, so a page of the ledger is a thing you can send
      * somebody. See the note on `offset` in listExpenses for why this is not a
@@ -119,6 +134,23 @@ export const Route = createFileRoute('/_protected/expenses')({
       qc.ensureQueryData(membersQuery(spaceId)),
       qc.ensureQueryData(expensesQuery(spaceId, filter)),
     ])
+
+    // The chosen day's own page, so the drill-down is in the SSR response
+    // rather than arriving after it. Keyed exactly as the component builds
+    // it, or this prefetch would be a second query the screen throws away.
+    if (deps.day) {
+      await qc.ensureQueryData(
+        expensesQuery(
+          spaceId,
+          {
+            ...clampDayToPeriod(period, deps.day),
+            memberId: deps.member ?? null,
+            categoryIds: deps.cats ? deps.cats.split(',') : undefined,
+          },
+          { limit: 200 },
+        ),
+      )
+    }
   },
   component: ExpensesRoute,
 })
@@ -181,6 +213,49 @@ function ExpensesRoute() {
   const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
   /*
+   * The chosen day's own page, so the statement pane can show one day without
+   * disturbing the query the grid reads. Sharing the main query for this would
+   * have been one query instead of two, and a grid whose `dayTotals` collapse
+   * to the single chosen day — the calendar is a rendering of the period, so
+   * the period's query has to keep running whatever the pane is showing.
+   *
+   * The day is CLAMPED to the period (see `clampDayToPeriod`): a day outside
+   * the filter answers "Nothing here", the same thing its blank cell was
+   * saying, rather than entries the grid refused to count.
+   *
+   * 200 is the server's page ceiling; a single household day past it is not a
+   * real case, and the alternative is a pager for one day.
+   */
+  const dayFilter = useMemo(
+    () =>
+      search.day
+        ? {
+            ...clampDayToPeriod(period, search.day),
+            memberId: search.member ?? null,
+            categoryIds: search.cats?.split(',') ?? undefined,
+          }
+        : null,
+    [search.day, period, search.member, search.cats],
+  )
+  const dayQuery = useQuery({
+    ...expensesQuery(
+      spaceId ?? '',
+      dayFilter ?? {
+        from: null,
+        to: null,
+        memberId: search.member ?? null,
+        categoryIds: search.cats?.split(',') ?? undefined,
+      },
+      { limit: 200 },
+    ),
+    enabled: Boolean(spaceId) && dayFilter !== null,
+  })
+  const dayRows = search.day ? (dayQuery.data?.rows ?? []) : []
+  const dayTotal = search.day
+    ? dayQuery.data?.dayTotals.find((t) => t.spentOn === search.day)?.totalMinor
+    : undefined
+
+  /*
    * The chip list, built the same way the dashboard builds it: the real
    * categories plus the Uncategorised pseudo-id. That id is not a row in
    * `category`, which is why the loader above used to drop it, so it is added
@@ -218,9 +293,9 @@ function ExpensesRoute() {
   const currency = space?.currency ?? 'EUR'
 
   /*
-   * The calendar's figures, summed from the same `dayTotals` the grid reads
-   * over the shown month — so the header and the grid agree by construction,
-   * the same guarantee the list's day headers have.
+   * The shown month's own figure, summed from the same `dayTotals` the grid
+   * reads — so the calendar's header and its cells agree by construction, the
+   * same guarantee the statement's day headers have.
    *
    * A flip briefly sums zero: `keepPreviousData` is holding last month's totals
    * against this month's prefix, and the cells blank for exactly as long. The
@@ -228,16 +303,12 @@ function ExpensesRoute() {
    * under the reader, which is worse than one that is briefly empty.
    */
   const monthPrefix = toISODate(focusedMonth).slice(0, 7)
-  const calendarTotals = useMemo(() => {
-    let count = 0
+  const monthTotalMinor = useMemo(() => {
     let totalMinor = 0
     for (const d of expenses.data?.dayTotals ?? []) {
-      if (d.spentOn.startsWith(monthPrefix)) {
-        count += d.count
-        totalMinor += d.totalMinor
-      }
+      if (d.spentOn.startsWith(monthPrefix)) totalMinor += d.totalMinor
     }
-    return { count, totalMinor }
+    return totalMinor
   }, [expenses.data?.dayTotals, monthPrefix])
 
   // One sheet for both jobs. `editing === null` means "new"; otherwise the row
@@ -259,6 +330,25 @@ function ExpensesRoute() {
     setSheetOpen(true)
   }
 
+  /*
+   * The chosen day, as a statement section. Built once, rendered in whichever
+   * slot the width gives it — under the grid on a phone, in the statement pane
+   * beside it from lg — so the two widths show the same thing because they
+   * show the same element.
+   */
+  const dayPanel =
+    search.day !== undefined ? (
+      <DayEntries
+        day={search.day}
+        rows={dayRows}
+        totalMinor={dayTotal}
+        pending={dayQuery.isPending}
+        currency={currency}
+        onOpenRow={openEdit}
+        onClear={() => go({ day: undefined })}
+      />
+    ) : null
+
   const go = (
     patch: Partial<{
       space: string | undefined
@@ -269,18 +359,21 @@ function ExpensesRoute() {
       from: string | undefined
       to: string | undefined
       view: 'list' | 'calendar'
+      day: string | undefined
     }>,
   ) => {
     /*
-     * Any change that narrows what is on screen rewinds to the first page.
+     * Any change that narrows what is on screen rewinds to the first page, and
+     * drops the chosen day with it.
      *
      * The page is part of the URL, so it otherwise survives a filter it was
      * never chosen against: page 3 of All narrowed to Last week sits past the
      * end of a short result, and the screen used to answer "Nothing here for
-     * this filter" — over a filter that had entries. The calendar's month
-     * flips reach the same state without a pill being touched, so the reset
-     * lives here rather than in any one control: the route owns the page, and
-     * the controls do not know it exists.
+     * this filter" — over a filter that had entries. The day belongs to the
+     * window it was chosen in: a day kept through a month flip would sit in a
+     * month the reader can no longer see. Both resets live here rather than in
+     * any one control — the route owns the URL; the controls do not know it
+     * exists.
      */
     const narrows =
       'period' in patch ||
@@ -290,7 +383,11 @@ function ExpensesRoute() {
       'cats' in patch
     void navigate({
       to: '/expenses',
-      search: { ...search, ...patch, ...(narrows ? { page: 1 } : {}) },
+      search: {
+        ...search,
+        ...patch,
+        ...(narrows ? { page: 1, day: undefined } : {}),
+      },
     })
   }
 
@@ -312,26 +409,15 @@ function ExpensesRoute() {
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <div>
             <h1 className="text-2xl sm:text-3xl tracking-tight">Expenses</h1>
-            {/* In the calendar view this line describes the MONTH, summed from
-                the same day figures the grid shows — the page-bound figures
-                below it are a statement about a page, and no page is on
-                screen. */}
+            {/* The statement's own figures. The calendar carries its month's
+                total under its header rather than here, so each pane states
+                its own number and neither describes the other's content. */}
             <p className="text-xs text-ink-faint tnum">
-              {calendarView ? (
-                expenses.isPending ? (
-                  'Loading…'
-                ) : (
-                  `${calendarTotals.count.toLocaleString()} ${calendarTotals.count === 1 ? 'entry' : 'entries'} · ${formatMoney(calendarTotals.totalMinor, currency)}`
-                )
-              ) : (
-                <>
-                  {whole
-                    ? `${total.toLocaleString()} ${total === 1 ? 'entry' : 'entries'} · `
-                    : `Showing ${(page - 1) * PAGE_SIZE + 1}–${Math.min(page * PAGE_SIZE, total)} of ${total.toLocaleString()} · `}
-                  {formatMoney(pageTotal, currency)}
-                  {whole ? '' : ' on this page'}
-                </>
-              )}
+              {whole
+                ? `${total.toLocaleString()} ${total === 1 ? 'entry' : 'entries'} · `
+                : `Showing ${(page - 1) * PAGE_SIZE + 1}–${Math.min(page * PAGE_SIZE, total)} of ${total.toLocaleString()} · `}
+              {formatMoney(pageTotal, currency)}
+              {whole ? '' : ' on this page'}
             </p>
           </div>
           <NewExpenseButton onClick={openNew} disabled={!spaceId} />
@@ -360,20 +446,23 @@ function ExpensesRoute() {
             </Select>
           </div>
           {/*
-            Two renderings of one filter, not two filters. The segmented
-            control rather than two links, because a view you are IN is a
-            selected state — and the slide is the app telling you the ledger
-            moved rather than the page changed.
+            Two renderings of one filter, not two filters — and from lg up,
+            neither: both panes are on screen and the control hides. The
+            segmented control rather than two links, because a view you are IN
+            is a selected state — and the slide is the app telling you the
+            ledger moved rather than the page changed.
           */}
-          <SegmentedControl
-            label="Ledger view"
-            value={search.view}
-            options={[
-              { value: 'list', label: 'List' },
-              { value: 'calendar', label: 'Calendar' },
-            ]}
-            onChange={(view) => go({ view })}
-          />
+          <div className="lg:hidden">
+            <SegmentedControl
+              label="Ledger view"
+              value={search.view}
+              options={[
+                { value: 'list', label: 'List' },
+                { value: 'calendar', label: 'Calendar' },
+              ]}
+              onChange={(view) => go({ view })}
+            />
+          </div>
         </div>
 
         {/*
@@ -399,106 +488,142 @@ function ExpensesRoute() {
           />
         </div>
 
-        {calendarView ? (
-          <ExpensesCalendar
-            spaceId={spaceId ?? undefined}
-            month={focusedMonth}
-            onMonthChange={(delta) => {
-              // A flip is a period change, so the pills move with the calendar
-              // and the URL stays the one state — see ExpensesCalendar, which
-              // is why this navigates rather than holding a month locally.
-              const next = addMonths(focusedMonth, delta)
-              go({
-                period: 'custom',
-                from: toISODate(startOfMonth(next)),
-                to: toISODate(endOfMonth(next)),
-              })
-            }}
-            period={period}
-            memberId={filter.memberId}
-            categoryIds={filter.categoryIds}
-            dayTotals={expenses.data?.dayTotals ?? []}
-            pending={expenses.isPending}
-            currency={currency}
-            onOpenRow={openEdit}
-          />
-        ) : expenses.isPending ? (
-          <p className="text-sm text-ink-muted">Loading…</p>
-        ) : groups.length === 0 ? (
-          <p className="text-sm text-ink-muted">
-            Nothing here for this filter.
-          </p>
-        ) : (
-          <div className="space-y-4">
-            {groups.map((g) => (
-              <section key={g.date}>
-                {/* Sticky date header, like a statement. */}
-                <div className="sticky top-0 z-10 py-1.5 bg-paper/90 backdrop-blur-sm">
-                  <div className="flex items-baseline justify-between">
-                    <h2 className="text-sm font-semibold">
-                      {fromISODate(g.date).toLocaleDateString('en', {
-                        weekday: 'long',
-                        day: 'numeric',
-                        month: 'long',
-                      })}
-                    </h2>
-                    <span className="tnum text-sm text-ink-muted">
-                      {formatMoney(g.totalMinor, currency)}
-                    </span>
-                  </div>
-                </div>
-
-                <Card className="p-0">
-                  {g.items.map((e) => (
-                    <LedgerRow
-                      key={e.id}
-                      row={e}
-                      currency={currency}
-                      onOpen={openEdit}
-                    />
-                  ))}
-                </Card>
-              </section>
-            ))}
-          </div>
-        )}
-
         {/*
-          Paging. Two buttons and the count, rather than a scroller that loads on
-          approach: a ledger is something people go *back* through looking for
-          something, and "find March" means paging to it, not discovering where
-          the infinite scroll happened to stop.
+          One layout, every width. From lg up the calendar and the statement sit
+          side by side — the month on the left at a size where its cells stay
+          square, the statement filling the rest — and choosing a day is done by
+          tapping the grid and read in the statement beside it. Below lg the
+          same two panes stack: the calendar on top in its view, the statement
+          under it, always.
+
+          So the statement is never unmounted for a width, and no pane has a
+          second copy anywhere: `view` stays in the URL, both panes stay in the
+          DOM, and crossing the lg line — a window resized, a tablet rotated —
+          is a reflow rather than a navigation. The toggle below lg therefore
+          only chooses whether the month is on top; the statement, and any
+          chosen day in it, is there either way.
         */}
-        {!whole && (
-          <nav
-            aria-label="Ledger pages"
-            className="mt-5 flex items-center justify-between gap-3"
+        <div className="lg:grid lg:grid-cols-[26rem_minmax(0,1fr)] lg:gap-6">
+          {/* The calendar pane: a phone shows it only in the calendar view. */}
+          <div
+            className={cn(!calendarView && 'hidden lg:block', 'mb-6 lg:mb-0')}
           >
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              disabled={page <= 1 || expenses.isFetching}
-              onClick={() => go({ page: page > 2 ? page - 1 : 1 })}
-            >
-              <ChevronLeft size={15} aria-hidden />
-              Newer
-            </Button>
-            <span className="text-xs text-ink-faint tnum">
-              Page {page} of {lastPage}
-            </span>
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              disabled={page >= lastPage || expenses.isFetching}
-              onClick={() => go({ page: page + 1 })}
-            >
-              Older
-              <ChevronRight size={15} aria-hidden />
-            </Button>
-          </nav>
-        )}
+            <ExpensesCalendar
+              month={focusedMonth}
+              onMonthChange={(delta) => {
+                // A flip is a period change, so the pills move with the calendar
+                // and the URL stays the one state — see ExpensesCalendar, which
+                // is why this navigates rather than holding a month locally.
+                const next = addMonths(focusedMonth, delta)
+                go({
+                  period: 'custom',
+                  from: toISODate(startOfMonth(next)),
+                  to: toISODate(endOfMonth(next)),
+                })
+              }}
+              dayTotals={expenses.data?.dayTotals ?? []}
+              monthTotalMinor={monthTotalMinor}
+              pending={expenses.isPending}
+              currency={currency}
+              selectedDay={search.day ?? null}
+              onSelectDay={(iso) => go(iso ? { day: iso } : { day: undefined })}
+            />
+          </div>
+
+          {/*
+            The statement pane: the whole period, or the chosen day. The one
+            rule holds wherever it renders — a phone's stacked column, the
+            desktop's right pane — so a day chosen on the calendar is answered
+            by the statement, not by a second widget.
+          */}
+          <div>
+            {dayPanel ?? (
+              <>
+                {expenses.isPending ? (
+                  <p className="text-sm text-ink-muted">Loading…</p>
+                ) : groups.length === 0 ? (
+                  <p className="text-sm text-ink-muted">
+                    Nothing here for this filter.
+                  </p>
+                ) : (
+                  <div className="space-y-4">
+                    {groups.map((g) => (
+                      <section key={g.date}>
+                        {/* Sticky date header, like a statement. */}
+                        <div className="sticky top-0 z-10 py-1.5 bg-paper/90 backdrop-blur-sm">
+                          <div className="flex items-baseline justify-between">
+                            <h2 className="text-sm font-semibold">
+                              {fromISODate(g.date).toLocaleDateString('en', {
+                                weekday: 'long',
+                                day: 'numeric',
+                                month: 'long',
+                              })}
+                            </h2>
+                            <span className="tnum text-sm text-ink-muted">
+                              {formatMoney(g.totalMinor, currency)}
+                            </span>
+                          </div>
+                        </div>
+
+                        <Card className="p-0">
+                          {g.items.map((e) => (
+                            <LedgerRow
+                              key={e.id}
+                              row={e}
+                              currency={currency}
+                              onOpen={openEdit}
+                            />
+                          ))}
+                        </Card>
+                      </section>
+                    ))}
+                  </div>
+                )}
+
+                {/*
+                  Paging. Two buttons and the count, rather than a scroller that
+                  loads on approach: a ledger is something people go *back*
+                  through looking for something, and "find March" means paging
+                  to it, not discovering where the infinite scroll happened to
+                  stop.
+
+                  A chosen day has no pager — it is one day, and the ceiling a
+                  single page would breach is not a household's.
+                */}
+                {!whole && (
+                  <nav
+                    aria-label="Ledger pages"
+                    className="mt-5 flex items-center justify-between gap-3"
+                  >
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      disabled={page <= 1 || expenses.isFetching}
+                      onClick={() => go({ page: page > 2 ? page - 1 : 1 })}
+                    >
+                      <ChevronLeft size={15} aria-hidden />
+                      Newer
+                    </Button>
+                    <span className="text-xs text-ink-faint tnum">
+                      Page {page} of {lastPage}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      disabled={page >= lastPage || expenses.isFetching}
+                      onClick={() => go({ page: page + 1 })}
+                    >
+                      Older
+                      <ChevronRight size={15} aria-hidden />
+                    </Button>
+                  </nav>
+                )}
+              </>
+            )}
+          </div>
+        </div>
 
         <ExpenseSheet
           open={sheetOpen}

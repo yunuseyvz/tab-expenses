@@ -208,6 +208,9 @@ export function Dashboard({
                   // The statement, not the calendar: a drill-down answers "what
                   // is behind this figure", and the answer is a list.
                   view: 'list',
+                  // No chosen day either: a drill-down is the whole figure the
+                  // reader clicked, not one day of it.
+                  day: undefined,
                   from: search.from,
                   to: search.to,
                   member: undefined,

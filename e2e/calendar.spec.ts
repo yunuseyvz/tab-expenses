@@ -124,10 +124,16 @@ test.describe('period + calendar', () => {
     // A day with spend announces its entries; one of them opens the day.
     // `entr(y|ies)`, not `entries?` — the latter is "entrie" with an optional
     // s and never matches "1 entry", which is what most seeded days say.
-    const day = grid.getByRole('gridcell', { name: /, \d+ entr(y|ies)/ }).first()
+    const day = grid
+      .getByRole('gridcell', { name: /, \d+ entr(y|ies)/ })
+      .first()
     await day.click()
     const panel = page.getByRole('region', { name: /^Entries on/ })
     await expect(panel).toBeVisible()
+
+    // The chosen day is part of the URL, so a drilled-down ledger is a thing
+    // somebody can be sent, and survives a reload.
+    await expect(page).toHaveURL(/day=\d{4}-\d{2}-\d{2}/)
 
     // The day's rows are the ledger's rows, not a calendar-specific copy.
     await expect(
@@ -136,8 +142,9 @@ test.describe('period + calendar', () => {
         .first(),
     ).toBeVisible()
 
-    // Tapping the chosen day again closes it, like a disclosure.
-    await day.click()
+    // The stated way back, not a gesture somebody has to guess.
+    await page.getByRole('button', { name: 'Show the whole period' }).click()
+    await expect(page).not.toHaveURL(/day=/)
     await expect(panel).toHaveCount(0)
   })
 
@@ -169,5 +176,88 @@ test.describe('period + calendar', () => {
     await expect(
       page.getByRole('grid', { name: `${nextName} calendar` }),
     ).toBeVisible()
+  })
+
+  test('a chosen day does not survive the month it was chosen in', async ({
+    page,
+  }) => {
+    await page.goto('/expenses?view=calendar&period=thisMonth')
+
+    const day = page
+      .getByRole('grid', { name: / calendar$/ })
+      .getByRole('gridcell', { name: /, \d+ entr(y|ies)/ })
+      .first()
+    await day.click()
+    await expect(page).toHaveURL(/day=\d{4}-\d{2}-\d{2}/)
+
+    // A flip is a period change, and a day belongs to the window it was chosen
+    // in — carrying it into a month the reader can no longer see would be a
+    // panel about nothing.
+    await page.getByRole('button', { name: 'Next month' }).click()
+    await expect(page).not.toHaveURL(/day=/)
+  })
+
+  test('from lg the calendar and the statement sit side by side', async ({
+    browser,
+  }) => {
+    /*
+     * The desktop layout, in its own context: the suite is a phone because that
+     * is the app's entry point, but this feature exists precisely because a
+     * desktop width is a different room — both panes at once, no toggle.
+     */
+    const context = await browser.newContext({
+      viewport: { width: 1180, height: 860 },
+      storageState: 'test-results/auth.json',
+    })
+    const page = await context.newPage()
+
+    const monthName = new Intl.DateTimeFormat('en', {
+      month: 'long',
+      year: 'numeric',
+    }).format(new Date())
+    await page.goto(`/expenses?view=calendar&period=thisMonth`, {
+      waitUntil: 'networkidle',
+    })
+
+    // The toggle is gone: from lg the layout IS both panes.
+    await expect(
+      page.getByRole('radiogroup', { name: 'Ledger view' }),
+    ).toBeHidden()
+
+    // Both panes at once, and side by side rather than stacked.
+    const grid = page.getByRole('grid', { name: `${monthName} calendar` })
+    const gridBox = (await grid.boundingBox())!
+    const row = page.locator('main button[aria-label^="Edit "]').first()
+    await row.waitFor({ state: 'visible' })
+    const rowBox = (await row.boundingBox())!
+    expect(
+      rowBox.x,
+      'the statement must be beside the calendar, not under it',
+    ).toBeGreaterThan(gridBox.x + gridBox.width)
+
+    // A day chosen on the calendar is answered in the statement beside it.
+    await grid
+      .getByRole('gridcell', { name: /, \d+ entr(y|ies)/ })
+      .first()
+      .click()
+    const panel = page.getByRole('region', { name: /^Entries on/ })
+    await expect(panel).toBeVisible()
+    const panelBox = (await panel.boundingBox())!
+    expect(
+      panelBox.x,
+      'the day must open in the statement pane, not under the grid',
+    ).toBeGreaterThan(gridBox.x + gridBox.width)
+
+    // Exactly one panel: the phone's under-grid slot is display:none here.
+    await expect(page.getByRole('region', { name: /^Entries on/ })).toHaveCount(
+      1,
+    )
+
+    // And the way back leaves the statement pane with the period again.
+    await page.getByRole('button', { name: 'Show the whole period' }).click()
+    await expect(panel).toHaveCount(0)
+    await expect(row.first()).toBeVisible()
+
+    await context.close()
   })
 })

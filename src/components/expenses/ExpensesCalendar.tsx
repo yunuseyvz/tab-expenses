@@ -1,10 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useMemo, useRef } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 
 import type { CalendarCell } from '#/lib/calendar'
-import type { DayTotal, ExpenseRow } from '#/lib/expense.functions'
-import type { Period } from '#/lib/period'
+import type { DayTotal } from '#/lib/expense.functions'
 import {
   WEEKDAYS,
   WEEKDAYS_LONG,
@@ -14,111 +12,52 @@ import {
   monthLabel,
   toISODate,
 } from '#/lib/calendar'
-import { Card } from '#/components/ui/Card'
-import { LedgerRow } from '#/components/expenses/LedgerRow'
-import { expensesQuery } from '#/lib/session'
 import { formatMoney } from '#/lib/money'
 import { cn } from '#/lib/cn'
 
 /**
- * The expenses screen's calendar view.
+ * The calendar grid: one month of the ledger, as days.
  *
- * A RENDERING of the ledger, not a second ledger: the month on show is derived
- * from the period (see `periodMonth`), the per-day figures are the `dayTotals`
- * the list view already loads, and flipping a month is a period change — the
- * route sets a custom month range and the pills above move with it. Calendar
- * and filter can therefore never disagree about which window is on screen, and
- * the URL stays the whole state, shareable like every other view of this app.
+ * A RENDERING of the filter, not a second filter: the month on show is
+ * derived from the period (see `periodMonth`), the per-day figures are the
+ * `dayTotals` the ledger query already returns, and flipping a month is a
+ * period change the route navigates to — so the grid, the pills above it and
+ * the URL can never disagree about which window is on screen.
  *
- * Tapping a day opens that day under the grid, in the row component the list
- * uses, narrowed to the same period/member/category filter the grid drew — so a
- * blank cell that opens with entries in it cannot happen: the clamp answers the
- * question the filter asked, not a different one.
+ * Selection is passed in and out rather than held here: a chosen day is part
+ * of the screen's state, so it lives in the URL with everything else, and this
+ * component stays drawable from props alone.
  */
 export function ExpensesCalendar({
-  spaceId,
   month,
   onMonthChange,
-  period,
-  memberId,
-  categoryIds,
   dayTotals,
+  monthTotalMinor,
   pending,
   currency,
-  onOpenRow,
+  selectedDay,
+  onSelectDay,
 }: {
-  /** The space whose ledger this renders; falsy while the space resolves. */
-  spaceId: string | undefined
   /** Any day in the month to show; the route derives it from the period. */
   month: Date
   /** Steps the shown month, by navigating the period (see the note above). */
   onMonthChange: (delta: 1 | -1) => void
-  /** The resolved period — the drill-down is this filter narrowed to a day. */
-  period: Period
-  memberId: string | null
-  categoryIds: Array<string> | undefined
   /** Per-day figures over the WHOLE filter, from the ledger query. Unpaged. */
   dayTotals: ReadonlyArray<DayTotal>
+  /** The shown month's total, over the same figures the cells read. */
+  monthTotalMinor: number
   /** True only while the first load has not answered; flips keep the old data. */
   pending: boolean
   currency: string
-  onOpenRow: (row: ExpenseRow) => void
+  /** The URL's chosen day, or null. Tapping the chosen day clears it. */
+  selectedDay: string | null
+  onSelectDay: (iso: string | null) => void
 }) {
-  const [selectedDay, setSelectedDay] = useState<string | null>(null)
-
-  /*
-   * A chosen day belongs to the month it was chosen in. Flipping away puts the
-   * panel's subject off-screen, and a card about something you cannot see is a
-   * stray card rather than an answer.
-   */
-  const monthKey = toISODate(month).slice(0, 7)
-  useEffect(() => {
-    setSelectedDay(null)
-  }, [monthKey])
-
   const cells = useMemo(() => monthGrid(month), [month])
   const totals = useMemo(
     () => new Map(dayTotals.map((d) => [d.spentOn, d])),
     [dayTotals],
   )
-
-  /*
-   * The drill-down's bounds are the day INTERSECTED with the period, not the
-   * day alone. A day outside the filter yields from > to and matches nothing,
-   * which is the same thing its blank cell was saying — so the panel and the
-   * grid agree by construction, and with an unbounded period (All, or no dates
-   * under Custom) the intersection is simply the day itself.
-   */
-  const dayFilter = useMemo(() => {
-    if (!selectedDay) return null
-    return {
-      from:
-        period.from && period.from > selectedDay ? period.from : selectedDay,
-      to: period.to && period.to < selectedDay ? period.to : selectedDay,
-      memberId,
-      categoryIds,
-    }
-  }, [selectedDay, period.from, period.to, memberId, categoryIds])
-
-  /*
-   * The day's own query, so the month grid above never re-fetches while you
-   * inspect a day — the grid keeps its figures and the panel answers its own
-   * question. 200 is the server's page ceiling; a single household day past it
-   * is not a real case, and the alternative is a pager under a calendar.
-   */
-  const day = useQuery({
-    ...expensesQuery(
-      spaceId ?? '',
-      dayFilter ?? { from: null, to: null, memberId, categoryIds },
-      { limit: 200 },
-    ),
-    enabled: Boolean(spaceId) && dayFilter !== null,
-  })
-
-  const dayRows = day.data?.rows ?? []
-  const dayTotal = day.data?.dayTotals.find(
-    (t) => t.spentOn === selectedDay,
-  )?.totalMinor
 
   /*
    * Keyboard is a proper grid, like the date field: arrows step by day and
@@ -171,16 +110,7 @@ export function ExpensesCalendar({
   }
 
   return (
-    /*
-     * Narrower than the statement beside it, on purpose. The ledger's rows are
-     * long and read best wide; a month grid is small figures in boxes, and
-     * past ~40rem it is mostly box — the cells stretch, the figures do not,
-     * and the eye spends its travel on emptiness. Capped, the cells land
-     * near-square at desktop widths; on a phone the cap never engages.
-     */
-    <div className="max-w-2xl">
-      {pending && <p className="text-sm text-ink-muted mb-2">Loading…</p>}
-
+    <div>
       <div className="flex items-center justify-between mb-1.5">
         <button
           type="button"
@@ -192,9 +122,17 @@ export function ExpensesCalendar({
         >
           <ChevronLeft size={16} aria-hidden />
         </button>
-        <span aria-live="polite" className="text-sm font-medium">
-          {monthLabel(month)}
-        </span>
+        <div className="flex flex-col items-center" aria-live="polite">
+          <span className="text-sm font-medium">{monthLabel(month)}</span>
+          {/* The month's own figure, under its name — each pane on this screen
+              carries its own number, so the header's count stays the
+              statement's and the two never describe each other's content. */}
+          {!pending && (
+            <span className="text-xs tnum text-ink-faint">
+              {formatMoney(monthTotalMinor, currency)}
+            </span>
+          )}
+        </div>
         <button
           type="button"
           onClick={() => onMonthChange(1)}
@@ -223,7 +161,7 @@ export function ExpensesCalendar({
       <div
         role="grid"
         aria-label={`${monthLabel(month)} calendar`}
-        className="grid grid-cols-7 gap-0.5 sm:gap-1"
+        className="grid grid-cols-7 gap-0.5"
       >
         {cells.map((cell) => {
           const d = totals.get(cell.iso)
@@ -240,11 +178,11 @@ export function ExpensesCalendar({
               aria-selected={selected}
               aria-current={cell.isToday ? 'date' : undefined}
               aria-label={cellLabel(cell, d)}
-              // Tapping the chosen day again closes it, like a disclosure.
-              onClick={() => setSelectedDay(selected ? null : cell.iso)}
+              // Tapping the chosen day again clears it, like a disclosure.
+              onClick={() => onSelectDay(selected ? null : cell.iso)}
               onKeyDown={(e) => onCellKeyDown(cell.iso, e)}
               className={cn(
-                'flex flex-col items-center justify-center gap-1 p-1 min-h-14 sm:min-h-20',
+                'flex flex-col items-center justify-center gap-1 p-1 min-h-14',
                 'text-center rounded-[var(--radius-sm)]',
                 'transition-[background-color,color,transform] duration-150',
                 'active:scale-95 motion-reduce:active:scale-100',
@@ -284,44 +222,6 @@ export function ExpensesCalendar({
           )
         })}
       </div>
-
-      {selectedDay && (
-        <section
-          aria-label={`Entries on ${longDate(selectedDay)}`}
-          className="mt-4"
-        >
-          {/* Sticky date header, like the statement below it. */}
-          <div className="sticky top-0 z-10 py-1.5 bg-paper/90 backdrop-blur-sm">
-            <div className="flex items-baseline justify-between">
-              <h2 className="text-sm font-semibold">{longDate(selectedDay)}</h2>
-              {dayTotal !== undefined && (
-                <span className="tnum text-sm text-ink-muted">
-                  {formatMoney(dayTotal, currency)}
-                </span>
-              )}
-            </div>
-          </div>
-
-          <Card className="p-0">
-            {day.isPending ? (
-              <p className="px-4 py-3 text-sm text-ink-muted">Loading…</p>
-            ) : dayRows.length === 0 ? (
-              <p className="px-4 py-3 text-sm text-ink-muted">
-                Nothing here for this filter.
-              </p>
-            ) : (
-              dayRows.map((e) => (
-                <LedgerRow
-                  key={e.id}
-                  row={e}
-                  currency={currency}
-                  onOpen={onOpenRow}
-                />
-              ))
-            )}
-          </Card>
-        </section>
-      )}
     </div>
   )
 }

@@ -162,6 +162,23 @@ export function resolvePeriod(
   return presetToPeriod(preset)
 }
 
+/**
+ * The drill-down's bounds: one day, intersected with the period.
+ *
+ * A day inside the filter resolves to itself; an unbounded period leaves it
+ * alone. A day OUTSIDE the filter resolves to an inverted range — `from` after
+ * `to` — which the server accepts and matches nothing, so a blank cell that
+ * opens answers "Nothing here", exactly what it was saying on the grid. The
+ * two can therefore never disagree, and no caller needs to know which case it
+ * is holding.
+ */
+export function clampDayToPeriod(period: Period, day: string): Period {
+  return {
+    from: period.from && period.from > day ? period.from : day,
+    to: period.to && period.to < day ? period.to : day,
+  }
+}
+
 export function periodLabel(period: Period, locale = 'en'): string {
   const fmt = (s: string) =>
     fromISODate(s).toLocaleDateString(locale, {

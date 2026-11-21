@@ -6,7 +6,13 @@ import {
   expenseInputSchema,
   isoDateSchema,
 } from './guards'
-import { fromISODate, groupByDay, presetToPeriod, toISODate } from './period'
+import {
+  clampDayToPeriod,
+  fromISODate,
+  groupByDay,
+  presetToPeriod,
+  toISODate,
+} from './period'
 import { settle } from './settle'
 
 describe('settle', () => {
@@ -149,6 +155,43 @@ describe('groupByDay', () => {
 
   it('handles an empty list', () => {
     expect(groupByDay([])).toEqual([])
+  })
+})
+
+describe('clampDayToPeriod', () => {
+  it('resolves to the day itself inside the period', () => {
+    const period = { from: '2026-11-01', to: '2026-11-30' }
+    expect(clampDayToPeriod(period, '2026-11-14')).toEqual({
+      from: '2026-11-14',
+      to: '2026-11-14',
+    })
+  })
+
+  it('leaves the day alone under an unbounded period', () => {
+    const period = { from: null, to: null }
+    expect(clampDayToPeriod(period, '2026-11-14')).toEqual({
+      from: '2026-11-14',
+      to: '2026-11-14',
+    })
+  })
+
+  it('clamps to a half-open period', () => {
+    // The period starts mid-month: the day is kept, but bounded by the start.
+    const period = { from: '2026-11-20', to: null }
+    expect(clampDayToPeriod(period, '2026-11-14')).toEqual({
+      from: '2026-11-20',
+      to: '2026-11-14',
+    })
+  })
+
+  it('inverts for a day outside the period, which matches nothing', () => {
+    // A day BEFORE the period ends up with from > to. That is the contract,
+    // not an accident: the server accepts the inverted pair and returns an
+    // empty page, so a blank cell opens to "Nothing here" — the same thing
+    // the grid was saying.
+    const period = { from: '2026-11-09', to: '2026-11-15' }
+    const clamped = clampDayToPeriod(period, '2026-11-03')
+    expect(clamped.from! > clamped.to!).toBe(true)
   })
 })
 
