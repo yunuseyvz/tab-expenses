@@ -7,7 +7,8 @@
  * entire class of off-by-one-day bugs at the cost of nothing real.
  */
 
-export type PeriodPreset = 'thisMonth' | 'lastMonth' | 'all' | 'custom'
+export type PeriodPreset =
+  'lastWeek' | 'thisMonth' | 'lastMonth' | 'all' | 'custom'
 
 /**
  * The presets, as data rather than as a switch.
@@ -21,8 +22,14 @@ export type PeriodPreset = 'thisMonth' | 'lastMonth' | 'all' | 'custom'
  * but it is not a *range*: it means "use the two dates in the URL", so it belongs
  * to the control as the entry that reveals the date fields rather than to the
  * list of ranges you can pick from.
+ *
+ * The order is the pill order, and it is recency: the most recently *finished*
+ * window first. Last week ended last Sunday, this month is still running, last
+ * month closed before either — so the row reads newest answer to oldest
+ * question, ending in All.
  */
 export const PERIOD_PRESETS = [
+  { key: 'lastWeek', label: 'Last week' },
   { key: 'thisMonth', label: 'This month' },
   { key: 'lastMonth', label: 'Last month' },
   { key: 'all', label: 'All' },
@@ -70,6 +77,35 @@ export function endOfMonth(d: Date): Date {
 export function presetToPeriod(preset: PeriodPreset): Period {
   const now = new Date()
   switch (preset) {
+    /*
+     * The last COMPLETE week, Monday to Sunday, ending before this one began.
+     *
+     * Not "the last seven days": a rolling window has no weekday boundaries, so
+     * "last week" would mean a different thing depending on which day you asked,
+     * and the figure could not be compared with anything. A Monday-first week
+     * matches the calendar grid the app already draws, and it is the unit a
+     * household actually budgets in — the week that is over, and can therefore
+     * be looked at as a whole.
+     */
+    case 'lastWeek': {
+      // Monday-first, the same arithmetic `weekdayIndex` does in calendar.ts.
+      const mondayThisWeek = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate() - ((now.getDay() + 6) % 7),
+      )
+      const monday = new Date(
+        mondayThisWeek.getFullYear(),
+        mondayThisWeek.getMonth(),
+        mondayThisWeek.getDate() - 7,
+      )
+      const sunday = new Date(
+        monday.getFullYear(),
+        monday.getMonth(),
+        monday.getDate() + 6,
+      )
+      return { from: toISODate(monday), to: toISODate(sunday) }
+    }
     case 'thisMonth':
       return {
         from: toISODate(startOfMonth(now)),

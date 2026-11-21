@@ -6,7 +6,7 @@ import {
   expenseInputSchema,
   isoDateSchema,
 } from './guards'
-import { groupByDay, presetToPeriod, toISODate } from './period'
+import { fromISODate, groupByDay, presetToPeriod, toISODate } from './period'
 import { settle } from './settle'
 
 describe('settle', () => {
@@ -111,6 +111,25 @@ describe('period', () => {
 
   it('treats "all" as unbounded', () => {
     expect(presetToPeriod('all')).toEqual({ from: null, to: null })
+  })
+
+  it('resolves "last week" to the complete Monday–Sunday week before this one', () => {
+    const now = new Date()
+    const lastWeek = presetToPeriod('lastWeek')
+
+    // Starts on a Monday, like the calendar grid the app draws.
+    expect(fromISODate(lastWeek.from!).getDay()).toBe(1)
+
+    // Exactly seven days wide.
+    const span =
+      (fromISODate(lastWeek.to!).getTime() -
+        fromISODate(lastWeek.from!).getTime()) /
+      86_400_000
+    expect(span).toBe(6)
+
+    // And entirely before today, because it is a FINISHED week — the unit a
+    // household can look at as a whole.
+    expect(lastWeek.to! < toISODate(now)).toBe(true)
   })
 })
 

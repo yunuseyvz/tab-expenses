@@ -1,14 +1,22 @@
 import { useEffect, useRef, useState } from 'react'
 
 import type { PeriodPreset } from '#/lib/period'
+import { PERIOD_PRESETS } from '#/lib/period'
 import { DateField } from '#/components/ui/DateField'
 import { usePopoverPlacement } from '#/hooks/usePopoverPlacement'
 import { cn } from '#/lib/cn'
 
+/**
+ * The canonical list plus Custom, which is this control's own entry: it reveals
+ * the date fields rather than naming a range, so it lives here and not with the
+ * ranges (see the note on `PERIOD_PRESETS`).
+ *
+ * This used to be a second hand-written copy of the same names — the exact drift
+ * `PERIOD_PRESETS` was extracted to prevent, and the reason adding a preset once
+ * meant remembering two files.
+ */
 const PRESETS: Array<{ key: PeriodPreset; label: string }> = [
-  { key: 'thisMonth', label: 'This month' },
-  { key: 'lastMonth', label: 'Last month' },
-  { key: 'all', label: 'All' },
+  ...PERIOD_PRESETS,
   { key: 'custom', label: 'Custom' },
 ]
 
@@ -21,7 +29,7 @@ const PANEL_WIDTH = 300
  * pills wrapped onto three lines of a phone; dropping the settlement cycles took
  * it back to three, which fit on one line at every width — and then folding all
  * of them into one dropdown solved a problem that no longer existed while
- * costing the thing that made this control good: the choices were visible. Four
+ * costing the thing that made this control good: the choices were visible. Five
  * pills you can read at a glance beat a button that says "All time" and hides
  * the rest behind a tap, especially when picking a different window is the most
  * common thing anybody does with a period filter.
